@@ -1,0 +1,20 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+.vite/
+
+# Local orchestration tooling (ruflo / Claude Code) — not part of the extension
+.claude/
+.claude-flow/
+.mcp.json
+CLAUDE.md
+.swarm/
+*.db
+*.db-shm
+*.db-wal
+ruvector.db
