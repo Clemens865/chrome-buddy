@@ -594,3 +594,7 @@ html, body {
   overflow: visible;
 }
 .root.is-overlay .panel.is-collapsed .rail-floating { margin: 0; }
+
+/* ── Settings text input (API key) ── */
+.settings-input { width: 100%; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--panel-bg); font: inherit; font-size: 13px; padding: 7px 10px; color: var(--panel-fg); outline: 0; }
+.settings-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }

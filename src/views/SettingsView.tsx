@@ -1,10 +1,15 @@
 // SettingsView.tsx — real settings: appearance (theme + accent), BYO key, model.
 // No mock account/usage data.
-import { type ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Pill } from '../ui/primitives';
 import { THEMES, type ThemeName } from '../ui/theme';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { usePersistedState } from '../sidepanel/usePersistedState';
+import { useApiKey } from '../key/useApiKey';
+
+// The bundled registry ships a single Gemini provider; keys are stored per
+// provider id in the SW (chrome.storage.session).
+const GEMINI_PROVIDER = 'google-gemini';
 
 interface SettingsProps {
   themeName: ThemeName;
@@ -58,8 +63,8 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
 
       <div className="settings-section">
         <div className="settings-section-h">API key</div>
-        <SettingsRow t="Gemini API key" s="Stored locally · used for all cloud calls">
-          <button type="button" className="btn btn-primary btn-sm">Add key</button>
+        <SettingsRow t="Gemini API key" s="Kept in memory only · used for all cloud calls">
+          <ApiKeyControl />
         </SettingsRow>
       </div>
 
@@ -93,6 +98,106 @@ function SettingsRow({ t, s, children }: { t: string; s: string; children: React
         </div>
       </div>
       <div className="settings-row-r">{children}</div>
+    </div>
+  );
+}
+
+// Inline BYO-key control: shows status (set / not set), reveals a key input on
+// "Add key", and saves to the SW via useApiKey (the key never persists to disk).
+function ApiKeyControl() {
+  const { keyStatus, setKey, validate } = useApiKey(GEMINI_PROVIDER);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+
+  if (!editing) {
+    return (
+      <div className="settings-row-r" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {keyStatus === 'set' ? (
+          <Pill tone="ok">Key set</Pill>
+        ) : keyStatus === 'unset' ? (
+          <Pill>Not set</Pill>
+        ) : null}
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          onClick={() => {
+            setEditing(true);
+            setMsg(null);
+          }}
+        >
+          {keyStatus === 'set' ? 'Replace key' : 'Add key'}
+        </button>
+        {keyStatus === 'set' ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              void setKey('');
+            }}
+          >
+            Remove
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await validate(draft);
+      if (!res.ok) {
+        setMsg({ tone: 'err', text: res.error ?? 'Key did not validate.' });
+        return;
+      }
+      await setKey(draft);
+      setMsg({ tone: 'ok', text: 'Saved.' });
+      setDraft('');
+      setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 220 }}>
+      <input
+        type="password"
+        className="settings-input"
+        placeholder="Paste API key"
+        value={draft}
+        autoFocus
+        onChange={(e) => setDraft(e.target.value)}
+        aria-label="API key"
+      />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          disabled={busy || draft.length === 0}
+          onClick={() => {
+            void save();
+          }}
+        >
+          {busy ? 'Validating…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={busy}
+          onClick={() => {
+            setEditing(false);
+            setDraft('');
+            setMsg(null);
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+      {msg ? <Pill tone={msg.tone === 'ok' ? 'ok' : undefined}>{msg.text}</Pill> : null}
     </div>
   );
 }
