@@ -21,6 +21,7 @@ import {
 import { getLlmClient, resolveProviderId } from '../llm/instance';
 import { LlmClient } from '../llm/client';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
+import { executePageTool } from './pageTools';
 
 chrome.runtime.onInstalled.addListener(() => {
   // Allow clicking the toolbar icon to toggle the side panel open.
@@ -103,6 +104,15 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
           params: message.params,
         });
         return { type: 'LLM_GENERATE', ok: true, result };
+      }
+
+      case 'TOOL_EXEC': {
+        // DOM-first: run page read/act tools in the SW against the active tab.
+        // Restricted URLs are refused inside executePageTool with a structured
+        // error. Consequential side-effecting tools are NOT routed here — the
+        // runtime's HITL gate (UI side) precedes any TOOL_EXEC for those.
+        const result = await executePageTool(message.tool, message.args);
+        return { type: 'TOOL_EXEC', ok: true, result };
       }
 
       default: {

@@ -1,13 +1,20 @@
-// ChatView.tsx — agentic chat. Empty initial state until the agent runtime
-// (src/agent) is wired in Wave 4. No mock data.
-import { useState, type ReactNode } from 'react';
-import { Ic, BuddyMark } from '../ui/icons';
+// ChatView.tsx — agentic chat wired to the real AgentRuntime + Gemini.
+//
+// The user types a task → Gemini plans (via the background SW) → page tools run
+// in the SW on the active tab → step traces + HITL confirmation cards render
+// inline → final answer. The API key is never touched here; everything routes
+// through the background (see src/agent/runner.ts for the security posture).
 
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'agent';
-  text: string;
-}
+import { useCallback, useRef, useState } from 'react';
+import { Ic, BuddyMark } from '../ui/icons';
+import {
+  runAgentTask,
+  reduceTranscript,
+  resolveConfirmation,
+  userItem,
+  type TranscriptItem,
+} from '../agent';
+import type { AgentEvent, ApprovalDecision } from '../agent';
 
 const SUGGESTIONS = [
   'Summarize this page',
@@ -16,61 +23,341 @@ const SUGGESTIONS = [
   'Draft a reply to this',
 ];
 
+/** A pending HITL gate awaiting the user's Approve/Cancel. */
+interface PendingConfirm {
+  step: number;
+  callId: string;
+  resolve: (decision: ApprovalDecision) => void;
+}
+
 export function ChatView() {
   const [input, setInput] = useState('');
-  const [messages] = useState<ChatMessage[]>([]);
+  const [items, setItems] = useState<TranscriptItem[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [noKey, setNoKey] = useState(false);
+  const pendingRef = useRef<PendingConfirm | null>(null);
+  const seqRef = useRef(0);
+
+  const submit = useCallback(
+    async (text: string) => {
+      const prompt = text.trim();
+      if (!prompt || busy) return;
+      setInput('');
+      setNoKey(false);
+      setBusy(true);
+      const uid = `user_${seqRef.current++}`;
+      setItems((prev) => [...prev, userItem(uid, prompt)]);
+
+      const onEvent = (event: AgentEvent) => {
+        setItems((prev) => reduceTranscript(prev, event));
+      };
+
+      const onConfirm = (req: {
+        runId: string;
+        step: number;
+        tool: string;
+        args: Record<string, unknown>;
+        summary: string;
+      }): Promise<ApprovalDecision> =>
+        // The confirm CARD is already rendered by the reducer (the runtime emits
+        // confirmation_required before awaiting this resolver). We just hold the
+        // resolver until the user clicks Approve/Cancel on the matching card.
+        new Promise<ApprovalDecision>((resolve) => {
+          pendingRef.current = { step: req.step, callId: req.summary, resolve };
+        });
+
+      try {
+        const result = await runAgentTask(prompt, { onEvent, onConfirm });
+        if (result.outcome === 'no-key') setNoKey(true);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        setItems((prev) => [...prev, { kind: 'error', id: `err_${seqRef.current++}`, text: message }]);
+      } finally {
+        pendingRef.current = null;
+        setBusy(false);
+      }
+    },
+    [busy],
+  );
+
+  const decide = useCallback((step: number, callId: string, approved: boolean) => {
+    setItems((prev) => resolveConfirmation(prev, step, callId, approved ? 'approved' : 'denied'));
+    const pending = pendingRef.current;
+    if (pending && pending.step === step) {
+      pending.resolve(approved ? { approved: true } : { approved: false });
+      pendingRef.current = null;
+    }
+  }, []);
+
+  const isEmpty = items.length === 0 && !noKey;
 
   return (
     <div className="chat">
       <div className="chat-scroller">
-        {messages.length === 0 ? (
-          <div className="chat-greeting">
-            <div className="msg-ava"><BuddyMark size={22} /></div>
-            <div>
-              <div className="chat-greeting-title">Hi, I&apos;m Buddy.</div>
-              <div className="chat-greeting-sub">
-                Ask me to do something on this page, or pick a starting point. I&apos;ll show each step and check
-                with you before anything consequential.
-              </div>
-              <div className="chat-suggest" style={{ marginTop: 12 }}>
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} type="button" className="suggest-chip" onClick={() => setInput(s)}>{s}</button>
-                ))}
-              </div>
-            </div>
-          </div>
+        {isEmpty ? (
+          <Greeting onPick={setInput} />
         ) : (
-          messages.map((m) => <Msg key={m.id} role={m.role}>{m.text}</Msg>)
+          <>
+            {items.map((it) => (
+              <TranscriptRow key={it.id} item={it} onDecide={decide} />
+            ))}
+            {noKey && <NoKeyNotice />}
+          </>
         )}
       </div>
-      <ChatComposer input={input} onChange={setInput} />
+      <ChatComposer input={input} onChange={setInput} onSend={() => void submit(input)} busy={busy} />
     </div>
   );
 }
 
-function Msg({ role, children }: { role: 'user' | 'agent'; children: ReactNode }) {
-  if (role === 'user') {
-    return <div className="msg msg-user"><div className="msg-bubble">{children}</div></div>;
-  }
+function Greeting({ onPick }: { onPick: (v: string) => void }) {
   return (
-    <div className="msg msg-agent">
-      <div className="msg-ava"><BuddyMark size={18} /></div>
-      <div className="msg-body">{children}</div>
+    <div className="chat-greeting">
+      <div className="msg-ava">
+        <BuddyMark size={22} />
+      </div>
+      <div>
+        <div className="chat-greeting-title">Hi, I&apos;m Buddy.</div>
+        <div className="chat-greeting-sub">
+          Ask me to do something on this page, or pick a starting point. I&apos;ll show each step and check
+          with you before anything consequential.
+        </div>
+        <div className="chat-suggest" style={{ marginTop: 12 }}>
+          {SUGGESTIONS.map((s) => (
+            <button key={s} type="button" className="suggest-chip" onClick={() => onPick(s)}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-function ChatComposer({ input, onChange }: { input: string; onChange: (v: string) => void }) {
+function NoKeyNotice() {
+  return (
+    <div className="hitl" role="alert">
+      <div className="hitl-hd">
+        <span className="hitl-ic">
+          <span className="ic">{Ic.warn}</span>
+        </span>
+        <span className="hitl-title">No API key set</span>
+      </div>
+      <div className="hitl-foot">
+        Add your Gemini API key in Settings to let Buddy plan and act. Your key stays in this browser session
+        and is never sent anywhere but the model provider.
+      </div>
+    </div>
+  );
+}
+
+function TranscriptRow({
+  item,
+  onDecide,
+}: {
+  item: TranscriptItem;
+  onDecide: (step: number, callId: string, approved: boolean) => void;
+}) {
+  switch (item.kind) {
+    case 'user':
+      return (
+        <div className="msg msg-user">
+          <div className="msg-bubble">{item.text}</div>
+        </div>
+      );
+
+    case 'agent':
+      return (
+        <div className="msg msg-agent">
+          <div className="msg-ava">
+            <BuddyMark size={18} />
+          </div>
+          <div className="msg-body">{item.text}</div>
+        </div>
+      );
+
+    case 'error':
+      return (
+        <div className="msg msg-agent msg-subtle">
+          <div className="msg-ava">
+            <span className="ic">{Ic.warn}</span>
+          </div>
+          <div className="msg-body">{item.text}</div>
+        </div>
+      );
+
+    case 'plan':
+      return (
+        <div className="trace" aria-label="Plan">
+          {item.plan.map((p) => (
+            <div key={p.index} className="tc-mini tc-mini-inline">
+              <span className="tc-mini-name">{p.index}.</span>
+              <span className="tc-mini-arg">{p.intent}</span>
+            </div>
+          ))}
+        </div>
+      );
+
+    case 'tool':
+      return <ToolTrace item={item} />;
+
+    case 'confirm':
+      return <ConfirmCard item={item} onDecide={onDecide} />;
+
+    default: {
+      const exhaustive: never = item;
+      void exhaustive;
+      return null;
+    }
+  }
+}
+
+function ToolTrace({ item }: { item: Extract<TranscriptItem, { kind: 'tool' }> }) {
+  const statusClass =
+    item.status === 'running' ? 'tc-status-running' : 'tc-status-done';
+  const argText = summarizeArgs(item.call.arguments);
+  return (
+    <div className="trace">
+      <div className="tc-mini">
+        <span className={`tc-status ${statusClass}`} aria-hidden />
+        <span className="tc-mini-name">{item.call.name}</span>
+        <span className="tc-mini-arg" title={argText}>
+          {argText}
+        </span>
+        {item.status === 'denied' && <span className="tc-meta">denied</span>}
+        {item.status === 'done' && item.verdict && <span className="tc-meta">{item.verdict}</span>}
+      </div>
+    </div>
+  );
+}
+
+function ConfirmCard({
+  item,
+  onDecide,
+}: {
+  item: Extract<TranscriptItem, { kind: 'confirm' }>;
+  onDecide: (step: number, callId: string, approved: boolean) => void;
+}) {
+  const resolved = item.resolution !== undefined;
+  const entries = Object.entries(item.call.arguments);
+  return (
+    <div className="hitl" role="group" aria-label="Confirmation required">
+      <div className="hitl-hd">
+        <span className="hitl-ic">
+          <span className="ic">{Ic.warn}</span>
+        </span>
+        <span className="hitl-title">Confirm this action</span>
+        <span className="hitl-tag">{resolved ? item.resolution : 'review'}</span>
+      </div>
+      <div className="hitl-body">
+        <div className="hitl-tool">
+          <span className="hitl-tool-ic">
+            <span className="ic">{Ic.sparkle}</span>
+          </span>
+          <div>
+            <div className="hitl-tool-name">{item.call.name}</div>
+            <div className="hitl-tool-args">
+              {entries.length === 0 ? (
+                <div>
+                  <span>args</span>
+                  <code>(none)</code>
+                </div>
+              ) : (
+                entries.map(([k, v]) => (
+                  <div key={k}>
+                    <span>{k}</span>
+                    <code>{String(typeof v === 'object' ? JSON.stringify(v) : v)}</code>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      {!resolved && (
+        <div className="hitl-actions">
+          <button
+            type="button"
+            className="suggest-chip"
+            aria-label="Cancel action"
+            onClick={() => onDecide(item.step, item.call.id, false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="composer-send"
+            style={{ width: 'auto', padding: '0 12px', borderRadius: 8 }}
+            aria-label="Approve action"
+            onClick={() => onDecide(item.step, item.call.id, true)}
+          >
+            Approve
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function summarizeArgs(args: Record<string, unknown>): string {
+  try {
+    const s = JSON.stringify(args);
+    return s.length > 120 ? `${s.slice(0, 120)}…` : s;
+  } catch {
+    return '';
+  }
+}
+
+function ChatComposer({
+  input,
+  onChange,
+  onSend,
+  busy,
+}: {
+  input: string;
+  onChange: (v: string) => void;
+  onSend: () => void;
+  busy: boolean;
+}) {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      onSend();
+    }
+  };
   return (
     <div className="composer">
       <div className="composer-bar">
-        <button type="button" className="composer-attach" aria-label="Attach"><span className="ic">{Ic.attach}</span></button>
-        <textarea className="composer-input" placeholder="Message Buddy…" value={input} onChange={(e) => onChange(e.target.value)} rows={1} />
-        <button type="button" className="composer-mic" aria-label="Voice"><span className="ic">{Ic.mic}</span></button>
-        <button type="button" className="composer-send" aria-label="Send" disabled={!input.trim()}><span className="ic">{Ic.send}</span></button>
+        <button type="button" className="composer-attach" aria-label="Attach">
+          <span className="ic">{Ic.attach}</span>
+        </button>
+        <textarea
+          className="composer-input"
+          placeholder="Message Buddy…"
+          value={input}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          rows={1}
+          aria-label="Message Buddy"
+        />
+        <button type="button" className="composer-mic" aria-label="Voice">
+          <span className="ic">{Ic.mic}</span>
+        </button>
+        <button
+          type="button"
+          className="composer-send"
+          aria-label="Send"
+          disabled={!input.trim() || busy}
+          onClick={onSend}
+        >
+          <span className="ic">{Ic.send}</span>
+        </button>
       </div>
       <div className="composer-foot">
-        <span className="ctx-chip"><span className="ctx-chip-dot" />This page</span>
+        <span className="ctx-chip">
+          <span className="ctx-chip-dot" />
+          This page
+        </span>
         <span className="composer-model">gemini-3.5-flash</span>
       </div>
     </div>

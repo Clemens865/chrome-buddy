@@ -15,6 +15,16 @@ export {
 } from './hitl';
 export type { ApprovalResolver, GateOutcome } from './hitl';
 
+export { runAgentTask, PAGE_TOOLS } from './runner';
+export type { RunAgentTaskOptions, RunAgentTaskResult, ConfirmHandler } from './runner';
+
+export {
+  reduceTranscript,
+  resolveConfirmation,
+  userItem,
+} from './transcript';
+export type { TranscriptItem } from './transcript';
+
 export { computerUseStub } from './computerUse';
 export type {
   ComputerUseHook,

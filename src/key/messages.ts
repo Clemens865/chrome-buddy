@@ -14,6 +14,7 @@
 
 import type { ChatMessage, GenerationParams, ToolSpec } from '../llm/types';
 import type { GenerateResult } from '../llm/client';
+import type { ToolResult } from '../types';
 
 /** chrome.storage.session key under which a provider's key is held. */
 export function apiKeyStorageKey(provider: string): string {
@@ -53,12 +54,34 @@ export interface LlmGenerateMessage {
   params?: GenerationParams;
 }
 
+/**
+ * Execute a page tool on the ACTIVE tab inside the SW (FR-TOOLS-2..6).
+ *
+ * DOM-first: read/act tools (read_dom, extract, screenshot, navigate, click,
+ * type, scroll) run HERE, in the privileged background context, via the shared
+ * src/page services (PageContext + Browser Control). The agent loop lives in the
+ * UI and routes each proposed tool call through this message — UI/content code
+ * never touches chrome.scripting / captureVisibleTab directly.
+ *
+ * SECURITY: the SW refuses restricted/undriveable URLs with a structured error,
+ * and never executes a CONSEQUENTIAL tool here (the runtime's HITL gate fires
+ * first, in the UI — see src/agent/runner.ts).
+ */
+export interface ToolExecMessage {
+  type: 'TOOL_EXEC';
+  /** Registry tool name (e.g. 'read_dom', 'navigate', 'click'). */
+  tool: string;
+  /** Tool arguments (already approved when consequential). */
+  args: Record<string, unknown>;
+}
+
 /** Discriminated union of every message the background SW understands. */
 export type BuddyMessage =
   | KeySetMessage
   | KeyStatusMessage
   | KeyValidateMessage
-  | LlmGenerateMessage;
+  | LlmGenerateMessage
+  | ToolExecMessage;
 
 // ---- Responses --------------------------------------------------------------
 
@@ -86,6 +109,17 @@ export interface LlmGenerateResponse {
   result: GenerateResult;
 }
 
+/**
+ * Result of a TOOL_EXEC. The SW always wraps the tool outcome in a
+ * discriminated ToolResult (it never throws across the message boundary):
+ * `ok:true` carries the registry's ToolResult; `ok:false` carries a message.
+ */
+export interface ToolExecResponse {
+  type: 'TOOL_EXEC';
+  ok: true;
+  result: ToolResult;
+}
+
 /** Uniform error envelope returned for any failed message handling. */
 export interface ErrorResponse {
   type: 'ERROR';
@@ -102,13 +136,16 @@ export type ResponseFor<M extends BuddyMessage> = M extends KeySetMessage
       ? KeyValidateResponse | ErrorResponse
       : M extends LlmGenerateMessage
         ? LlmGenerateResponse | ErrorResponse
-        : never;
+        : M extends ToolExecMessage
+          ? ToolExecResponse | ErrorResponse
+          : never;
 
 export type BuddyResponse =
   | KeySetResponse
   | KeyStatusResponse
   | KeyValidateResponse
   | LlmGenerateResponse
+  | ToolExecResponse
   | ErrorResponse;
 
 /** Type guard: is this an inbound message the SW should handle? */
@@ -116,6 +153,10 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
   if (typeof value !== 'object' || value === null) return false;
   const t = (value as { type?: unknown }).type;
   return (
-    t === 'KEY_SET' || t === 'KEY_STATUS' || t === 'KEY_VALIDATE' || t === 'LLM_GENERATE'
+    t === 'KEY_SET' ||
+    t === 'KEY_STATUS' ||
+    t === 'KEY_VALIDATE' ||
+    t === 'LLM_GENERATE' ||
+    t === 'TOOL_EXEC'
   );
 }
