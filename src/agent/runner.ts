@@ -25,14 +25,19 @@ import type { RuntimeLlm } from './runtime';
 import type { ApprovalResolver } from './hitl';
 import type { AgentEvent, ApprovalDecision, RunOutcome, RunState } from './types';
 import { createDefaultRegistry, type ToolRegistry } from '../tools';
-import { err, type ToolResult } from '../types';
+import { callSkillTool } from '../tools/defs';
+import type { ToolDefinition } from '../tools/types';
+import { ok, err, type ToolResult } from '../types';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
+import type { Skill } from '../skills/types';
 import type {
   ErrorResponse,
   KeyStatusMessage,
   KeyStatusResponse,
   LlmGenerateMessage,
   LlmGenerateResponse,
+  SkillListMessage,
+  SkillListResponse,
   ToolExecMessage,
   ToolExecResponse,
 } from '../key/messages';
@@ -72,6 +77,8 @@ export interface RunAgentTaskOptions {
   send?: (message: unknown) => Promise<unknown>;
   /** Overridable registry factory (defaults to the shared default registry). */
   makeRegistry?: () => ToolRegistry;
+  /** Expose call_skill (saved skills) to the model. Off for nested skill runs. */
+  exposeSkills?: boolean;
 }
 
 /** Terminal result of a run, plus a clean no-key signal for the UI. */
@@ -86,6 +93,64 @@ function defaultSend(message: unknown): Promise<unknown> {
     return Promise.reject(new Error('Extension messaging unavailable.'));
   }
   return chrome.runtime.sendMessage(message);
+}
+
+/** Fetch saved skills from the SW (SKILL_LIST). Skills are data, not code. */
+async function listSavedSkills(send: (m: unknown) => Promise<unknown>): Promise<Skill[]> {
+  const msg: SkillListMessage = { type: 'SKILL_LIST' };
+  try {
+    const res = (await send(msg)) as SkillListResponse | ErrorResponse | undefined;
+    return res && res.type === 'SKILL_LIST' ? res.skills : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Deps that let call_skill EXECUTE a skill (nested run) rather than just echo it. */
+export interface CallSkillDeps {
+  send: (m: unknown) => Promise<unknown>;
+  onConfirm: ConfirmHandler;
+}
+
+/**
+ * Build a call_skill tool bound to the user's saved skills: its description
+ * enumerates the available skills (id — name: description). When `deps` are
+ * supplied the handler EXECUTES the matched skill as a bounded nested run
+ * (agent loop for agent skills, plain chat for chat skills) and returns its
+ * answer; the nested run does not re-expose call_skill, so it can't recurse.
+ * Without deps (unit tests) it returns the skill's prompt as `instructions`.
+ * Skills are DATA — call_skill runs saved prompts, never arbitrary code.
+ */
+export function buildCallSkillTool(skills: Skill[], deps?: CallSkillDeps): ToolDefinition {
+  const byId = new Map(skills.map((s) => [s.id, s]));
+  const catalog = skills.map((s) => `- ${s.id} — ${s.name}: ${s.description}`).join('\n');
+  return {
+    ...callSkillTool,
+    description: `${callSkillTool.description}\n\nAvailable saved skills:\n${catalog}`,
+    handler: async (args) => {
+      const id = (args as { skillId?: string }).skillId;
+      const skill = id ? byId.get(id) : undefined;
+      if (!skill) {
+        return err('invalid-args', `No saved skill with id "${id ?? ''}". Pick one of the listed ids.`);
+      }
+      if (!deps) return ok({ name: skill.name, kind: skill.kind, instructions: skill.prompt });
+
+      if (skill.kind === 'chat') {
+        const r = await runPlainChat(skill.prompt, { send: deps.send });
+        if (r.outcome === 'no-key') return err('runtime-error', 'No API key set for the skill run.');
+        return ok({ name: skill.name, answer: r.text ?? '' });
+      }
+      // Agent skill: run the loop with skills suppressed (no recursion).
+      const result = await runAgentTask(skill.prompt, {
+        onEvent: () => {},
+        onConfirm: deps.onConfirm,
+        send: deps.send,
+        exposeSkills: false,
+      });
+      if (result.outcome === 'no-key') return err('runtime-error', 'No API key set for the skill run.');
+      return ok({ name: skill.name, answer: result.state?.finalAnswer ?? '', outcome: result.outcome });
+    },
+  };
 }
 
 /** Probe whether a Gemini key is set in the SW (KEY_STATUS; never returns it). */
@@ -119,21 +184,31 @@ async function execPageTool(
  * whose non-page tools keep their default handlers. The runtime's HITL gate
  * still fires for consequential tools before any handler runs.
  */
-function wireRegistry(send: (m: unknown) => Promise<unknown>, factory: () => ToolRegistry): ToolRegistry {
+function wireRegistry(
+  send: (m: unknown) => Promise<unknown>,
+  factory: () => ToolRegistry,
+  skills: Skill[] = [],
+  callSkillDeps?: CallSkillDeps,
+): ToolRegistry {
   const base = factory();
   const wired = new (base.constructor as typeof ToolRegistry)();
   for (const def of base.list()) {
     // Only expose tools the agent can actually run: the page tools and
     // send_webhook, all executed in the SW via TOOL_EXEC. send_webhook keeps its
     // `consequential` flag, so the runtime's HITL gate fires before it runs.
-    // Other stubs (call_skill, read/write_file, ask_user) are NOT declared, so
-    // the model can't pick a tool that fails the step.
+    // Other stubs (read/write_file, ask_user) are NOT declared, so the model
+    // can't pick a tool that fails the step.
     if (AGENT_TOOLS.has(def.name)) {
       wired.register({
         ...def,
         handler: (args) => execPageTool(send, def.name, args as Record<string, unknown>),
       });
     }
+  }
+  // call_skill is only exposed when the user actually has saved skills; its
+  // handler resolves locally (skills are data) rather than via TOOL_EXEC.
+  if (skills.length > 0) {
+    wired.register(buildCallSkillTool(skills, callSkillDeps));
   }
   return wired;
 }
@@ -182,7 +257,11 @@ export async function runAgentTask(
   }
 
   const model = options.model ?? DEFAULT_REGISTRY.defaultModel;
-  const registry = wireRegistry(send, options.makeRegistry ?? createDefaultRegistry);
+  const skills = options.exposeSkills === false ? [] : await listSavedSkills(send);
+  const registry = wireRegistry(send, options.makeRegistry ?? createDefaultRegistry, skills, {
+    send,
+    onConfirm: options.onConfirm,
+  });
 
   const approve: ApprovalResolver = (request) =>
     options.onConfirm({

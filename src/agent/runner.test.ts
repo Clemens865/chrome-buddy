@@ -2,8 +2,9 @@
 // A mock `send` stands in for chrome.runtime.sendMessage so no real SW is hit.
 
 import { describe, it, expect, vi } from 'vitest';
-import { runAgentTask } from './runner';
+import { runAgentTask, buildCallSkillTool } from './runner';
 import type { AgentEvent } from './types';
+import type { Skill } from '../skills/types';
 
 /** A minimal mock transport keyed by message type. */
 function mockSend(handlers: Partial<Record<string, (msg: Record<string, unknown>) => unknown>>) {
@@ -79,5 +80,36 @@ describe('runAgentTask', () => {
     const toolExecCalls = send.mock.calls.filter(([m]) => (m as { type?: string }).type === 'TOOL_EXEC');
     expect(toolExecCalls.length).toBeGreaterThanOrEqual(1);
     expect((toolExecCalls[0][0] as { tool: string }).tool).toBe('read_dom');
+  });
+});
+
+describe('buildCallSkillTool', () => {
+  const skill: Skill = {
+    id: 'skill_1',
+    name: 'Headline grabber',
+    description: 'Extract the main headline of the page',
+    kind: 'agent',
+    prompt: 'Read the page and return its main headline.',
+    createdAt: 1,
+  };
+
+  it('lists available skills in the description', () => {
+    const tool = buildCallSkillTool([skill]);
+    expect(tool.name).toBe('call_skill');
+    expect(tool.description).toContain('skill_1');
+    expect(tool.description).toContain('Headline grabber');
+  });
+
+  it('returns the matched skill prompt as instructions', async () => {
+    const tool = buildCallSkillTool([skill]);
+    const res = await tool.handler({ skillId: 'skill_1' }, {} as never);
+    expect(res.ok).toBe(true);
+    if (res.ok) expect((res.data as { instructions: string }).instructions).toContain('main headline');
+  });
+
+  it('errors for an unknown skill id', async () => {
+    const tool = buildCallSkillTool([skill]);
+    const res = await tool.handler({ skillId: 'nope' }, {} as never);
+    expect(res.ok).toBe(false);
   });
 });
