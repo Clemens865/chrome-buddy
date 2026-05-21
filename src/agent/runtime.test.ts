@@ -72,6 +72,7 @@ describe('AgentRuntime', () => {
       planResp(['Read the page', 'Finish']),
       resp({ toolCalls: [call('read_dom')] }), // step 1 proposes a tool call
       resp({ text: 'done' }), // step 2 proposes no tool → succeeds
+      resp({ text: 'The page is about Acme pricing.' }), // final synthesis answer
     ]);
     const events: AgentEvent[] = [];
     const runtime = new AgentRuntime({
@@ -90,6 +91,8 @@ describe('AgentRuntime', () => {
     expect(events.some((e) => e.type === 'tool_call')).toBe(true);
     expect(state.scratchpad.completedSteps).toEqual([1, 2]);
     expect(state.scratchpad.provenance).toContain('https://acme.com');
+    // The final answer is synthesized from the tool result, not a bare summary.
+    expect(state.finalAnswer).toContain('The page is about Acme pricing.');
   });
 
   it('fires confirmation_required for consequential tools and does NOT execute until approved', async () => {

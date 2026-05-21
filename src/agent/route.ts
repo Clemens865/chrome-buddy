@@ -9,18 +9,18 @@
 export type ChatMode = 'auto' | 'ask' | 'agent';
 export type Intent = 'chat' | 'agent';
 
-// Verbs/phrases that signal the user wants Buddy to READ or ACT on the page or
-// run a multi-step task — i.e. needs tools.
+// Signals the user wants Buddy to ACT (not just read) or run a multi-step /
+// multi-source task — i.e. genuinely needs the agent loop + tools.
+//
+// Note: plain "read/understand THIS page" requests (summarize, extract, "can you
+// see this page") are intentionally NOT here — chat mode already attaches the
+// page content, so it answers those directly and cheaply without the agent.
 const AGENT_PATTERNS: RegExp[] = [
-  /\b(this|the|current)\s+(page|site|tab|article|video|selection|screenshot)\b/i,
-  /\bon\s+(this|the)\s+page\b/i,
-  /\b(summari[sz]e|extract|scrape|crawl|screenshot|capture)\b/i,
-  /\b(click|type|fill|select|scroll|navigate|go to|open|visit|browse)\b/i,
-  /\b(download|upload|send|email|message|post|submit|buy|purchase|book)\b/i,
-  /\b(research|compare|monitor|watch|track|find .* (on|across))\b/i,
-  /\b(translate|read) (this|the)\b/i,
+  /\b(click|type|fill|select|scroll|navigate|go to|open|visit|browse|press|submit|log ?in|sign ?in)\b/i,
+  /\b(download|upload|send|email|message|post|buy|purchase|book|order|schedule|delete|reply to)\b/i,
+  /\b(research|compare|monitor|watch|track)\b/i,
+  /\b(across|multiple|several)\b[^.]*\b(sites|pages|tabs|websites)\b/i,
   /\bfor each\b|\band then\b|\bstep by step\b/i,
-  /https?:\/\/|www\.|\b[a-z0-9-]+\.(com|org|net|io|ai|app|dev|co)\b/i,
 ];
 
 /** Pure heuristic: does this message need the agent (tools), or just a chat answer? */
