@@ -366,6 +366,7 @@ html, body {
 .msg-speak:hover { opacity: 1; color: var(--panel-fg); }
 .msg-speak.is-on { color: var(--accent); opacity: 1; }
 .msg-speak .ic { width: 15px; height: 15px; }
+.wf-due-badge { margin-left: 6px; font-size: 10px; font-weight: 600; color: #fff; background: var(--accent); border-radius: 5px; padding: 1px 6px; vertical-align: middle; }
 .composer-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; resize: none; font: inherit; font-size: 13.5px; color: var(--panel-fg); padding: 8px 4px; max-height: 120px; line-height: 1.4; }
 .composer-input::placeholder { color: var(--panel-muted-soft); }
 .composer-send { width: 30px; height: 30px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 30px; }

@@ -27,6 +27,11 @@ import { executeWebSearch } from './search';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
 import { saveWorkflow, listWorkflows, deleteWorkflow } from '../workflows/store';
+import {
+  alarmSpecsFor,
+  workflowIdFromAlarm,
+  DUE_WORKFLOWS_KEY,
+} from '../workflows/schedule';
 
 chrome.runtime.onInstalled.addListener(() => {
   // Allow clicking the toolbar icon to toggle the side panel open.
@@ -223,6 +228,7 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
 
       case 'WORKFLOW_SAVE': {
         await saveWorkflow(message.workflow);
+        await reconcileWorkflowAlarms();
         return { type: 'WORKFLOW_SAVE', ok: true };
       }
 
@@ -232,6 +238,7 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
 
       case 'WORKFLOW_DELETE': {
         await deleteWorkflow(message.id);
+        await reconcileWorkflowAlarms();
         return { type: 'WORKFLOW_DELETE', ok: true };
       }
 
@@ -256,6 +263,50 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
     return { type: 'ERROR', ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
+
+/**
+ * Reconcile chrome.alarms with the current scheduled workflows: clear any of
+ * our `wf:` alarms, then (re)create one per scheduled workflow. Cheap and
+ * idempotent — safe to call on startup and after every save/delete.
+ */
+async function reconcileWorkflowAlarms(): Promise<void> {
+  if (!chrome.alarms) return;
+  const existing = await chrome.alarms.getAll();
+  for (const a of existing) {
+    if (workflowIdFromAlarm(a.name)) await chrome.alarms.clear(a.name);
+  }
+  const specs = alarmSpecsFor(await listWorkflows());
+  for (const spec of specs) {
+    chrome.alarms.create(spec.name, { periodInMinutes: spec.periodInMinutes });
+  }
+}
+
+// When a scheduled alarm fires, mark the workflow "due" and notify — we do NOT
+// auto-run (agent steps can be consequential; the run stays user-initiated).
+if (chrome.alarms?.onAlarm) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    const id = workflowIdFromAlarm(alarm.name);
+    if (!id) return;
+    void (async () => {
+      const store = chrome.storage.local;
+      const cur = ((await store.get(DUE_WORKFLOWS_KEY))[DUE_WORKFLOWS_KEY] as string[]) ?? [];
+      if (!cur.includes(id)) await store.set({ [DUE_WORKFLOWS_KEY]: [...cur, id] });
+      const wf = (await listWorkflows()).find((w) => w.id === id);
+      if (wf && chrome.notifications?.create) {
+        chrome.notifications.create(`wf-due-${id}`, {
+          type: 'basic',
+          iconUrl: 'icon-128.png',
+          title: 'Chrome Buddy — workflow due',
+          message: `"${wf.name}" is scheduled to run. Open the panel to run it.`,
+        });
+      }
+    })();
+  });
+}
+
+// Keep alarms in sync with stored workflows on SW start/install.
+chrome.runtime.onStartup?.addListener(() => void reconcileWorkflowAlarms());
+chrome.runtime.onInstalled.addListener(() => void reconcileWorkflowAlarms());
 
 // Register the message listener. We respond asynchronously, so we keep the
 // channel open by returning `true` and resolving via sendResponse.

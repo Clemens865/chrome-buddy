@@ -19,7 +19,8 @@
     "test:e2e:callskill": "playwright test call-skill.spec.ts",
     "test:e2e:clicktype": "playwright test click-type.spec.ts",
     "test:e2e:modelpicker": "playwright test model-picker.spec.ts",
-    "test:e2e:voice": "playwright test voice.spec.ts"
+    "test:e2e:voice": "playwright test voice.spec.ts",
+    "test:e2e:triggers": "playwright test workflow-triggers.spec.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",

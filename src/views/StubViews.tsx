@@ -7,11 +7,28 @@ import { fetchSkills, persistSkill, removeSkill } from '../skills/request';
 import { skillFromRun, parseSkillBundle, toSkillBundle } from '../skills/skillData';
 import { fetchWorkflows, persistWorkflow, removeWorkflow } from '../workflows/request';
 import { parseWorkflowSteps, makeWorkflow, WORKFLOW_BUILDER_SYSTEM } from '../workflows/build';
+import { DUE_WORKFLOWS_KEY } from '../workflows/schedule';
 import { generateViaBackground } from '../llm/instance';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
+import { usePersistedState } from '../sidepanel/usePersistedState';
 import type { Skill } from '../skills/types';
-import type { Workflow } from '../workflows/types';
+import type { Workflow, WorkflowTrigger } from '../workflows/types';
 import type { RunRecord } from '../memory/types';
+
+// Schedule presets offered in the Workflows list (minutes; 0 = manual).
+const SCHEDULE_OPTIONS: { label: string; minutes: number }[] = [
+  { label: 'Manual', minutes: 0 },
+  { label: 'Every 15 min', minutes: 15 },
+  { label: 'Hourly', minutes: 60 },
+  { label: 'Daily', minutes: 1440 },
+];
+
+function triggerMinutes(t: WorkflowTrigger): number {
+  return t.type === 'schedule' ? t.everyMinutes : 0;
+}
+function triggerFromMinutes(minutes: number): WorkflowTrigger {
+  return minutes > 0 ? { type: 'schedule', everyMinutes: minutes } : { type: 'manual' };
+}
 
 export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void }) {
   const [skills, setSkills] = useState<Skill[] | null>(null);
@@ -136,6 +153,19 @@ export function FlowsView({ onRunWorkflow }: { onRunWorkflow: (wf: Workflow) => 
     void refresh();
   };
 
+  // Workflows the SW flagged as due (a scheduled alarm fired). Cleared on run.
+  const [due, setDue] = usePersistedState<string[]>(DUE_WORKFLOWS_KEY, []);
+
+  const setSchedule = async (w: Workflow, minutes: number) => {
+    await persistWorkflow({ ...w, trigger: triggerFromMinutes(minutes) });
+    void refresh();
+  };
+
+  const runAndClear = (w: Workflow) => {
+    if (due.includes(w.id)) setDue(due.filter((id) => id !== w.id));
+    onRunWorkflow(w);
+  };
+
   const empty = workflows !== null && workflows.length === 0 && !creating;
 
   return (
@@ -175,17 +205,37 @@ export function FlowsView({ onRunWorkflow }: { onRunWorkflow: (wf: Workflow) => 
         </div>
       ) : (
         <div className="stub-list">
-          {(workflows ?? []).map((w) => (
-            <div key={w.id} className="stub-row">
-              <span className="stub-row-ic" style={{ color: '#A78BFA', background: hexAlpha('#A78BFA', 0.12) }}>{Ic.flow}</span>
-              <div className="stub-row-body">
-                <div className="stub-row-title">{w.name}</div>
-                <div className="stub-row-sub">{w.steps.length} step{w.steps.length === 1 ? '' : 's'} · manual</div>
+          {(workflows ?? []).map((w) => {
+            const minutes = triggerMinutes(w.trigger);
+            const schedLabel = SCHEDULE_OPTIONS.find((o) => o.minutes === minutes)?.label ?? `Every ${minutes} min`;
+            return (
+              <div key={w.id} className="stub-row">
+                <span className="stub-row-ic" style={{ color: '#A78BFA', background: hexAlpha('#A78BFA', 0.12) }}>{Ic.flow}</span>
+                <div className="stub-row-body">
+                  <div className="stub-row-title">
+                    {w.name}
+                    {due.includes(w.id) && <span className="wf-due-badge">Due</span>}
+                  </div>
+                  <div className="stub-row-sub">
+                    {w.steps.length} step{w.steps.length === 1 ? '' : 's'} · {minutes > 0 ? schedLabel.toLowerCase() : 'manual'}
+                  </div>
+                </div>
+                <select
+                  className="settings-input"
+                  style={{ maxWidth: 110, padding: '4px 6px' }}
+                  aria-label={`Schedule for ${w.name}`}
+                  value={minutes}
+                  onChange={(e) => void setSchedule(w, Number(e.target.value))}
+                >
+                  {SCHEDULE_OPTIONS.map((o) => (
+                    <option key={o.minutes} value={o.minutes}>{o.label}</option>
+                  ))}
+                </select>
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => runAndClear(w)}>Run</button>
+                <button type="button" className="btn btn-ghost btn-sm" aria-label="Delete workflow" onClick={() => void onDelete(w.id)}>✕</button>
               </div>
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => onRunWorkflow(w)}>Run</button>
-              <button type="button" className="btn btn-ghost btn-sm" aria-label="Delete workflow" onClick={() => void onDelete(w.id)}>✕</button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

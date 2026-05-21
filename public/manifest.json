@@ -4,14 +4,24 @@
   "version": "0.1.0",
   "description": "Universal agentic + LLM browser assistant — model-transparent, BYO-key, privacy-respecting.",
   "minimum_chrome_version": "116",
-  "permissions": ["sidePanel", "storage", "tabs", "activeTab", "scripting"],
+  "permissions": ["sidePanel", "storage", "tabs", "activeTab", "scripting", "alarms", "notifications"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"
   },
+  "icons": {
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
   "action": {
-    "default_title": "Open Chrome Buddy"
+    "default_title": "Open Chrome Buddy",
+    "default_icon": {
+      "16": "icon-16.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    }
   },
   "side_panel": {
     "default_path": "sidepanel.html"
