@@ -75,13 +75,28 @@ export interface ToolExecMessage {
   args: Record<string, unknown>;
 }
 
+/**
+ * Generate an image via the native Gemini generateContent endpoint
+ * (responseModalities: IMAGE). Image models can't go through the OpenAI-compatible
+ * chat adapter, so they get their own message + handler. Runs in the SW (key custody).
+ */
+export interface ImageGenerateMessage {
+  type: 'IMAGE_GENERATE';
+  /** Image-capable registry model id (e.g. 'gemini-2.5-flash-image'). */
+  model: string;
+  prompt: string;
+  /** Optional input image (data URL) for edit-with-AI. */
+  inputImage?: string;
+}
+
 /** Discriminated union of every message the background SW understands. */
 export type BuddyMessage =
   | KeySetMessage
   | KeyStatusMessage
   | KeyValidateMessage
   | LlmGenerateMessage
-  | ToolExecMessage;
+  | ToolExecMessage
+  | ImageGenerateMessage;
 
 // ---- Responses --------------------------------------------------------------
 
@@ -120,6 +135,13 @@ export interface ToolExecResponse {
   result: ToolResult;
 }
 
+export interface ImageGenerateResponse {
+  type: 'IMAGE_GENERATE';
+  ok: true;
+  /** Generated image as a data URL (data:image/...;base64,...). */
+  dataUrl: string;
+}
+
 /** Uniform error envelope returned for any failed message handling. */
 export interface ErrorResponse {
   type: 'ERROR';
@@ -138,7 +160,9 @@ export type ResponseFor<M extends BuddyMessage> = M extends KeySetMessage
         ? LlmGenerateResponse | ErrorResponse
         : M extends ToolExecMessage
           ? ToolExecResponse | ErrorResponse
-          : never;
+          : M extends ImageGenerateMessage
+            ? ImageGenerateResponse | ErrorResponse
+            : never;
 
 export type BuddyResponse =
   | KeySetResponse
@@ -146,6 +170,7 @@ export type BuddyResponse =
   | KeyValidateResponse
   | LlmGenerateResponse
   | ToolExecResponse
+  | ImageGenerateResponse
   | ErrorResponse;
 
 /** Type guard: is this an inbound message the SW should handle? */
@@ -157,6 +182,7 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'KEY_STATUS' ||
     t === 'KEY_VALIDATE' ||
     t === 'LLM_GENERATE' ||
-    t === 'TOOL_EXEC'
+    t === 'TOOL_EXEC' ||
+    t === 'IMAGE_GENERATE'
   );
 }

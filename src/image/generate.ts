@@ -3,7 +3,7 @@
 // background service worker so the API key never enters a UI/content context
 // (research/03 §7 "cloud calls from background SW"; PRD NFR-SEC-1/2).
 
-import { generateViaBackground } from '../llm/instance';
+import { generateImageViaBackground } from '../llm/instance';
 import type { GenerateResult } from '../llm/client';
 import type {
   AspectRatio,
@@ -93,12 +93,8 @@ export async function generateImage(req: GenerateRequest): Promise<GenerateOutco
   const style = req.style ?? DEFAULT_STYLE;
 
   try {
-    const result = await generateViaBackground({
-      model: IMAGE_MODEL,
-      messages: [{ role: 'user', content: prompt }],
-    });
-
-    const dataUrl = extractImageDataUrl(result);
+    // Image models use the native generateContent endpoint, not the chat adapter.
+    const dataUrl = await generateImageViaBackground({ model: IMAGE_MODEL, prompt });
     if (!dataUrl) {
       return {
         ok: false,

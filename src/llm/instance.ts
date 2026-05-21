@@ -24,6 +24,8 @@ import type { GenerateResult } from './client';
 import { apiKeyStorageKey } from '../key/messages';
 import type {
   ErrorResponse,
+  ImageGenerateMessage,
+  ImageGenerateResponse,
   LlmGenerateMessage,
   LlmGenerateResponse,
 } from '../key/messages';
@@ -77,4 +79,24 @@ export async function generateViaBackground(
     );
   }
   return response.result;
+}
+
+/**
+ * UI / content-script entry point for IMAGE generation. Posts an IMAGE_GENERATE
+ * message; the SW calls Gemini's native generateContent and returns a data URL.
+ * Throws on error (callers map the message to a friendly state).
+ */
+export async function generateImageViaBackground(
+  req: Omit<ImageGenerateMessage, 'type'>,
+): Promise<string> {
+  const message: ImageGenerateMessage = { type: 'IMAGE_GENERATE', ...req };
+  const response = (await chrome.runtime.sendMessage(message)) as
+    | ImageGenerateResponse
+    | ErrorResponse
+    | undefined;
+  if (!response) throw new Error('No response from background service worker.');
+  if (response.type === 'ERROR' || response.ok !== true) {
+    throw new Error(response.type === 'ERROR' ? response.error : 'Image generation failed.');
+  }
+  return response.dataUrl;
 }

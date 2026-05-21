@@ -111,5 +111,27 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       tier: 'specialized',
       enabled: true,
     },
+
+    // Nano Banana — native image generation/editing. Uses the native
+    // generateContent endpoint (responseModalities: IMAGE), not the chat adapter.
+    'gemini-2.5-flash-image': {
+      id: 'gemini-2.5-flash-image',
+      provider: 'google-gemini',
+      displayName: 'Nano Banana (image)',
+      contextWindow: 32_768,
+      maxOutputTokens: 8_192,
+      pricing: { inputPerMTok: 0.3, outputPerMTok: 30.0 },
+      capabilities: {
+        vision: true,
+        tools: false,
+        thinking: false,
+        jsonMode: false,
+        streaming: false,
+      },
+      defaultParams: {},
+      paramMap: {},
+      tier: 'specialized',
+      enabled: true,
+    },
   },
 };

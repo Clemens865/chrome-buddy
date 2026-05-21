@@ -30,6 +30,67 @@ chrome.runtime.onInstalled.addListener(() => {
     .catch((err) => console.error('[chrome-buddy] setPanelBehavior failed', err));
 });
 
+/**
+ * Generate an image via Gemini's NATIVE generateContent endpoint
+ * (responseModalities: IMAGE). Image models can't go through the OpenAI-compatible
+ * chat adapter, so this calls the native endpoint directly and parses the inline
+ * image bytes. The key stays in the SW.
+ */
+async function generateImageNative(
+  providerId: string,
+  model: string,
+  prompt: string,
+  inputImage?: string,
+): Promise<BuddyResponse> {
+  const key = await getStoredKey(providerId);
+  if (!key) return { type: 'ERROR', ok: false, error: `No API key set for provider '${providerId}'.` };
+
+  const provider = DEFAULT_REGISTRY.providers[providerId];
+  // Derive the native base from the OpenAI-compat base by stripping /openai.
+  const base =
+    (provider?.baseUrl ?? '').replace(/\/openai\/?$/, '') ||
+    'https://generativelanguage.googleapis.com/v1beta';
+  const url = `${base}/models/${model}:generateContent`;
+
+  const parts: Record<string, unknown>[] = [{ text: prompt }];
+  if (inputImage) {
+    const match = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(inputImage);
+    if (match) parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+  }
+
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts }],
+        generationConfig: { responseModalities: ['IMAGE'] },
+      }),
+    });
+  } catch (err) {
+    return { type: 'ERROR', ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    return { type: 'ERROR', ok: false, error: `Image API ${resp.status}: ${body.slice(0, 300)}` };
+  }
+
+  const data = (await resp.json()) as {
+    candidates?: { content?: { parts?: { inlineData?: { mimeType?: string; data?: string } }[] } }[];
+  };
+  const respParts = data.candidates?.[0]?.content?.parts ?? [];
+  for (const p of respParts) {
+    const inline = p.inlineData;
+    if (inline?.data) {
+      const mime = inline.mimeType ?? 'image/png';
+      return { type: 'IMAGE_GENERATE', ok: true, dataUrl: `data:${mime};base64,${inline.data}` };
+    }
+  }
+  return { type: 'ERROR', ok: false, error: 'The model did not return an image.' };
+}
+
 /** Read the message type for a stored key from chrome.storage.session. */
 async function getStoredKey(provider: string): Promise<string | undefined> {
   const session = chrome.storage?.session;
@@ -113,6 +174,18 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         // runtime's HITL gate (UI side) precedes any TOOL_EXEC for those.
         const result = await executePageTool(message.tool, message.args);
         return { type: 'TOOL_EXEC', ok: true, result };
+      }
+
+      case 'IMAGE_GENERATE': {
+        const providerId = resolveProviderId(message.model);
+        if (!providerId) {
+          return { type: 'ERROR', ok: false, error: 'Unknown or disabled model.' };
+        }
+        const key = await getStoredKey(providerId);
+        if (!key) {
+          return { type: 'ERROR', ok: false, error: `No API key set for provider '${providerId}'.` };
+        }
+        return generateImageNative(providerId, message.model, message.prompt, message.inputImage);
       }
 
       default: {
