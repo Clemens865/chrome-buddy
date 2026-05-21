@@ -12,7 +12,8 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test smoke.spec.ts",
+    "test:e2e:live": "playwright test live-chat.spec.ts"
   },
   "dependencies": {
     "react": "^19.0.0",

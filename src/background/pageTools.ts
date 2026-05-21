@@ -42,12 +42,22 @@ export function isPageTool(tool: string): boolean {
   return PAGE_TOOLS.has(tool);
 }
 
-/** Resolve the active tab id in the focused window (SW context). */
+/**
+ * Resolve the web tab the user means. The active tab in the focused window is
+ * preferred — but when that is a restricted/extension page (e.g. the side panel
+ * itself is focused, or a chrome:// page), fall back to the most recently
+ * accessed http(s) tab so read_dom/screenshot operate on a real page.
+ */
 export async function resolveActiveTabId(): Promise<number | undefined> {
   if (typeof chrome === 'undefined' || !chrome.tabs?.query) return undefined;
-  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const id = tabs[0]?.id;
-  return typeof id === 'number' ? id : undefined;
+  const active = (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
+  if (active?.id != null && typeof active.url === 'string' && /^https?:/i.test(active.url)) {
+    return active.id;
+  }
+  const web = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+  web.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
+  if (typeof web[0]?.id === 'number') return web[0].id;
+  return typeof active?.id === 'number' ? active.id : undefined;
 }
 
 export interface PageContextSummary {

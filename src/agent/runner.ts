@@ -120,17 +120,15 @@ function wireRegistry(send: (m: unknown) => Promise<unknown>, factory: () => Too
   const base = factory();
   const wired = new (base.constructor as typeof ToolRegistry)();
   for (const def of base.list()) {
+    // Only expose tools the agent can actually run (the page tools, executed in
+    // the SW via TOOL_EXEC). Unwired stubs (summarize, send_webhook, call_skill,
+    // read/write_file, ask_user) are NOT declared to the model — otherwise it
+    // picks one that fails the step (e.g. it called `summarize` instead of
+    // `read_dom`). The final answer is produced by the runtime's synthesis step.
     if (PAGE_TOOLS.has(def.name)) {
       wired.register({
         ...def,
         handler: (args) => execPageTool(send, def.name, args as Record<string, unknown>),
-      });
-    } else {
-      // Non-page tools (summarize, send_webhook, …) are not wired this wave;
-      // return a clear not-implemented so the runtime degrades gracefully.
-      wired.register({
-        ...def,
-        handler: async () => err('not-implemented', `Tool "${def.name}" is not wired yet.`) as ToolResult,
       });
     }
   }

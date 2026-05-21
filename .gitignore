@@ -18,3 +18,8 @@ CLAUDE.md
 *.db-shm
 *.db-wal
 ruvector.db
+
+# Playwright / e2e artifacts
+screenshots/
+test-results/
+playwright-report/

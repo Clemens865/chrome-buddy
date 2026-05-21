@@ -33,6 +33,7 @@ test('navigating the rail switches views', async ({ context, extensionId }) => {
 test('overlay injects on a web page', async ({ context }) => {
   const page = await context.newPage();
   // Needs a real http(s) page for the content script to match.
-  await page.goto('https://example.com');
-  await expect(page.locator('#chrome-buddy-overlay-host')).toHaveCount(1);
+  await page.goto('https://example.com', { waitUntil: 'load' });
+  // The overlay mounts after an async chrome.storage read — be patient.
+  await expect(page.locator('#chrome-buddy-overlay-host')).toHaveCount(1, { timeout: 15_000 });
 });
