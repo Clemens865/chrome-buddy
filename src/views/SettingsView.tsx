@@ -6,6 +6,7 @@ import { THEMES, type ThemeName } from '../ui/theme';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { useApiKey } from '../key/useApiKey';
+import type { UserProfile } from '../agent';
 
 // The bundled registry ships a single Gemini provider; keys are stored per
 // provider id in the SW (chrome.storage.session).
@@ -24,6 +25,9 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   const theme = THEMES[themeName] ?? THEMES.slate;
   const defaultModel = DEFAULT_REGISTRY.defaultModel ?? 'gemini-3.5-flash';
   const [overlayEnabled, setOverlayEnabled] = usePersistedState<boolean>('overlayEnabled', true);
+  const [profile, setProfile] = usePersistedState<UserProfile>('userProfile', {});
+  const [attachProfile, setAttachProfile] = usePersistedState<boolean>('attachProfile', false);
+  const updateProfile = (patch: Partial<UserProfile>) => setProfile({ ...profile, ...patch });
 
   return (
     <div className="settings">
@@ -51,6 +55,39 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
               />
             ))}
           </div>
+        </SettingsRow>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-section-h">Profile</div>
+        <div className="settings-row" style={{ display: 'block' }}>
+          <input
+            className="settings-input"
+            placeholder="Your name"
+            value={profile.name ?? ''}
+            onChange={(e) => updateProfile({ name: e.target.value })}
+            aria-label="Name"
+          />
+          <input
+            className="settings-input"
+            style={{ marginTop: 6 }}
+            placeholder="Your role (e.g. Product Manager)"
+            value={profile.role ?? ''}
+            onChange={(e) => updateProfile({ role: e.target.value })}
+            aria-label="Role"
+          />
+          <textarea
+            className="settings-input"
+            style={{ marginTop: 6, resize: 'none' }}
+            rows={3}
+            placeholder="Anything Buddy should know about you or how you like answers"
+            value={profile.about ?? ''}
+            onChange={(e) => updateProfile({ about: e.target.value })}
+            aria-label="About"
+          />
+        </div>
+        <SettingsRow t="Personalize replies" s="Include your profile with chat messages">
+          <Toggle on={attachProfile} onChange={setAttachProfile} />
         </SettingsRow>
       </div>
 

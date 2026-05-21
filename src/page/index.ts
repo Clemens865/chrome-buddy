@@ -6,3 +6,4 @@ export * from './restricted';
 export * from './distill';
 export * from './pageContext';
 export * from './browserControl';
+export * from './request';

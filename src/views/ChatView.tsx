@@ -7,22 +7,23 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { Ic, BuddyMark } from '../ui/icons';
-import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { usePersistedState } from '../sidepanel/usePersistedState';
+import { requestPageContext } from '../page/request';
 import {
   runAgentTask,
   runPlainChat,
   reduceTranscript,
   resolveConfirmation,
   resolveIntent,
+  buildContextBlock,
+  hasProfile,
   userItem,
   agentItem,
   type ChatMode,
   type TranscriptItem,
+  type UserProfile,
 } from '../agent';
 import type { AgentEvent, ApprovalDecision } from '../agent';
-
-const DEFAULT_MODEL = DEFAULT_REGISTRY.defaultModel ?? 'gemini-2.5-flash';
 
 const SUGGESTIONS = [
   'Summarize this page',
@@ -44,6 +45,9 @@ export function ChatView() {
   const [busy, setBusy] = useState(false);
   const [noKey, setNoKey] = useState(false);
   const [mode, setMode] = usePersistedState<ChatMode>('chatMode', 'auto');
+  const [attachPage, setAttachPage] = usePersistedState<boolean>('attachPage', true);
+  const [profile] = usePersistedState<UserProfile>('userProfile', {});
+  const [attachProfile] = usePersistedState<boolean>('attachProfile', false);
   const pendingRef = useRef<PendingConfirm | null>(null);
   const seqRef = useRef(0);
 
@@ -79,7 +83,12 @@ export function ChatView() {
         // Auto-route (or honor the forced mode): simple Q&A → cheap tool-less
         // chat; page/action intent → the full agentic loop.
         if (resolveIntent(mode, prompt) === 'chat') {
-          const r = await runPlainChat(prompt);
+          // Attach the page content (so chat sees the page without an agentic
+          // read_dom round-trip) and/or the user profile, per the toggles.
+          const useProfile = attachProfile && hasProfile(profile);
+          const page = attachPage ? await requestPageContext() : null;
+          const context = buildContextBlock(page, useProfile ? profile : null);
+          const r = await runPlainChat(prompt, { context });
           if (r.outcome === 'no-key') setNoKey(true);
           else if (r.text) setItems((prev) => [...prev, agentItem(`a_${seqRef.current++}`, r.text!)]);
         } else {
@@ -94,7 +103,7 @@ export function ChatView() {
         setBusy(false);
       }
     },
-    [busy, mode],
+    [busy, mode, attachPage, attachProfile, profile],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -122,7 +131,16 @@ export function ChatView() {
           </>
         )}
       </div>
-      <ChatComposer input={input} onChange={setInput} onSend={() => void submit(input)} busy={busy} mode={mode} onMode={setMode} />
+      <ChatComposer
+        input={input}
+        onChange={setInput}
+        onSend={() => void submit(input)}
+        busy={busy}
+        mode={mode}
+        onMode={setMode}
+        attachPage={attachPage}
+        onAttachPage={() => setAttachPage(!attachPage)}
+      />
     </div>
   );
 }
@@ -338,6 +356,8 @@ function ChatComposer({
   busy,
   mode,
   onMode,
+  attachPage,
+  onAttachPage,
 }: {
   input: string;
   onChange: (v: string) => void;
@@ -345,6 +365,8 @@ function ChatComposer({
   busy: boolean;
   mode: ChatMode;
   onMode: (m: ChatMode) => void;
+  attachPage: boolean;
+  onAttachPage: () => void;
 }) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -395,7 +417,16 @@ function ChatComposer({
             </button>
           ))}
         </div>
-        <span className="composer-model">{mode === 'ask' ? 'gemini-2.5-flash-lite' : DEFAULT_MODEL}</span>
+        <button
+          type="button"
+          className={'ctx-chip' + (attachPage ? ' is-on' : '')}
+          onClick={onAttachPage}
+          aria-pressed={attachPage}
+          title={attachPage ? 'Including this page with your message' : 'Page not attached'}
+        >
+          <span className="ctx-chip-dot" style={attachPage ? undefined : { background: 'var(--panel-muted-soft)' }} />
+          This page
+        </button>
       </div>
     </div>
   );

@@ -91,6 +91,11 @@ export interface ImageGenerateMessage {
   inputImage?: string;
 }
 
+/** Capture a compact summary of the active page (for attaching to chat). */
+export interface PageContextMessage {
+  type: 'PAGE_CONTEXT';
+}
+
 /** Discriminated union of every message the background SW understands. */
 export type BuddyMessage =
   | KeySetMessage
@@ -98,7 +103,8 @@ export type BuddyMessage =
   | KeyValidateMessage
   | LlmGenerateMessage
   | ToolExecMessage
-  | ImageGenerateMessage;
+  | ImageGenerateMessage
+  | PageContextMessage;
 
 // ---- Responses --------------------------------------------------------------
 
@@ -144,6 +150,13 @@ export interface ImageGenerateResponse {
   dataUrl: string;
 }
 
+export interface PageContextResponse {
+  type: 'PAGE_CONTEXT';
+  ok: true;
+  /** null when there is no driveable active tab (e.g. chrome:// page). */
+  page: { url: string; title: string; text: string } | null;
+}
+
 /** Uniform error envelope returned for any failed message handling. */
 export interface ErrorResponse {
   type: 'ERROR';
@@ -164,7 +177,9 @@ export type ResponseFor<M extends BuddyMessage> = M extends KeySetMessage
           ? ToolExecResponse | ErrorResponse
           : M extends ImageGenerateMessage
             ? ImageGenerateResponse | ErrorResponse
-            : never;
+            : M extends PageContextMessage
+              ? PageContextResponse | ErrorResponse
+              : never;
 
 export type BuddyResponse =
   | KeySetResponse
@@ -173,6 +188,7 @@ export type BuddyResponse =
   | LlmGenerateResponse
   | ToolExecResponse
   | ImageGenerateResponse
+  | PageContextResponse
   | ErrorResponse;
 
 /** Type guard: is this an inbound message the SW should handle? */
@@ -185,6 +201,7 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'KEY_VALIDATE' ||
     t === 'LLM_GENERATE' ||
     t === 'TOOL_EXEC' ||
-    t === 'IMAGE_GENERATE'
+    t === 'IMAGE_GENERATE' ||
+    t === 'PAGE_CONTEXT'
   );
 }

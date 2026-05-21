@@ -50,6 +50,33 @@ export async function resolveActiveTabId(): Promise<number | undefined> {
   return typeof id === 'number' ? id : undefined;
 }
 
+export interface PageContextSummary {
+  url: string;
+  title: string;
+  text: string;
+}
+
+/**
+ * Capture a compact summary of the active page for attaching to a chat message
+ * (so plain chat can answer about the page without an agentic read_dom round-trip).
+ * Returns null when there is no driveable active tab.
+ */
+export async function capturePageContext(maxChars = 8000): Promise<PageContextSummary | null> {
+  const tabId = await resolveActiveTabId();
+  if (tabId === undefined) return null;
+  try {
+    const page = await getContext(tabId);
+    if (isUndriveableSignal(page)) return null;
+    return {
+      url: page.url ?? '',
+      title: page.title ?? '',
+      text: (page.text ?? '').slice(0, maxChars),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function asString(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }

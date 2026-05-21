@@ -602,3 +602,7 @@ html, body {
 /* ── Compact segmented control (chat mode in composer) ── */
 .seg-sm { padding: 1px; }
 .seg-sm .seg-btn { padding: 3px 8px; font-size: 11px; }
+
+/* ctx-chip as a toggle button */
+button.ctx-chip { border: 0; cursor: pointer; font-family: inherit; color: var(--panel-muted); }
+button.ctx-chip.is-on { color: var(--accent); background: var(--accent-soft); }

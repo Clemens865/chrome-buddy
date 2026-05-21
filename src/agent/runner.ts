@@ -229,18 +229,23 @@ export interface PlainChatResult {
  */
 export async function runPlainChat(
   prompt: string,
-  options: { model?: string; send?: (m: unknown) => Promise<unknown> } = {},
+  options: { model?: string; context?: string; send?: (m: unknown) => Promise<unknown> } = {},
 ): Promise<PlainChatResult> {
   const send = options.send ?? defaultSend;
   if (!(await hasKey(send))) return { outcome: 'no-key' };
 
+  const messages: LlmGenerateMessage['messages'] = [{ role: 'system', content: PLAIN_CHAT_SYSTEM }];
+  // Page content / user profile attached by the UI (FR: chat sees the page
+  // without an agentic read_dom round-trip).
+  if (options.context && options.context.trim()) {
+    messages.push({ role: 'system', content: options.context });
+  }
+  messages.push({ role: 'user', content: prompt });
+
   const msg: LlmGenerateMessage = {
     type: 'LLM_GENERATE',
     model: options.model ?? PLAIN_CHAT_MODEL,
-    messages: [
-      { role: 'system', content: PLAIN_CHAT_SYSTEM },
-      { role: 'user', content: prompt },
-    ],
+    messages,
     // No tools attached — that's the whole point of the cheap path.
   };
   const res = (await send(msg)) as LlmGenerateResponse | ErrorResponse | undefined;
