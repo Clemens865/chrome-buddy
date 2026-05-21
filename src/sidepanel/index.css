@@ -359,6 +359,13 @@ html, body {
 .composer-attach, .composer-mic { width: 30px; height: 30px; border: 0; background: transparent; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--panel-muted); cursor: pointer; flex: 0 0 30px; }
 .composer-attach .ic, .composer-mic .ic { width: 16px; height: 16px; }
 .composer-attach:hover, .composer-mic:hover { background: var(--panel-elev); color: var(--panel-fg); }
+.composer-mic:disabled { opacity: .4; cursor: default; }
+.composer-mic.is-listening { color: var(--accent); animation: mic-pulse 1.1s ease-in-out infinite; }
+@keyframes mic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.msg-speak { margin-top: 5px; padding: 2px; border: 0; background: transparent; color: var(--panel-muted); cursor: pointer; opacity: .55; display: inline-flex; }
+.msg-speak:hover { opacity: 1; color: var(--panel-fg); }
+.msg-speak.is-on { color: var(--accent); opacity: 1; }
+.msg-speak .ic { width: 15px; height: 15px; }
 .composer-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; resize: none; font: inherit; font-size: 13.5px; color: var(--panel-fg); padding: 8px 4px; max-height: 120px; line-height: 1.4; }
 .composer-input::placeholder { color: var(--panel-muted-soft); }
 .composer-send { width: 30px; height: 30px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 30px; }

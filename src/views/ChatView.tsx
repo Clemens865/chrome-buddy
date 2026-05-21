@@ -18,6 +18,14 @@ import { persistRun } from '../memory/request';
 import { buildRunRecord } from '../memory/buildRecord';
 import { useActiveModel } from '../llm/modelPref';
 import {
+  isSTTSupported,
+  isTTSSupported,
+  createRecognizer,
+  speak,
+  stopSpeaking,
+  type Recognizer,
+} from '../voice/speech';
+import {
   runAgentTask,
   runPlainChat,
   reduceTranscript,
@@ -316,6 +324,32 @@ function AgentBody({ text, onOpenArtifact }: { text: string; onOpenArtifact: (a:
   );
 }
 
+// Read an answer aloud (TTS). Hidden when the browser has no speechSynthesis.
+function SpeakButton({ text }: { text: string }) {
+  const [speaking, setSpeaking] = useState(false);
+  if (!isTTSSupported() || !text.trim()) return null;
+  const toggle = () => {
+    if (speaking) {
+      stopSpeaking();
+      setSpeaking(false);
+      return;
+    }
+    if (speak(text, { onEnd: () => setSpeaking(false) })) setSpeaking(true);
+  };
+  return (
+    <button
+      type="button"
+      className={'msg-speak' + (speaking ? ' is-on' : '')}
+      aria-label={speaking ? 'Stop reading' : 'Read aloud'}
+      aria-pressed={speaking}
+      title="Read aloud"
+      onClick={toggle}
+    >
+      <span className="ic">{Ic.speaker}</span>
+    </button>
+  );
+}
+
 function TranscriptRow({
   item,
   onDecide,
@@ -341,6 +375,7 @@ function TranscriptRow({
           </div>
           <div className="msg-body">
             <AgentBody text={item.text} onOpenArtifact={onOpenArtifact} />
+            <SpeakButton text={item.text} />
           </div>
         </div>
       );
@@ -508,6 +543,30 @@ function ChatComposer({
       onSend();
     }
   };
+
+  // Voice input (STT): toggle the mic; transcribed text is appended to the box.
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<Recognizer | null>(null);
+  const baseRef = useRef('');
+  const sttSupported = isSTTSupported();
+
+  const toggleMic = () => {
+    if (listening) {
+      recRef.current?.stop();
+      return;
+    }
+    baseRef.current = input ? input.trimEnd() + ' ' : '';
+    const rec = createRecognizer({
+      onResult: (text) => onChange(baseRef.current + text),
+      onEnd: () => setListening(false),
+      onError: () => setListening(false),
+    });
+    if (!rec) return;
+    recRef.current = rec;
+    setListening(true);
+    rec.start();
+  };
+
   return (
     <div className="composer">
       <div className="composer-bar">
@@ -523,7 +582,15 @@ function ChatComposer({
           rows={1}
           aria-label="Message Buddy"
         />
-        <button type="button" className="composer-mic" aria-label="Voice">
+        <button
+          type="button"
+          className={'composer-mic' + (listening ? ' is-listening' : '')}
+          aria-label={listening ? 'Stop voice input' : 'Voice input'}
+          aria-pressed={listening}
+          disabled={!sttSupported}
+          title={sttSupported ? 'Voice input' : 'Voice input not supported in this browser'}
+          onClick={toggleMic}
+        >
           <span className="ic">{Ic.mic}</span>
         </button>
         <button
