@@ -7,6 +7,7 @@ import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { useApiKey } from '../key/useApiKey';
 import { EMPTY_PROFILES, type UserProfile, type Profiles, type ProfileKind } from '../agent';
+import { clearHistory } from '../memory/request';
 
 // The bundled registry ships a single Gemini provider; keys are stored per
 // provider id in the SW (chrome.storage.session).
@@ -140,7 +141,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
 
       <div className="settings-section">
         <div className="settings-section-h">Data</div>
-        <SettingsRow t="Memory & history" s="Stored locally on this device"><button type="button" className="btn btn-ghost btn-sm">Clear</button></SettingsRow>
+        <SettingsRow t="Memory & history" s="Stored locally on this device"><button type="button" className="btn btn-ghost btn-sm" onClick={() => void clearHistory()}>Clear</button></SettingsRow>
         <SettingsRow t="Export skills" s="Download all skills as JSON"><button type="button" className="btn btn-ghost btn-sm">Export</button></SettingsRow>
       </div>
     </div>

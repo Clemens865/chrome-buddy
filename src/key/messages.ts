@@ -15,6 +15,7 @@
 import type { ChatMessage, GenerationParams, ToolSpec } from '../llm/types';
 import type { GenerateResult } from '../llm/client';
 import type { ToolResult } from '../types';
+import type { RunRecord } from '../memory/types';
 
 /** chrome.storage.session key under which a provider's key is held. */
 export function apiKeyStorageKey(provider: string): string {
@@ -96,6 +97,19 @@ export interface PageContextMessage {
   type: 'PAGE_CONTEXT';
 }
 
+/** Run history (FR-MEM): owned by the SW so panel + overlay share one store. */
+export interface MemorySaveRunMessage {
+  type: 'MEMORY_SAVE_RUN';
+  run: RunRecord;
+}
+export interface MemoryListRunsMessage {
+  type: 'MEMORY_LIST_RUNS';
+  limit?: number;
+}
+export interface MemoryClearMessage {
+  type: 'MEMORY_CLEAR';
+}
+
 /** Discriminated union of every message the background SW understands. */
 export type BuddyMessage =
   | KeySetMessage
@@ -104,7 +118,10 @@ export type BuddyMessage =
   | LlmGenerateMessage
   | ToolExecMessage
   | ImageGenerateMessage
-  | PageContextMessage;
+  | PageContextMessage
+  | MemorySaveRunMessage
+  | MemoryListRunsMessage
+  | MemoryClearMessage;
 
 // ---- Responses --------------------------------------------------------------
 
@@ -157,6 +174,20 @@ export interface PageContextResponse {
   page: { url: string; title: string; text: string } | null;
 }
 
+export interface MemorySaveRunResponse {
+  type: 'MEMORY_SAVE_RUN';
+  ok: true;
+}
+export interface MemoryListRunsResponse {
+  type: 'MEMORY_LIST_RUNS';
+  ok: true;
+  runs: RunRecord[];
+}
+export interface MemoryClearResponse {
+  type: 'MEMORY_CLEAR';
+  ok: true;
+}
+
 /** Uniform error envelope returned for any failed message handling. */
 export interface ErrorResponse {
   type: 'ERROR';
@@ -189,6 +220,9 @@ export type BuddyResponse =
   | ToolExecResponse
   | ImageGenerateResponse
   | PageContextResponse
+  | MemorySaveRunResponse
+  | MemoryListRunsResponse
+  | MemoryClearResponse
   | ErrorResponse;
 
 /** Type guard: is this an inbound message the SW should handle? */
@@ -202,6 +236,9 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'LLM_GENERATE' ||
     t === 'TOOL_EXEC' ||
     t === 'IMAGE_GENERATE' ||
-    t === 'PAGE_CONTEXT'
+    t === 'PAGE_CONTEXT' ||
+    t === 'MEMORY_SAVE_RUN' ||
+    t === 'MEMORY_LIST_RUNS' ||
+    t === 'MEMORY_CLEAR'
   );
 }

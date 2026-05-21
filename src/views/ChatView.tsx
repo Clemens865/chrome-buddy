@@ -9,6 +9,9 @@ import { useCallback, useRef, useState } from 'react';
 import { Ic, BuddyMark } from '../ui/icons';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { requestPageContext } from '../page/request';
+import { persistRun } from '../memory/request';
+import { buildRunRecord } from '../memory/buildRecord';
+import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import {
   runAgentTask,
   runPlainChat,
@@ -20,11 +23,14 @@ import {
   userItem,
   agentItem,
   EMPTY_PROFILES,
+  PLAIN_CHAT_MODEL,
   type ChatMode,
   type TranscriptItem,
   type Profiles,
   type ProfileKind,
 } from '../agent';
+
+const AGENT_MODEL = DEFAULT_REGISTRY.defaultModel ?? 'gemini-2.5-flash';
 import type { AgentEvent, ApprovalDecision } from '../agent';
 
 const SUGGESTIONS = [
@@ -61,6 +67,7 @@ export function ChatView() {
       setInput('');
       setNoKey(false);
       setBusy(true);
+      const startedAt = Date.now();
       const uid = `user_${seqRef.current++}`;
       setItems((prev) => [...prev, userItem(uid, prompt)]);
 
@@ -94,10 +101,30 @@ export function ChatView() {
           const context = buildContextBlock(page, useProfile ? active : null, activeProfile);
           const r = await runPlainChat(prompt, { context });
           if (r.outcome === 'no-key') setNoKey(true);
-          else if (r.text) setItems((prev) => [...prev, agentItem(`a_${seqRef.current++}`, r.text!)]);
+          else if (r.text) {
+            setItems((prev) => [...prev, agentItem(`a_${seqRef.current++}`, r.text!)]);
+            void persistRun(
+              buildRunRecord({ kind: 'chat', task: prompt, answer: r.text, model: PLAIN_CHAT_MODEL, startedAt }),
+            );
+          }
         } else {
           const result = await runAgentTask(prompt, { onEvent, onConfirm });
           if (result.outcome === 'no-key') setNoKey(true);
+          else if (result.state) {
+            const sp = result.state.scratchpad;
+            void persistRun(
+              buildRunRecord({
+                kind: 'agent',
+                task: prompt,
+                answer: result.state.finalAnswer ?? '',
+                outcome: result.outcome,
+                tools: sp.actions.map((a) => a.toolName),
+                provenance: sp.provenance,
+                model: AGENT_MODEL,
+                startedAt,
+              }),
+            );
+          }
         }
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);

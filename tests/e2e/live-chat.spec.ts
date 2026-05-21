@@ -28,6 +28,21 @@ test('live: plain chat answers a question end-to-end', async ({ context, extensi
   await page.screenshot({ path: path.join(SHOTS, '03-answer.png') });
 });
 
+test('live: a completed run is saved to History', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 900 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  await panel.getByPlaceholder('Message Buddy…').fill('Name one primary color.');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await expect(panel.locator('.msg-agent .msg-body').last()).toContainText(/red|blue|yellow/i, { timeout: 30_000 });
+
+  // Open History — the run should be listed (persisted to the SW-owned store).
+  await panel.getByRole('button', { name: 'History', exact: true }).click();
+  await expect(panel.locator('.stub-row-title', { hasText: 'Name one primary color.' })).toBeVisible({ timeout: 10_000 });
+  await panel.screenshot({ path: path.join(SHOTS, '07-history.png') });
+});
+
 test('live: Image Studio generates an image', async ({ context, extensionId }) => {
   const panel = await context.newPage();
   await panel.setViewportSize({ width: 440, height: 900 });

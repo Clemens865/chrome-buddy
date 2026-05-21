@@ -22,6 +22,7 @@ import { getLlmClient, resolveProviderId, readSessionApiKey } from '../llm/insta
 import { LlmClient } from '../llm/client';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { executePageTool, capturePageContext } from './pageTools';
+import { saveRun, listRuns, clearRuns } from '../memory/store';
 
 chrome.runtime.onInstalled.addListener(() => {
   // Allow clicking the toolbar icon to toggle the side panel open.
@@ -179,6 +180,21 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
       case 'PAGE_CONTEXT': {
         const page = await capturePageContext();
         return { type: 'PAGE_CONTEXT', ok: true, page };
+      }
+
+      case 'MEMORY_SAVE_RUN': {
+        await saveRun(message.run);
+        return { type: 'MEMORY_SAVE_RUN', ok: true };
+      }
+
+      case 'MEMORY_LIST_RUNS': {
+        const runs = await listRuns(message.limit);
+        return { type: 'MEMORY_LIST_RUNS', ok: true, runs };
+      }
+
+      case 'MEMORY_CLEAR': {
+        await clearRuns();
+        return { type: 'MEMORY_CLEAR', ok: true };
       }
 
       case 'IMAGE_GENERATE': {
