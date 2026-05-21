@@ -82,6 +82,7 @@ export function ChatView({
   const [activeProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile] = usePersistedState<boolean>('attachProfile', false);
   const [activeModel] = useActiveModel();
+  const [sessionCost, setSessionCost] = useState(0);
   const [pastRuns, setPastRuns] = useState<RunRecord[]>([]);
   const pendingRef = useRef<PendingConfirm | null>(null);
 
@@ -139,6 +140,7 @@ export function ChatView({
           const r = await runPlainChat(prompt, { context, model: activeModel });
           if (r.outcome === 'no-key') setNoKey(true);
           else if (r.text) {
+            setSessionCost((c) => c + (r.cost ?? 0));
             setItems((prev) => [...prev, agentItem(`a_${seqRef.current++}`, r.text!)]);
             void persistRun(
               buildRunRecord({ kind: 'chat', task: prompt, answer: r.text, model: activeModel, startedAt }),
@@ -148,6 +150,7 @@ export function ChatView({
           const result = await runAgentTask(prompt, { onEvent, onConfirm, model: activeModel });
           if (result.outcome === 'no-key') setNoKey(true);
           else if (result.state) {
+            setSessionCost((c) => c + (result.state?.costUsed ?? 0));
             const sp = result.state.scratchpad;
             void persistRun(
               buildRunRecord({
@@ -212,6 +215,7 @@ export function ChatView({
           if (step.mode === 'chat') {
             const r = await runPlainChat(fullPrompt, { model: activeModel });
             if (r.outcome === 'no-key') { setNoKey(true); break; }
+            setSessionCost((c) => c + (r.cost ?? 0));
             const text = r.text ?? '';
             setItems((prev) => [...prev, agentItem(`wfa_${seqRef.current++}`, text)]);
             context += `\n\nStep ${i + 1} result:\n${text}`;
@@ -219,6 +223,7 @@ export function ChatView({
             const onEvent = (e: AgentEvent) => setItems((prev) => reduceTranscript(prev, e));
             const result = await runAgentTask(fullPrompt, { onEvent, onConfirm: makeOnConfirm(), model: activeModel });
             if (result.outcome === 'no-key') { setNoKey(true); break; }
+            setSessionCost((c) => c + (result.state?.costUsed ?? 0));
             context += `\n\nStep ${i + 1} result:\n${result.state?.finalAnswer ?? ''}`;
           }
         }
@@ -284,6 +289,7 @@ export function ChatView({
         onMode={setMode}
         attachPage={attachPage}
         onAttachPage={() => setAttachPage(!attachPage)}
+        sessionCost={sessionCost}
       />
     </div>
   );
@@ -551,6 +557,7 @@ function ChatComposer({
   onMode,
   attachPage,
   onAttachPage,
+  sessionCost,
 }: {
   input: string;
   onChange: (v: string) => void;
@@ -560,6 +567,7 @@ function ChatComposer({
   onMode: (m: ChatMode) => void;
   attachPage: boolean;
   onAttachPage: () => void;
+  sessionCost: number;
 }) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -642,16 +650,25 @@ function ChatComposer({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className={'ctx-chip' + (attachPage ? ' is-on' : '')}
-          onClick={onAttachPage}
-          aria-pressed={attachPage}
-          title={attachPage ? 'Including this page with your message' : 'Page not attached'}
-        >
-          <span className="ctx-chip-dot" style={attachPage ? undefined : { background: 'var(--panel-muted-soft)' }} />
-          This page
-        </button>
+        <div className="composer-foot-r">
+          {sessionCost > 0 && (
+            <span className="cost-chip" title="Estimated spend this session (BYO key)">
+              {sessionCost < 0.0001
+                ? '< $0.0001'
+                : `≈ $${sessionCost < 0.01 ? sessionCost.toFixed(4) : sessionCost.toFixed(2)}`}
+            </span>
+          )}
+          <button
+            type="button"
+            className={'ctx-chip' + (attachPage ? ' is-on' : '')}
+            onClick={onAttachPage}
+            aria-pressed={attachPage}
+            title={attachPage ? 'Including this page with your message' : 'Page not attached'}
+          >
+            <span className="ctx-chip-dot" style={attachPage ? undefined : { background: 'var(--panel-muted-soft)' }} />
+            This page
+          </button>
+        </div>
       </div>
     </div>
   );

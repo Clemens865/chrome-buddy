@@ -378,6 +378,8 @@ html, body {
 .composer-send .ic { width: 16px; height: 16px; }
 .theme-graphite .composer-send { color: #0F1115; }
 .composer-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 11px; color: var(--panel-muted); }
+.composer-foot-r { display: inline-flex; align-items: center; gap: 8px; }
+.cost-chip { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--panel-muted); padding: 3px 6px; border-radius: 6px; background: var(--panel-elev); white-space: nowrap; }
 .ctx-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; background: var(--panel-elev); font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; }
 .ctx-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .composer-model { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--panel-muted-soft); }

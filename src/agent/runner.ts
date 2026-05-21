@@ -327,6 +327,8 @@ const PLAIN_CHAT_SYSTEM =
 export interface PlainChatResult {
   outcome: 'ok' | 'no-key';
   text?: string;
+  /** Dollar cost of this call (FR-LLM-10), 0 when unavailable. */
+  cost?: number;
 }
 
 /**
@@ -360,7 +362,7 @@ export async function runPlainChat(
   if (res.type === 'ERROR' || res.ok !== true) {
     throw new Error(res.type === 'ERROR' ? res.error : 'Background generation failed.');
   }
-  return { outcome: 'ok', text: res.result.text };
+  return { outcome: 'ok', text: res.result.text, cost: res.result.cost?.totalCost ?? 0 };
 }
 
 // Re-export the page-tool set so tests and the UI can reason about routing.

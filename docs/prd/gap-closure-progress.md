@@ -16,7 +16,7 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | # | Item | PRD refs | Status | Commit | Proof |
 |---|------|----------|--------|--------|-------|
 | 28 | Key custody → `chrome.storage.session` | NFR-SEC-1 | ✅ | (this push) | screenshot 35; e2e key-custody |
-| 29 | Live cost display in UI | FR-LLM-10, NFR-COST-2, FR-UI-5 | ⬜ | — | — |
+| 29 | Live cost display in UI | FR-LLM-10, NFR-COST-2, FR-UI-5 | ✅ | (this push) | screenshot 36; e2e cost |
 | 30 | Spend caps + budget settings | NFR-COST-1, FR-SET-1 | ⬜ | — | — |
 | 31 | Onboarding: BYO-key walkthrough + gating | FR-ONB-1..4 | ⬜ | — | — |
 | 32 | Plan approve/edit/let-run gate | FR-AGENT-3 | ⬜ | — | — |
@@ -34,6 +34,12 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #29 — Live cost display (FR-LLM-10, NFR-COST-2) ✅
+- **Was:** cost was metered in the LLM client + runtime (`costUsed`) but never surfaced in the UI.
+- **Now:** `runPlainChat` returns its call cost; ChatView accumulates a `sessionCost` across plain-chat, agent, and workflow runs and shows a running `≈ $x` chip in the composer footer (updates the moment a call completes; `< $0.0001` for sub-penny turns).
+- **Proof:** 131 unit tests green; live e2e `cost` (no chip before a call → `$`-figure chip after); screenshot 36.
+- **Note:** still open as separate items — per-run cost on the done card (FR-UI-9) and per-day aggregation + caps (#30).
 
 ### #28 — Key custody → `chrome.storage.session` (NFR-SEC-1) ✅
 - **Was:** the API key was written to `chrome.storage.local` (persisted to disk) — a direct NFR-SEC-1 violation.
