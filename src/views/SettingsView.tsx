@@ -3,7 +3,7 @@
 import { type ReactNode, useState } from 'react';
 import { Pill } from '../ui/primitives';
 import { THEMES, type ThemeName } from '../ui/theme';
-import { DEFAULT_REGISTRY } from '../llm/registry.default';
+import { selectableModels, useActiveModel } from '../llm/modelPref';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { useApiKey } from '../key/useApiKey';
 import { EMPTY_PROFILES, type UserProfile, type Profiles, type ProfileKind } from '../agent';
@@ -24,7 +24,8 @@ const THEME_NAMES: ThemeName[] = ['slate', 'cream', 'graphite'];
 
 export function SettingsView({ themeName, accent, onThemeChange, onAccentChange }: SettingsProps) {
   const theme = THEMES[themeName] ?? THEMES.slate;
-  const defaultModel = DEFAULT_REGISTRY.defaultModel ?? 'gemini-3.5-flash';
+  const [activeModel, setActiveModel] = useActiveModel();
+  const models = selectableModels();
   const [overlayEnabled, setOverlayEnabled] = usePersistedState<boolean>('overlayEnabled', true);
   const [profiles, setProfiles] = usePersistedState<Profiles>('userProfiles', EMPTY_PROFILES);
   const [activeProfile, setActiveProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
@@ -130,7 +131,21 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
 
       <div className="settings-section">
         <div className="settings-section-h">Model</div>
-        <SettingsRow t="Default model" s="Used for chat and skills"><Pill>{defaultModel}</Pill></SettingsRow>
+        <SettingsRow t="Active model" s="Used for chat, agent runs, and skills">
+          <select
+            className="settings-input"
+            style={{ maxWidth: 180 }}
+            aria-label="Active model"
+            value={activeModel}
+            onChange={(e) => setActiveModel(e.target.value)}
+          >
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.displayName}
+              </option>
+            ))}
+          </select>
+        </SettingsRow>
         <SettingsRow t="Computer Use fallback" s="When DOM tools aren't enough"><Pill>gemini-2.5-computer-use</Pill></SettingsRow>
       </div>
 

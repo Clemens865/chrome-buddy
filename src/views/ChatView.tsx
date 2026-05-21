@@ -16,7 +16,7 @@ import { usePersistedState } from '../sidepanel/usePersistedState';
 import { requestPageContext } from '../page/request';
 import { persistRun } from '../memory/request';
 import { buildRunRecord } from '../memory/buildRecord';
-import { DEFAULT_REGISTRY } from '../llm/registry.default';
+import { useActiveModel } from '../llm/modelPref';
 import {
   runAgentTask,
   runPlainChat,
@@ -28,14 +28,12 @@ import {
   userItem,
   agentItem,
   EMPTY_PROFILES,
-  PLAIN_CHAT_MODEL,
   type ChatMode,
   type TranscriptItem,
   type Profiles,
   type ProfileKind,
 } from '../agent';
 
-const AGENT_MODEL = DEFAULT_REGISTRY.defaultModel ?? 'gemini-2.5-flash';
 import type { AgentEvent, ApprovalDecision } from '../agent';
 
 const SUGGESTIONS = [
@@ -73,6 +71,7 @@ export function ChatView({
   const [profiles] = usePersistedState<Profiles>('userProfiles', EMPTY_PROFILES);
   const [activeProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile] = usePersistedState<boolean>('attachProfile', false);
+  const [activeModel] = useActiveModel();
   const pendingRef = useRef<PendingConfirm | null>(null);
   const seqRef = useRef(0);
 
@@ -116,16 +115,16 @@ export function ChatView({
           const useProfile = attachProfile && hasProfile(active);
           const page = attachPage ? await requestPageContext() : null;
           const context = buildContextBlock(page, useProfile ? active : null, activeProfile);
-          const r = await runPlainChat(prompt, { context });
+          const r = await runPlainChat(prompt, { context, model: activeModel });
           if (r.outcome === 'no-key') setNoKey(true);
           else if (r.text) {
             setItems((prev) => [...prev, agentItem(`a_${seqRef.current++}`, r.text!)]);
             void persistRun(
-              buildRunRecord({ kind: 'chat', task: prompt, answer: r.text, model: PLAIN_CHAT_MODEL, startedAt }),
+              buildRunRecord({ kind: 'chat', task: prompt, answer: r.text, model: activeModel, startedAt }),
             );
           }
         } else {
-          const result = await runAgentTask(prompt, { onEvent, onConfirm });
+          const result = await runAgentTask(prompt, { onEvent, onConfirm, model: activeModel });
           if (result.outcome === 'no-key') setNoKey(true);
           else if (result.state) {
             const sp = result.state.scratchpad;
@@ -137,7 +136,7 @@ export function ChatView({
                 outcome: result.outcome,
                 tools: sp.actions.map((a) => a.toolName),
                 provenance: sp.provenance,
-                model: AGENT_MODEL,
+                model: activeModel,
                 startedAt,
               }),
             );
@@ -151,7 +150,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, mode, attachPage, attachProfile, profiles, activeProfile],
+    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -190,14 +189,14 @@ export function ChatView({
             : step.prompt;
 
           if (step.mode === 'chat') {
-            const r = await runPlainChat(fullPrompt);
+            const r = await runPlainChat(fullPrompt, { model: activeModel });
             if (r.outcome === 'no-key') { setNoKey(true); break; }
             const text = r.text ?? '';
             setItems((prev) => [...prev, agentItem(`wfa_${seqRef.current++}`, text)]);
             context += `\n\nStep ${i + 1} result:\n${text}`;
           } else {
             const onEvent = (e: AgentEvent) => setItems((prev) => reduceTranscript(prev, e));
-            const result = await runAgentTask(fullPrompt, { onEvent, onConfirm: makeOnConfirm() });
+            const result = await runAgentTask(fullPrompt, { onEvent, onConfirm: makeOnConfirm(), model: activeModel });
             if (result.outcome === 'no-key') { setNoKey(true); break; }
             context += `\n\nStep ${i + 1} result:\n${result.state?.finalAnswer ?? ''}`;
           }
@@ -210,7 +209,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, makeOnConfirm],
+    [busy, makeOnConfirm, activeModel],
   );
 
   // Running a skill (from the Skills view) submits its task in the skill's mode.

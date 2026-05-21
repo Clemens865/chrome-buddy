@@ -17,7 +17,8 @@
     "test:e2e:complex": "playwright test complex.spec.ts",
     "test:e2e:workflows": "playwright test workflows.spec.ts",
     "test:e2e:callskill": "playwright test call-skill.spec.ts",
-    "test:e2e:clicktype": "playwright test click-type.spec.ts"
+    "test:e2e:clicktype": "playwright test click-type.spec.ts",
+    "test:e2e:modelpicker": "playwright test model-picker.spec.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",

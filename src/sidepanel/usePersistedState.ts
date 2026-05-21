@@ -38,5 +38,18 @@ export function usePersistedState<T>(key: string, initial: T): [T, (v: T) => voi
     area()?.set({ [key]: value }).catch(() => {});
   }, [key, value]);
 
+  // Keep every instance of the same key in sync (e.g. the model picker in
+  // Settings and the chat header live in different components).
+  useEffect(() => {
+    if (typeof chrome === 'undefined' || !chrome.storage?.onChanged) return;
+    const onChanged = (changes: Record<string, { newValue?: unknown }>, areaName: string) => {
+      if (areaName !== 'local' || !(key in changes)) return;
+      const next = changes[key].newValue;
+      if (next !== undefined) setValue(next as T);
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, [key]);
+
   return [value, setValue];
 }
