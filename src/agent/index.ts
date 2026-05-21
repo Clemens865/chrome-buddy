@@ -15,13 +15,22 @@ export {
 } from './hitl';
 export type { ApprovalResolver, GateOutcome } from './hitl';
 
-export { runAgentTask, PAGE_TOOLS } from './runner';
-export type { RunAgentTaskOptions, RunAgentTaskResult, ConfirmHandler } from './runner';
+export { runAgentTask, runPlainChat, PAGE_TOOLS, PLAIN_CHAT_MODEL } from './runner';
+export type {
+  RunAgentTaskOptions,
+  RunAgentTaskResult,
+  ConfirmHandler,
+  PlainChatResult,
+} from './runner';
+
+export { classifyIntent, resolveIntent } from './route';
+export type { ChatMode, Intent } from './route';
 
 export {
   reduceTranscript,
   resolveConfirmation,
   userItem,
+  agentItem,
 } from './transcript';
 export type { TranscriptItem } from './transcript';
 

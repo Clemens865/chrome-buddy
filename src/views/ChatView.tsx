@@ -8,11 +8,16 @@
 import { useCallback, useRef, useState } from 'react';
 import { Ic, BuddyMark } from '../ui/icons';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
+import { usePersistedState } from '../sidepanel/usePersistedState';
 import {
   runAgentTask,
+  runPlainChat,
   reduceTranscript,
   resolveConfirmation,
+  resolveIntent,
   userItem,
+  agentItem,
+  type ChatMode,
   type TranscriptItem,
 } from '../agent';
 import type { AgentEvent, ApprovalDecision } from '../agent';
@@ -38,6 +43,7 @@ export function ChatView() {
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [noKey, setNoKey] = useState(false);
+  const [mode, setMode] = usePersistedState<ChatMode>('chatMode', 'auto');
   const pendingRef = useRef<PendingConfirm | null>(null);
   const seqRef = useRef(0);
 
@@ -70,8 +76,16 @@ export function ChatView() {
         });
 
       try {
-        const result = await runAgentTask(prompt, { onEvent, onConfirm });
-        if (result.outcome === 'no-key') setNoKey(true);
+        // Auto-route (or honor the forced mode): simple Q&A → cheap tool-less
+        // chat; page/action intent → the full agentic loop.
+        if (resolveIntent(mode, prompt) === 'chat') {
+          const r = await runPlainChat(prompt);
+          if (r.outcome === 'no-key') setNoKey(true);
+          else if (r.text) setItems((prev) => [...prev, agentItem(`a_${seqRef.current++}`, r.text!)]);
+        } else {
+          const result = await runAgentTask(prompt, { onEvent, onConfirm });
+          if (result.outcome === 'no-key') setNoKey(true);
+        }
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         setItems((prev) => [...prev, { kind: 'error', id: `err_${seqRef.current++}`, text: message }]);
@@ -80,7 +94,7 @@ export function ChatView() {
         setBusy(false);
       }
     },
-    [busy],
+    [busy, mode],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -108,7 +122,7 @@ export function ChatView() {
           </>
         )}
       </div>
-      <ChatComposer input={input} onChange={setInput} onSend={() => void submit(input)} busy={busy} />
+      <ChatComposer input={input} onChange={setInput} onSend={() => void submit(input)} busy={busy} mode={mode} onMode={setMode} />
     </div>
   );
 }
@@ -311,16 +325,26 @@ function summarizeArgs(args: Record<string, unknown>): string {
   }
 }
 
+const MODES: { v: ChatMode; l: string; title: string }[] = [
+  { v: 'auto', l: 'Auto', title: 'Auto: answer simple questions cheaply, use the agent for page tasks' },
+  { v: 'ask', l: 'Ask', title: 'Ask: plain chat only — no tools, cheapest' },
+  { v: 'agent', l: 'Agent', title: 'Agent: always plan and use tools' },
+];
+
 function ChatComposer({
   input,
   onChange,
   onSend,
   busy,
+  mode,
+  onMode,
 }: {
   input: string;
   onChange: (v: string) => void;
   onSend: () => void;
   busy: boolean;
+  mode: ChatMode;
+  onMode: (m: ChatMode) => void;
 }) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -357,11 +381,21 @@ function ChatComposer({
         </button>
       </div>
       <div className="composer-foot">
-        <span className="ctx-chip">
-          <span className="ctx-chip-dot" />
-          This page
-        </span>
-        <span className="composer-model">{DEFAULT_MODEL}</span>
+        <div className="seg seg-sm" role="group" aria-label="Chat mode">
+          {MODES.map((m) => (
+            <button
+              key={m.v}
+              type="button"
+              className={'seg-btn' + (mode === m.v ? ' is-on' : '')}
+              onClick={() => onMode(m.v)}
+              title={m.title}
+              aria-pressed={mode === m.v}
+            >
+              {m.l}
+            </button>
+          ))}
+        </div>
+        <span className="composer-model">{mode === 'ask' ? 'gemini-2.5-flash-lite' : DEFAULT_MODEL}</span>
       </div>
     </div>
   );

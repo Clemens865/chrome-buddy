@@ -209,6 +209,48 @@ export async function runAgentTask(
   return { outcome: state.outcome ?? 'failed', state };
 }
 
+/** Cheap, fast model for plain (non-agentic) chat answers — token-efficient. */
+const PLAIN_CHAT_MODEL = 'gemini-2.5-flash-lite';
+
+const PLAIN_CHAT_SYSTEM =
+  "You are Buddy, a concise, helpful AI assistant inside the user's browser. " +
+  'Answer directly and briefly. If the request actually needs you to read or act ' +
+  'on the current web page, say it can be run in Agent mode.';
+
+export interface PlainChatResult {
+  outcome: 'ok' | 'no-key';
+  text?: string;
+}
+
+/**
+ * Plain chat: a single, tool-less LLM call on a cheap model — no plan/observe
+ * loop and no tool declarations, so simple Q&A stays token-efficient. Routed
+ * through the background SW (key custody) like every other cloud call.
+ */
+export async function runPlainChat(
+  prompt: string,
+  options: { model?: string; send?: (m: unknown) => Promise<unknown> } = {},
+): Promise<PlainChatResult> {
+  const send = options.send ?? defaultSend;
+  if (!(await hasKey(send))) return { outcome: 'no-key' };
+
+  const msg: LlmGenerateMessage = {
+    type: 'LLM_GENERATE',
+    model: options.model ?? PLAIN_CHAT_MODEL,
+    messages: [
+      { role: 'system', content: PLAIN_CHAT_SYSTEM },
+      { role: 'user', content: prompt },
+    ],
+    // No tools attached — that's the whole point of the cheap path.
+  };
+  const res = (await send(msg)) as LlmGenerateResponse | ErrorResponse | undefined;
+  if (!res) throw new Error('No response from background for LLM_GENERATE.');
+  if (res.type === 'ERROR' || res.ok !== true) {
+    throw new Error(res.type === 'ERROR' ? res.error : 'Background generation failed.');
+  }
+  return { outcome: 'ok', text: res.result.text };
+}
+
 // Re-export the page-tool set so tests and the UI can reason about routing.
-export { PAGE_TOOLS };
+export { PAGE_TOOLS, PLAIN_CHAT_MODEL };
 export type { ToolResult };

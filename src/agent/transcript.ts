@@ -129,6 +129,11 @@ export function userItem(id: string, text: string): TranscriptItem {
   return { kind: 'user', id, text };
 }
 
+/** Build a plain agent reply item (used by the cheap, tool-less chat path). */
+export function agentItem(id: string, text: string): TranscriptItem {
+  return { kind: 'agent', id, text };
+}
+
 function upsert(items: TranscriptItem[], id: string, item: TranscriptItem): TranscriptItem[] {
   const idx = items.findIndex((it) => it.id === id);
   if (idx === -1) return [...items, item];
