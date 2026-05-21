@@ -45,8 +45,8 @@ import type {
 /** Page read/act tools that execute in the SW via TOOL_EXEC. */
 const PAGE_TOOLS = new Set(['read_dom', 'extract', 'screenshot', 'navigate', 'click', 'type', 'scroll']);
 
-/** Tools the agent may use: page tools + search_web + send_webhook (HITL-gated). */
-const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'search_web', 'send_webhook']);
+/** Tools the agent may use: page tools + search_web + consequential (HITL-gated) tools. */
+const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'search_web', 'send_webhook', 'write_file']);
 
 /** Provider id whose key custody backs the default model. */
 const GEMINI_PROVIDER = 'google-gemini';
@@ -193,11 +193,11 @@ function wireRegistry(
   const base = factory();
   const wired = new (base.constructor as typeof ToolRegistry)();
   for (const def of base.list()) {
-    // Only expose tools the agent can actually run: the page tools and
-    // send_webhook, all executed in the SW via TOOL_EXEC. send_webhook keeps its
-    // `consequential` flag, so the runtime's HITL gate fires before it runs.
-    // Other stubs (read/write_file, ask_user) are NOT declared, so the model
-    // can't pick a tool that fails the step.
+    // Only expose tools the agent can actually run: the page tools plus
+    // search_web, send_webhook, and write_file, all executed in the SW via
+    // TOOL_EXEC. send_webhook/write_file keep their `consequential` flag, so the
+    // runtime's HITL gate fires before they run. Remaining stubs (read_file,
+    // ask_user) are NOT declared, so the model can't pick a tool that fails.
     if (AGENT_TOOLS.has(def.name)) {
       wired.register({
         ...def,

@@ -282,12 +282,13 @@ export const readFileTool: ToolDefinition = {
 export const writeFileTool: ToolDefinition = {
   name: 'write_file',
   description:
-    'Write or overwrite a file in the user-selected root folder (File System Access).',
+    'Save text content to a file in the user\'s Downloads folder. Use for exporting ' +
+    'results, notes, CSV, or code. Requires user confirmation.',
   paramsSchema: objectSchema(
     {
       path: {
         type: 'string',
-        description: 'Path relative to the root folder.',
+        description: 'Filename to save (e.g. "notes.txt" or "data/out.csv").',
       },
       contents: { type: 'string', description: 'File contents to write.' },
     },

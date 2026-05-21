@@ -24,6 +24,7 @@ import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { executePageTool, capturePageContext } from './pageTools';
 import { executeWebhook } from './webhook';
 import { executeWebSearch } from './search';
+import { executeFileWrite } from './fileWrite';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
 import { saveWorkflow, listWorkflows, deleteWorkflow } from '../workflows/store';
@@ -185,6 +186,10 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         }
         if (message.tool === 'search_web') {
           return { type: 'TOOL_EXEC', ok: true, result: await executeWebSearch(message.args, getStoredKey) };
+        }
+        // write_file is consequential — only reaches here after HITL approval.
+        if (message.tool === 'write_file') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeFileWrite(message.args) };
         }
         // DOM-first: run page read/act tools in the SW against the active tab.
         // Restricted URLs are refused inside executePageTool with a structured error.
