@@ -11,6 +11,13 @@ import { ImageApp } from '../views/apps/ImageApp';
 import { SkillsView, FlowsView, HistoryView } from '../views/StubViews';
 import { SettingsView } from '../views/SettingsView';
 import { usePersistedState } from '../sidepanel/usePersistedState';
+import type { ChatMode } from '../agent';
+import type { Skill } from '../skills/types';
+
+export interface PendingRun {
+  prompt: string;
+  mode: ChatMode;
+}
 
 export type Surface = 'sidepanel' | 'overlay';
 
@@ -26,6 +33,14 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
   const collapsed = collapsible ? overlayCollapsed : false;
   const [view, setView] = useState<View>('chat');
   const [openApp, setOpenApp] = useState<AppId | null>(null);
+  const [pendingRun, setPendingRun] = useState<PendingRun | null>(null);
+
+  // Running a skill jumps to Chat and executes its task in the skill's mode.
+  const runSkill = (skill: Skill) => {
+    setPendingRun({ prompt: skill.prompt, mode: skill.kind === 'agent' ? 'agent' : 'ask' });
+    setOpenApp(null);
+    setView('chat');
+  };
 
   const theme = THEMES[themeName] ?? THEMES.slate;
 
@@ -50,14 +65,14 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
     else if (openApp === 'console') content = <ConsoleApp onBack={() => setOpenApp(null)} />;
     else if (openApp === 'image') content = <ImageApp onBack={() => setOpenApp(null)} />;
     else content = <AppsView onOpenApp={setOpenApp} />;
-  } else if (view === 'skills') content = <SkillsView />;
+  } else if (view === 'skills') content = <SkillsView onRunSkill={runSkill} />;
   else if (view === 'flows') content = <FlowsView />;
   else if (view === 'history') content = <HistoryView />;
   else if (view === 'settings')
     content = (
       <SettingsView themeName={themeName} accent={accent} onThemeChange={setThemeName} onAccentChange={setAccent} />
     );
-  else content = <ChatView />;
+  else content = <ChatView pendingRun={pendingRun} onConsumePending={() => setPendingRun(null)} />;
 
   const rootClass = 'root theme-' + themeName + (surface === 'overlay' ? ' is-overlay' : '');
 

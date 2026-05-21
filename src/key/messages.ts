@@ -16,6 +16,7 @@ import type { ChatMessage, GenerationParams, ToolSpec } from '../llm/types';
 import type { GenerateResult } from '../llm/client';
 import type { ToolResult } from '../types';
 import type { RunRecord } from '../memory/types';
+import type { Skill } from '../skills/types';
 
 /** chrome.storage.session key under which a provider's key is held. */
 export function apiKeyStorageKey(provider: string): string {
@@ -110,6 +111,19 @@ export interface MemoryClearMessage {
   type: 'MEMORY_CLEAR';
 }
 
+/** Skills store (FR-SKILL): SW-owned so panel + overlay share it. */
+export interface SkillSaveMessage {
+  type: 'SKILL_SAVE';
+  skill: Skill;
+}
+export interface SkillListMessage {
+  type: 'SKILL_LIST';
+}
+export interface SkillDeleteMessage {
+  type: 'SKILL_DELETE';
+  id: string;
+}
+
 /** Discriminated union of every message the background SW understands. */
 export type BuddyMessage =
   | KeySetMessage
@@ -121,7 +135,10 @@ export type BuddyMessage =
   | PageContextMessage
   | MemorySaveRunMessage
   | MemoryListRunsMessage
-  | MemoryClearMessage;
+  | MemoryClearMessage
+  | SkillSaveMessage
+  | SkillListMessage
+  | SkillDeleteMessage;
 
 // ---- Responses --------------------------------------------------------------
 
@@ -188,6 +205,20 @@ export interface MemoryClearResponse {
   ok: true;
 }
 
+export interface SkillSaveResponse {
+  type: 'SKILL_SAVE';
+  ok: true;
+}
+export interface SkillListResponse {
+  type: 'SKILL_LIST';
+  ok: true;
+  skills: Skill[];
+}
+export interface SkillDeleteResponse {
+  type: 'SKILL_DELETE';
+  ok: true;
+}
+
 /** Uniform error envelope returned for any failed message handling. */
 export interface ErrorResponse {
   type: 'ERROR';
@@ -223,6 +254,9 @@ export type BuddyResponse =
   | MemorySaveRunResponse
   | MemoryListRunsResponse
   | MemoryClearResponse
+  | SkillSaveResponse
+  | SkillListResponse
+  | SkillDeleteResponse
   | ErrorResponse;
 
 /** Type guard: is this an inbound message the SW should handle? */
@@ -239,6 +273,9 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'PAGE_CONTEXT' ||
     t === 'MEMORY_SAVE_RUN' ||
     t === 'MEMORY_LIST_RUNS' ||
-    t === 'MEMORY_CLEAR'
+    t === 'MEMORY_CLEAR' ||
+    t === 'SKILL_SAVE' ||
+    t === 'SKILL_LIST' ||
+    t === 'SKILL_DELETE'
   );
 }

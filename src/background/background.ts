@@ -24,6 +24,7 @@ import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { executePageTool, capturePageContext } from './pageTools';
 import { executeWebhook } from './webhook';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
+import { saveSkill, listSkills, deleteSkill } from '../skills/store';
 
 chrome.runtime.onInstalled.addListener(() => {
   // Allow clicking the toolbar icon to toggle the side panel open.
@@ -199,6 +200,20 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
       case 'MEMORY_CLEAR': {
         await clearRuns();
         return { type: 'MEMORY_CLEAR', ok: true };
+      }
+
+      case 'SKILL_SAVE': {
+        await saveSkill(message.skill);
+        return { type: 'SKILL_SAVE', ok: true };
+      }
+
+      case 'SKILL_LIST': {
+        return { type: 'SKILL_LIST', ok: true, skills: await listSkills() };
+      }
+
+      case 'SKILL_DELETE': {
+        await deleteSkill(message.id);
+        return { type: 'SKILL_DELETE', ok: true };
       }
 
       case 'IMAGE_GENERATE': {

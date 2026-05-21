@@ -43,6 +43,32 @@ test('live: a completed run is saved to History', async ({ context, extensionId 
   await panel.screenshot({ path: path.join(SHOTS, '07-history.png') });
 });
 
+test('live: promote a run to a skill, then run the skill', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 900 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  // Make a run.
+  await panel.getByPlaceholder('Message Buddy…').fill('Name one ocean.');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await expect(panel.locator('.msg-agent .msg-body').last()).not.toHaveText('', { timeout: 30_000 });
+
+  // History → save as skill.
+  await panel.getByRole('button', { name: 'History', exact: true }).click();
+  await panel.getByRole('button', { name: '+ Skill' }).first().click();
+  await panel.waitForTimeout(800);
+
+  // Skills → the skill is listed.
+  await panel.getByRole('button', { name: 'Skills', exact: true }).click();
+  await expect(panel.locator('.stub-row-title', { hasText: 'Name one ocean.' })).toBeVisible({ timeout: 10_000 });
+  await panel.screenshot({ path: path.join(SHOTS, '10-skills.png') });
+
+  // Run the skill → it executes in chat.
+  await panel.getByRole('button', { name: 'Run', exact: true }).first().click();
+  await expect(panel.locator('.msg-agent .msg-body').last()).not.toHaveText('', { timeout: 30_000 });
+  await panel.screenshot({ path: path.join(SHOTS, '11-skill-run.png') });
+});
+
 test('live: Image Studio generates an image', async ({ context, extensionId }) => {
   const panel = await context.newPage();
   await panel.setViewportSize({ width: 440, height: 900 });

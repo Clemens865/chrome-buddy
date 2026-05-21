@@ -5,7 +5,8 @@
 // inline → final answer. The API key is never touched here; everything routes
 // through the background (see src/agent/runner.ts for the security posture).
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PendingRun } from '../ui/PanelApp';
 import { Ic, BuddyMark } from '../ui/icons';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { requestPageContext } from '../page/request';
@@ -47,7 +48,13 @@ interface PendingConfirm {
   resolve: (decision: ApprovalDecision) => void;
 }
 
-export function ChatView() {
+export function ChatView({
+  pendingRun,
+  onConsumePending,
+}: {
+  pendingRun?: PendingRun | null;
+  onConsumePending?: () => void;
+} = {}) {
   const [input, setInput] = useState('');
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -61,9 +68,10 @@ export function ChatView() {
   const seqRef = useRef(0);
 
   const submit = useCallback(
-    async (text: string) => {
+    async (text: string, forceMode?: ChatMode) => {
       const prompt = text.trim();
       if (!prompt || busy) return;
+      const effectiveMode = forceMode ?? mode;
       setInput('');
       setNoKey(false);
       setBusy(true);
@@ -92,7 +100,7 @@ export function ChatView() {
       try {
         // Auto-route (or honor the forced mode): simple Q&A → cheap tool-less
         // chat; page/action intent → the full agentic loop.
-        if (resolveIntent(mode, prompt) === 'chat') {
+        if (resolveIntent(effectiveMode, prompt) === 'chat') {
           // Attach the page content (so chat sees the page without an agentic
           // read_dom round-trip) and/or the user profile, per the toggles.
           const active = profiles[activeProfile];
@@ -145,6 +153,13 @@ export function ChatView() {
       pendingRef.current = null;
     }
   }, []);
+
+  // Running a skill (from the Skills view) submits its task in the skill's mode.
+  useEffect(() => {
+    if (!pendingRun) return;
+    void submit(pendingRun.prompt, pendingRun.mode);
+    onConsumePending?.();
+  }, [pendingRun]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isEmpty = items.length === 0 && !noKey;
 

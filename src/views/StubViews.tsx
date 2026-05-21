@@ -1,8 +1,11 @@
-// StubViews.tsx — Skills / Workflows (empty stubs) + History (real run log).
-import { useEffect, useState } from 'react';
+// StubViews.tsx — Skills (real) + Workflows (stub) + History (real run log).
+import { useEffect, useRef, useState } from 'react';
 import { BuddyMark, Ic } from '../ui/icons';
 import { hexAlpha } from '../ui/theme';
 import { fetchRuns, clearHistory } from '../memory/request';
+import { fetchSkills, persistSkill, removeSkill } from '../skills/request';
+import { skillFromRun, parseSkillBundle, toSkillBundle } from '../skills/skillData';
+import type { Skill } from '../skills/types';
 import type { RunRecord } from '../memory/types';
 import type { ReactElement } from 'react';
 
@@ -19,8 +22,79 @@ function EmptyView({ icon, title, desc, cta }: { icon: ReactElement; title: stri
   );
 }
 
-export function SkillsView() {
-  return <EmptyView icon={Ic.skill} title="No skills yet" desc="Skills are saved, parameterized actions. Promote an agent run into a skill, or import one." cta="Import a skill" />;
+export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void }) {
+  const [skills, setSkills] = useState<Skill[] | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const refresh = () => fetchSkills().then(setSkills);
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const onDelete = async (id: string) => {
+    await removeSkill(id);
+    void refresh();
+  };
+
+  const onExport = () => {
+    const bundle = toSkillBundle(skills ?? []);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'chrome-buddy-skills.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const onImportFile = async (file: File) => {
+    const parsed = parseSkillBundle(await file.text());
+    for (const s of parsed) await persistSkill(s);
+    void refresh();
+  };
+
+  const empty = skills !== null && skills.length === 0;
+
+  return (
+    <div className="stub">
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>Import</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onExport} disabled={empty}>Export</button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void onImportFile(f);
+            e.target.value = '';
+          }}
+        />
+      </div>
+
+      {empty ? (
+        <div className="empty-state">
+          <span className="ic" style={{ width: 30, height: 30 }}>{Ic.skill}</span>
+          <div className="empty-state-title">No skills yet</div>
+          <div className="empty-state-desc">Saved, re-runnable actions. Save a run from History as a skill, or import a bundle.</div>
+        </div>
+      ) : (
+        <div className="stub-list">
+          {(skills ?? []).map((s) => (
+            <div key={s.id} className="stub-row">
+              <span className="stub-row-ic" style={{ color: '#6366F1', background: hexAlpha('#6366F1', 0.12) }}>{Ic.skill}</span>
+              <div className="stub-row-body">
+                <div className="stub-row-title">{s.name}</div>
+                <div className="stub-row-sub">{s.kind === 'agent' ? 'Agent' : 'Chat'} · {s.prompt.slice(0, 60)}</div>
+              </div>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => onRunSkill(s)}>Run</button>
+              <button type="button" className="btn btn-ghost btn-sm" aria-label="Delete skill" onClick={() => void onDelete(s.id)}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function FlowsView() {
@@ -93,6 +167,14 @@ export function HistoryView() {
                 <div className="stub-row-title">{r.task}</div>
                 <div className="stub-row-sub">{sub}</div>
               </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                title="Save as skill"
+                onClick={() => void persistSkill(skillFromRun(r))}
+              >
+                + Skill
+              </button>
               <span className="stub-row-meta">{fmtDuration(r.durationMs)}</span>
             </div>
           );
