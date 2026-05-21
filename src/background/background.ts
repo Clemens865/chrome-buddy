@@ -28,6 +28,7 @@ import { executeFileWrite } from './fileWrite';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
 import { saveWorkflow, listWorkflows, deleteWorkflow } from '../workflows/store';
+import { saveApp, listApps, deleteApp } from '../apps/store';
 import {
   alarmSpecsFor,
   workflowIdFromAlarm,
@@ -245,6 +246,20 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         await deleteWorkflow(message.id);
         await reconcileWorkflowAlarms();
         return { type: 'WORKFLOW_DELETE', ok: true };
+      }
+
+      case 'APP_SAVE': {
+        await saveApp(message.app);
+        return { type: 'APP_SAVE', ok: true };
+      }
+
+      case 'APP_LIST': {
+        return { type: 'APP_LIST', ok: true, apps: await listApps() };
+      }
+
+      case 'APP_DELETE': {
+        await deleteApp(message.id);
+        return { type: 'APP_DELETE', ok: true };
       }
 
       case 'IMAGE_GENERATE': {

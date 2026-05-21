@@ -1,7 +1,18 @@
 // AppsView.tsx — apps grid launcher + shared app metadata + micro-app header.
-import type { ReactElement } from 'react';
+// Also hosts Tier-1 app generation: describe a tool in natural language, Buddy
+// emits a validated declarative config (a form + prompt template), it's saved
+// and shown in the grid, and runs via a generic engine (no code — pure data).
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Ic } from '../ui/icons';
 import { hexAlpha } from '../ui/theme';
+import { Markdown } from '../ui/Markdown';
+import { generateViaBackground } from '../llm/instance';
+import { DEFAULT_REGISTRY } from '../llm/registry.default';
+import { runPlainChat } from '../agent';
+import { useActiveModel } from '../llm/modelPref';
+import { fetchApps, persistApp, removeApp } from '../apps/request';
+import { parseAppConfig, renderTemplate, APP_BUILDER_SYSTEM } from '../apps/build';
+import type { AppConfig } from '../apps/types';
 
 export type AppId = 'summarizer' | 'console' | 'image';
 
@@ -27,11 +38,59 @@ export function appById(id: string): AppMeta {
   return APPS.find((a) => a.id === id) ?? APPS[0];
 }
 
+const GEN_COLOR = '#8B5CF6';
+
 export function AppsView({ onOpenApp, recents = ['summarizer', 'image'] }: { onOpenApp: (id: AppId) => void; recents?: string[] }) {
   const openable = new Set<AppId>(['summarizer', 'console', 'image']);
   const open = (id: string) => {
     if (openable.has(id as AppId)) onOpenApp(id as AppId);
   };
+
+  const [genApps, setGenApps] = useState<AppConfig[]>([]);
+  const [openGen, setOpenGen] = useState<AppConfig | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [desc, setDesc] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const refresh = () => fetchApps().then(setGenApps);
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const generate = async () => {
+    if (!desc.trim()) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const res = await generateViaBackground({
+        model: DEFAULT_REGISTRY.defaultModel,
+        messages: [
+          { role: 'system', content: APP_BUILDER_SYSTEM },
+          { role: 'user', content: desc },
+        ],
+        params: { jsonMode: true },
+      });
+      const cfg = parseAppConfig(res.text);
+      if (!cfg) {
+        setError('Could not build an app from that. Try describing inputs and output more concretely.');
+        return;
+      }
+      await persistApp(cfg);
+      setCreating(false);
+      setDesc('');
+      void refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (openGen) {
+    return <GeneratedApp app={openGen} onBack={() => setOpenGen(null)} />;
+  }
+
   return (
     <div className="apps">
       <div className="apps-search">
@@ -41,26 +100,149 @@ export function AppsView({ onOpenApp, recents = ['summarizer', 'image'] }: { onO
       <div className="apps-grid">
         {recents.map((id) => <AppCard key={id} app={appById(id)} onOpen={() => open(id)} />)}
       </div>
+
+      {genApps.length > 0 && (
+        <>
+          <div className="apps-section-h">Your generated apps</div>
+          <div className="apps-grid">
+            {genApps.map((a) => (
+              <AppCard
+                key={a.id}
+                app={{ id: a.id, icon: Ic.sparkle, name: a.name, desc: a.description, color: GEN_COLOR }}
+                onOpen={() => setOpenGen(a)}
+                onDelete={async () => {
+                  await removeApp(a.id);
+                  void refresh();
+                }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
       <div className="apps-section-h">All apps</div>
       <div className="apps-grid">
         {APPS.map((a) => <AppCard key={a.id} app={a} onOpen={() => open(a.id)} />)}
       </div>
-      <div className="apps-foot">
-        <button type="button" className="apps-add"><span className="ic">{Ic.plus}</span>Add app from skill</button>
-      </div>
+
+      {creating ? (
+        <div className="settings-row" style={{ display: 'block', marginTop: 10 }}>
+          <textarea
+            className="settings-input"
+            style={{ resize: 'none' }}
+            rows={3}
+            placeholder="Describe an app to generate (e.g. rewrite text in a tone I choose; or a tweet-thread drafter from notes)"
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            aria-label="App description"
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy || !desc.trim()} onClick={() => void generate()}>
+              {busy ? 'Generating…' : 'Generate app'}
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreating(false)}>Cancel</button>
+          </div>
+          {error && <div className="empty-state-desc" style={{ color: '#B91C1C', marginTop: 6 }}>{error}</div>}
+        </div>
+      ) : (
+        <div className="apps-foot">
+          <button type="button" className="apps-add" onClick={() => setCreating(true)}><span className="ic">{Ic.plus}</span>Generate app from a description</button>
+        </div>
+      )}
     </div>
   );
 }
 
-function AppCard({ app, onOpen }: { app: AppMeta; onOpen: () => void }) {
+function AppCard({ app, onOpen, onDelete }: { app: AppMeta; onOpen: () => void; onDelete?: () => void | Promise<void> }) {
   return (
-    <button type="button" className="app-card" onClick={onOpen}>
-      <span className="app-card-ic" style={{ color: app.color, background: hexAlpha(app.color, 0.12) }}>{app.icon}</span>
-      <div className="app-card-body">
-        <div className="app-card-name">{app.name}{app.running && <span className="app-card-dot" />}</div>
-        <div className="app-card-desc">{app.desc}</div>
+    <div className="app-card-wrap">
+      <button type="button" className="app-card" onClick={onOpen}>
+        <span className="app-card-ic" style={{ color: app.color, background: hexAlpha(app.color, 0.12) }}>{app.icon}</span>
+        <div className="app-card-body">
+          <div className="app-card-name">{app.name}{app.running && <span className="app-card-dot" />}</div>
+          <div className="app-card-desc">{app.desc}</div>
+        </div>
+      </button>
+      {onDelete && (
+        <button type="button" className="app-card-del" aria-label={`Delete ${app.name}`} onClick={() => void onDelete()}>✕</button>
+      )}
+    </div>
+  );
+}
+
+// Generic engine for a Tier-1 declarative app: render its form, fill the
+// template, run a plain LLM call, show the result.
+function GeneratedApp({ app, onBack }: { app: AppConfig; onBack: () => void }) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [output, setOutput] = useState<string | null>(null);
+  const [noKey, setNoKey] = useState(false);
+  const [activeModel] = useActiveModel();
+
+  const canRun = useMemo(() => app.inputs.every((i) => (values[i.id] ?? '').trim()), [app.inputs, values]);
+
+  const run = async () => {
+    setBusy(true);
+    setNoKey(false);
+    setOutput(null);
+    try {
+      const prompt = renderTemplate(app.promptTemplate, values);
+      const r = await runPlainChat(prompt, { model: activeModel });
+      if (r.outcome === 'no-key') setNoKey(true);
+      else setOutput(r.text ?? '');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="apps">
+      <div className="app-hd">
+        <button type="button" className="app-hd-back" onClick={onBack} aria-label="Back to apps"><span className="ic">{Ic.collapse}</span></button>
+        <span className="app-hd-ic" style={{ color: GEN_COLOR, background: hexAlpha(GEN_COLOR, 0.12) }}>{Ic.sparkle}</span>
+        <div className="app-hd-text">
+          <div className="app-hd-name">{app.name}</div>
+          <div className="app-hd-sub">{app.description}</div>
+        </div>
       </div>
-    </button>
+
+      <div style={{ padding: '4px 2px' }}>
+        {app.inputs.map((inp) => (
+          <div key={inp.id} className="settings-row" style={{ display: 'block', marginBottom: 8 }}>
+            <label className="settings-row-t" htmlFor={`f_${inp.id}`}>{inp.label}</label>
+            {inp.type === 'textarea' ? (
+              <textarea
+                id={`f_${inp.id}`}
+                className="settings-input"
+                style={{ resize: 'none', marginTop: 4 }}
+                rows={3}
+                placeholder={inp.placeholder}
+                value={values[inp.id] ?? ''}
+                onChange={(e) => setValues((v) => ({ ...v, [inp.id]: e.target.value }))}
+              />
+            ) : (
+              <input
+                id={`f_${inp.id}`}
+                className="settings-input"
+                style={{ marginTop: 4 }}
+                placeholder={inp.placeholder}
+                value={values[inp.id] ?? ''}
+                onChange={(e) => setValues((v) => ({ ...v, [inp.id]: e.target.value }))}
+              />
+            )}
+          </div>
+        ))}
+        <button type="button" className="btn btn-primary btn-sm" disabled={busy || !canRun} onClick={() => void run()}>
+          {busy ? 'Running…' : 'Run app'}
+        </button>
+        {noKey && <div className="empty-state-desc" style={{ marginTop: 8 }}>Add a Gemini API key in Settings to run this app.</div>}
+        {output !== null && (
+          <div className="msg msg-agent" style={{ marginTop: 12 }}>
+            <div className="msg-body"><Markdown>{output}</Markdown></div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

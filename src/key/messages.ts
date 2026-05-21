@@ -18,6 +18,7 @@ import type { ToolResult } from '../types';
 import type { RunRecord } from '../memory/types';
 import type { Skill } from '../skills/types';
 import type { Workflow } from '../workflows/types';
+import type { AppConfig } from '../apps/types';
 
 /** chrome.storage.session key under which a provider's key is held. */
 export function apiKeyStorageKey(provider: string): string {
@@ -138,6 +139,19 @@ export interface WorkflowDeleteMessage {
   id: string;
 }
 
+/** Tier-1 app store (FR-APP): SW-owned. */
+export interface AppSaveMessage {
+  type: 'APP_SAVE';
+  app: AppConfig;
+}
+export interface AppListMessage {
+  type: 'APP_LIST';
+}
+export interface AppDeleteMessage {
+  type: 'APP_DELETE';
+  id: string;
+}
+
 /** Discriminated union of every message the background SW understands. */
 export type BuddyMessage =
   | KeySetMessage
@@ -155,7 +169,10 @@ export type BuddyMessage =
   | SkillDeleteMessage
   | WorkflowSaveMessage
   | WorkflowListMessage
-  | WorkflowDeleteMessage;
+  | WorkflowDeleteMessage
+  | AppSaveMessage
+  | AppListMessage
+  | AppDeleteMessage;
 
 // ---- Responses --------------------------------------------------------------
 
@@ -250,6 +267,20 @@ export interface WorkflowDeleteResponse {
   ok: true;
 }
 
+export interface AppSaveResponse {
+  type: 'APP_SAVE';
+  ok: true;
+}
+export interface AppListResponse {
+  type: 'APP_LIST';
+  ok: true;
+  apps: AppConfig[];
+}
+export interface AppDeleteResponse {
+  type: 'APP_DELETE';
+  ok: true;
+}
+
 /** Uniform error envelope returned for any failed message handling. */
 export interface ErrorResponse {
   type: 'ERROR';
@@ -291,6 +322,9 @@ export type BuddyResponse =
   | WorkflowSaveResponse
   | WorkflowListResponse
   | WorkflowDeleteResponse
+  | AppSaveResponse
+  | AppListResponse
+  | AppDeleteResponse
   | ErrorResponse;
 
 /** Type guard: is this an inbound message the SW should handle? */
@@ -313,6 +347,9 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'SKILL_DELETE' ||
     t === 'WORKFLOW_SAVE' ||
     t === 'WORKFLOW_LIST' ||
-    t === 'WORKFLOW_DELETE'
+    t === 'WORKFLOW_DELETE' ||
+    t === 'APP_SAVE' ||
+    t === 'APP_LIST' ||
+    t === 'APP_DELETE'
   );
 }
