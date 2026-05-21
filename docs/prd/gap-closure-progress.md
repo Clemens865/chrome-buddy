@@ -18,7 +18,7 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 28 | Key custody → `chrome.storage.session` | NFR-SEC-1 | ✅ | (this push) | screenshot 35; e2e key-custody |
 | 29 | Live cost display in UI | FR-LLM-10, NFR-COST-2, FR-UI-5 | ✅ | (this push) | screenshot 36; e2e cost |
 | 30 | Spend caps + budget settings | NFR-COST-1, FR-SET-1 | ✅ | (this push) | screenshots 37-38; e2e budget |
-| 31 | Onboarding: BYO-key walkthrough + gating | FR-ONB-1..4 | ⬜ | — | — |
+| 31 | Onboarding: BYO-key walkthrough + gating | FR-ONB-1..4 | ✅ | (this push) | screenshot 39; e2e onboarding |
 | 32 | Plan approve/edit/let-run gate | FR-AGENT-3 | ⬜ | — | — |
 | 33 | `ask_user` tool wired | FR-TOOLS-11 | ⬜ | — | — |
 | 34 | Prompt-injection guards | NFR-SEC-6 | ⬜ | — | — |
@@ -34,6 +34,13 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #31 — Onboarding + key gating (FR-ONB-1..4) ✅
+- **Was:** no first-run flow; the key was only reachable via Settings.
+- **Now:** `src/views/Onboarding.tsx` takes over on first run (PanelApp gates on a persisted `onboardingDone`). It links to get a key, accepts + **live-validates** a pasted key (KEY_VALIDATE) before saving, explains the key is kept in memory for the session only and the free-tier training caveat (FR-ONB-4), and offers Skip. When a key is already configured it collapses to a one-click "Get started".
+- **Test plumbing:** the shared e2e fixture seeds `onboardingDone=true` so feature specs land on the panel; the onboarding spec opts back in.
+- **Proof:** e2e `onboarding` (walkthrough shows, storage note visible, panel hidden until dismissed → usable after); screenshot 39. Regression: smoke + cost specs still green.
+- **Limitation:** the paste/validate branch renders only when no key exists; the test env always has a key, so the screenshot shows the "already configured" branch. The KEY_VALIDATE handler is covered by keystore unit tests.
 
 ### #30 — Spend caps + budget settings (NFR-COST-1, FR-SET-1) ✅
 - **Was:** only hardcoded step/cost defaults in the runtime; no user control, no daily ledger.

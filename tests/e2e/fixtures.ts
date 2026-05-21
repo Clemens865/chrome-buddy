@@ -24,6 +24,9 @@ export const test = base.extend<{ context: BrowserContext; extensionId: string }
     let [sw] = context.serviceWorkers();
     if (!sw) sw = await context.waitForEvent('serviceworker');
     const extensionId = sw.url().split('/')[2];
+    // Skip the first-run onboarding by default so feature specs land on the panel.
+    // (The onboarding spec sets this back to false to exercise the walkthrough.)
+    await sw.evaluate(() => chrome.storage.local.set({ onboardingDone: true }));
     await use(extensionId);
   },
 });

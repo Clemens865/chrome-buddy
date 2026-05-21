@@ -10,6 +10,7 @@ import { ConsoleApp } from '../views/apps/ConsoleApp';
 import { ImageApp } from '../views/apps/ImageApp';
 import { SkillsView, FlowsView, HistoryView } from '../views/StubViews';
 import { SettingsView } from '../views/SettingsView';
+import { Onboarding } from '../views/Onboarding';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import type { ChatMode } from '../agent';
 import type { Skill } from '../skills/types';
@@ -36,6 +37,7 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
   const [openApp, setOpenApp] = useState<AppId | null>(null);
   const [pendingRun, setPendingRun] = useState<PendingRun | null>(null);
   const [pendingWorkflow, setPendingWorkflow] = useState<Workflow | null>(null);
+  const [onboardingDone, setOnboardingDone] = usePersistedState<boolean>('onboardingDone', false);
 
   // Running a skill jumps to Chat and executes its task in the skill's mode.
   const runSkill = (skill: Skill) => {
@@ -92,6 +94,15 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
     );
 
   const rootClass = 'root theme-' + themeName + (surface === 'overlay' ? ' is-overlay' : '');
+
+  // First-run: take over with the onboarding/key walkthrough until done or skipped.
+  if (!onboardingDone) {
+    return (
+      <div className={rootClass} style={themeVars}>
+        <Onboarding onDone={() => setOnboardingDone(true)} />
+      </div>
+    );
+  }
 
   return (
     <div className={rootClass} style={themeVars}>

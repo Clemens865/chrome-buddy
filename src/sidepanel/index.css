@@ -371,6 +371,20 @@ html, body {
 .recall-chip:hover { color: var(--panel-fg); border-color: var(--accent); }
 .recall-chip .ic { width: 14px; height: 14px; flex: 0 0 14px; }
 .recall-chip-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onb { height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--panel-bg); }
+.onb-card { max-width: 360px; width: 100%; text-align: center; }
+.onb-mark { display: inline-flex; padding: 12px; border-radius: 14px; background: var(--panel-elev); margin-bottom: 14px; }
+.onb-title { font-size: 20px; font-weight: 700; margin: 0 0 6px; color: var(--panel-fg); }
+.onb-sub { font-size: 13px; color: var(--panel-muted); line-height: 1.5; margin: 0 0 18px; }
+.onb-link { display: inline-block; font-size: 13px; color: var(--accent); margin-bottom: 10px; text-decoration: none; }
+.onb-link:hover { text-decoration: underline; }
+.onb-input { width: 100%; text-align: center; }
+.onb-error { color: #B91C1C; font-size: 12px; margin-top: 8px; }
+.onb-ok { display: inline-flex; align-items: center; gap: 6px; color: #047857; font-size: 13px; background: color-mix(in srgb, #10B981 12%, transparent); padding: 8px 12px; border-radius: 8px; }
+.onb-ok .ic { width: 15px; height: 15px; }
+.onb-actions { display: flex; flex-direction: column; gap: 8px; align-items: center; margin-top: 16px; }
+.onb-actions .btn-primary { width: 100%; }
+.onb-note { font-size: 11px; color: var(--panel-muted-soft); line-height: 1.5; margin-top: 18px; }
 .composer-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; resize: none; font: inherit; font-size: 13.5px; color: var(--panel-fg); padding: 8px 4px; max-height: 120px; line-height: 1.4; }
 .composer-input::placeholder { color: var(--panel-muted-soft); }
 .composer-send { width: 30px; height: 30px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 30px; }
