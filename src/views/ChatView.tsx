@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PendingRun } from '../ui/PanelApp';
 import { Ic, BuddyMark } from '../ui/icons';
+import { Markdown } from '../ui/Markdown';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { requestPageContext } from '../page/request';
 import { persistRun } from '../memory/request';
@@ -253,7 +254,9 @@ function TranscriptRow({
           <div className="msg-ava">
             <BuddyMark size={18} />
           </div>
-          <div className="msg-body">{item.text}</div>
+          <div className="msg-body">
+            <Markdown>{item.text}</Markdown>
+          </div>
         </div>
       );
 
