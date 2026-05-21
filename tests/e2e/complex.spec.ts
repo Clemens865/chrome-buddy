@@ -27,6 +27,27 @@ test('live: extract top headlines from a real news page', async ({ context, exte
   await panel.screenshot({ path: path.join(SHOTS, '12-news-extract.png') });
 });
 
+test('live: agent searches the web (Gemini grounding)', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 980 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  await panel.getByRole('button', { name: 'Agent', exact: true }).click();
+  await panel
+    .getByPlaceholder('Message Buddy…')
+    .fill('Search the web for recent news about AI and list three items with their source links.');
+  await panel.getByRole('button', { name: 'Send' }).click();
+
+  const answer = panel.locator('.msg-agent .msg-body').last();
+  await expect(answer).not.toHaveText('', { timeout: 60_000 });
+  // A grounded answer should cite sources.
+  await expect(async () => {
+    const text = await answer.innerText();
+    expect(text.length).toBeGreaterThan(80);
+  }).toPass({ timeout: 60_000 });
+  await panel.screenshot({ path: path.join(SHOTS, '15-web-search.png') });
+});
+
 test('live: agent navigates the browser to a new URL', async ({ context, extensionId }) => {
   const site = await context.newPage();
   await site.goto('https://example.com/', { waitUntil: 'domcontentloaded' });

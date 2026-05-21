@@ -203,6 +203,22 @@ export const summarizeTool: ToolDefinition = {
   handler: notWired('summarize'),
 };
 
+// --- search_web (Gemini google-search grounding) ---------------------------
+export const searchWebTool: ToolDefinition = {
+  name: 'search_web',
+  description:
+    'Search the live web for current information and return a grounded answer ' +
+    'with source links. Use for anything not on the current page (news, recent events).',
+  paramsSchema: objectSchema(
+    {
+      query: { type: 'string', description: 'The web search query.' },
+    },
+    ['query'],
+  ),
+  consequential: false,
+  handler: notWired('search_web'),
+};
+
 // --- call_skill (FR-TOOLS-8) -----------------------------------------------
 export const callSkillTool: ToolDefinition = {
   name: 'call_skill',
@@ -311,6 +327,7 @@ export const stubToolDefs: ToolDefinition[] = [
   screenshotTool,
   extractTool,
   summarizeTool,
+  searchWebTool,
   callSkillTool,
   sendWebhookTool,
   readFileTool,

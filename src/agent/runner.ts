@@ -40,8 +40,8 @@ import type {
 /** Page read/act tools that execute in the SW via TOOL_EXEC. */
 const PAGE_TOOLS = new Set(['read_dom', 'extract', 'screenshot', 'navigate', 'click', 'type', 'scroll']);
 
-/** Tools the agent may use: page tools + send_webhook (consequential, HITL-gated). */
-const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'send_webhook']);
+/** Tools the agent may use: page tools + search_web + send_webhook (HITL-gated). */
+const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'search_web', 'send_webhook']);
 
 /** Provider id whose key custody backs the default model. */
 const GEMINI_PROVIDER = 'google-gemini';

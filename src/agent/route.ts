@@ -19,6 +19,9 @@ const AGENT_PATTERNS: RegExp[] = [
   /\b(click|type|fill|select|scroll|navigate|go to|open|visit|browse|press|submit|log ?in|sign ?in)\b/i,
   /\b(download|upload|send|email|message|post|buy|purchase|book|order|schedule|delete|reply to)\b/i,
   /\b(research|compare|monitor|watch|track)\b/i,
+  // Web search (uses the search_web tool, not the current page).
+  /\bsearch (the web|online|for|google)\b/i,
+  /\b(find|look up|latest|recent|newest)\b[^.]*\b(news|articles|papers|posts|releases|updates)\b/i,
   /\b(across|multiple|several)\b[^.]*\b(sites|pages|tabs|websites)\b/i,
   /\bfor each\b|\band then\b|\bstep by step\b/i,
 ];

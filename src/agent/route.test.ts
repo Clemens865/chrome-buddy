@@ -21,6 +21,8 @@ describe('classifyIntent', () => {
     expect(classifyIntent('click the subscribe button')).toBe('agent');
     expect(classifyIntent('email me a summary')).toBe('agent');
     expect(classifyIntent('research this topic across multiple sites')).toBe('agent');
+    expect(classifyIntent('search the web for AI news')).toBe('agent');
+    expect(classifyIntent('find the latest articles about LLMs')).toBe('agent');
   });
 });
 

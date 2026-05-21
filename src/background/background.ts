@@ -23,6 +23,7 @@ import { LlmClient } from '../llm/client';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { executePageTool, capturePageContext } from './pageTools';
 import { executeWebhook } from './webhook';
+import { executeWebSearch } from './search';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
 
@@ -175,6 +176,9 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         // HITL gate obtained user approval (UI side). The SW just performs it.
         if (message.tool === 'send_webhook') {
           return { type: 'TOOL_EXEC', ok: true, result: await executeWebhook(message.args) };
+        }
+        if (message.tool === 'search_web') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeWebSearch(message.args, getStoredKey) };
         }
         // DOM-first: run page read/act tools in the SW against the active tab.
         // Restricted URLs are refused inside executePageTool with a structured error.
