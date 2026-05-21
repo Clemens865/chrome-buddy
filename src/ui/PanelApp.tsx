@@ -13,6 +13,7 @@ import { SettingsView } from '../views/SettingsView';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import type { ChatMode } from '../agent';
 import type { Skill } from '../skills/types';
+import type { Workflow } from '../workflows/types';
 
 export interface PendingRun {
   prompt: string;
@@ -34,10 +35,18 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
   const [view, setView] = useState<View>('chat');
   const [openApp, setOpenApp] = useState<AppId | null>(null);
   const [pendingRun, setPendingRun] = useState<PendingRun | null>(null);
+  const [pendingWorkflow, setPendingWorkflow] = useState<Workflow | null>(null);
 
   // Running a skill jumps to Chat and executes its task in the skill's mode.
   const runSkill = (skill: Skill) => {
     setPendingRun({ prompt: skill.prompt, mode: skill.kind === 'agent' ? 'agent' : 'ask' });
+    setOpenApp(null);
+    setView('chat');
+  };
+
+  // Running a workflow jumps to Chat and executes its steps in sequence.
+  const runWorkflow = (wf: Workflow) => {
+    setPendingWorkflow(wf);
     setOpenApp(null);
     setView('chat');
   };
@@ -66,13 +75,21 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
     else if (openApp === 'image') content = <ImageApp onBack={() => setOpenApp(null)} />;
     else content = <AppsView onOpenApp={setOpenApp} />;
   } else if (view === 'skills') content = <SkillsView onRunSkill={runSkill} />;
-  else if (view === 'flows') content = <FlowsView />;
+  else if (view === 'flows') content = <FlowsView onRunWorkflow={runWorkflow} />;
   else if (view === 'history') content = <HistoryView />;
   else if (view === 'settings')
     content = (
       <SettingsView themeName={themeName} accent={accent} onThemeChange={setThemeName} onAccentChange={setAccent} />
     );
-  else content = <ChatView pendingRun={pendingRun} onConsumePending={() => setPendingRun(null)} />;
+  else
+    content = (
+      <ChatView
+        pendingRun={pendingRun}
+        onConsumePending={() => setPendingRun(null)}
+        pendingWorkflow={pendingWorkflow}
+        onConsumeWorkflow={() => setPendingWorkflow(null)}
+      />
+    );
 
   const rootClass = 'root theme-' + themeName + (surface === 'overlay' ? ' is-overlay' : '');
 

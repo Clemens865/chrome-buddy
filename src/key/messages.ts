@@ -17,6 +17,7 @@ import type { GenerateResult } from '../llm/client';
 import type { ToolResult } from '../types';
 import type { RunRecord } from '../memory/types';
 import type { Skill } from '../skills/types';
+import type { Workflow } from '../workflows/types';
 
 /** chrome.storage.session key under which a provider's key is held. */
 export function apiKeyStorageKey(provider: string): string {
@@ -124,6 +125,19 @@ export interface SkillDeleteMessage {
   id: string;
 }
 
+/** Workflow store (FR-WF): SW-owned. */
+export interface WorkflowSaveMessage {
+  type: 'WORKFLOW_SAVE';
+  workflow: Workflow;
+}
+export interface WorkflowListMessage {
+  type: 'WORKFLOW_LIST';
+}
+export interface WorkflowDeleteMessage {
+  type: 'WORKFLOW_DELETE';
+  id: string;
+}
+
 /** Discriminated union of every message the background SW understands. */
 export type BuddyMessage =
   | KeySetMessage
@@ -138,7 +152,10 @@ export type BuddyMessage =
   | MemoryClearMessage
   | SkillSaveMessage
   | SkillListMessage
-  | SkillDeleteMessage;
+  | SkillDeleteMessage
+  | WorkflowSaveMessage
+  | WorkflowListMessage
+  | WorkflowDeleteMessage;
 
 // ---- Responses --------------------------------------------------------------
 
@@ -219,6 +236,20 @@ export interface SkillDeleteResponse {
   ok: true;
 }
 
+export interface WorkflowSaveResponse {
+  type: 'WORKFLOW_SAVE';
+  ok: true;
+}
+export interface WorkflowListResponse {
+  type: 'WORKFLOW_LIST';
+  ok: true;
+  workflows: Workflow[];
+}
+export interface WorkflowDeleteResponse {
+  type: 'WORKFLOW_DELETE';
+  ok: true;
+}
+
 /** Uniform error envelope returned for any failed message handling. */
 export interface ErrorResponse {
   type: 'ERROR';
@@ -257,6 +288,9 @@ export type BuddyResponse =
   | SkillSaveResponse
   | SkillListResponse
   | SkillDeleteResponse
+  | WorkflowSaveResponse
+  | WorkflowListResponse
+  | WorkflowDeleteResponse
   | ErrorResponse;
 
 /** Type guard: is this an inbound message the SW should handle? */
@@ -276,6 +310,9 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'MEMORY_CLEAR' ||
     t === 'SKILL_SAVE' ||
     t === 'SKILL_LIST' ||
-    t === 'SKILL_DELETE'
+    t === 'SKILL_DELETE' ||
+    t === 'WORKFLOW_SAVE' ||
+    t === 'WORKFLOW_LIST' ||
+    t === 'WORKFLOW_DELETE'
   );
 }

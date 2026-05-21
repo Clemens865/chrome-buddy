@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PendingRun } from '../ui/PanelApp';
+import type { Workflow } from '../workflows/types';
 import { Ic, BuddyMark } from '../ui/icons';
 import { Markdown } from '../ui/Markdown';
 import { ArtifactCard, ArtifactView } from './Artifacts';
@@ -54,9 +55,13 @@ interface PendingConfirm {
 export function ChatView({
   pendingRun,
   onConsumePending,
+  pendingWorkflow,
+  onConsumeWorkflow,
 }: {
   pendingRun?: PendingRun | null;
   onConsumePending?: () => void;
+  pendingWorkflow?: Workflow | null;
+  onConsumeWorkflow?: () => void;
 } = {}) {
   const [input, setInput] = useState('');
   const [items, setItems] = useState<TranscriptItem[]>([]);
@@ -158,12 +163,69 @@ export function ChatView({
     }
   }, []);
 
+  // Shared HITL confirm handler: holds the resolver until the user clicks a card.
+  const makeOnConfirm = useCallback(
+    () =>
+      (req: { runId: string; step: number; tool: string; args: Record<string, unknown>; summary: string }) =>
+        new Promise<ApprovalDecision>((resolve) => {
+          pendingRef.current = { step: req.step, callId: req.summary, resolve };
+        }),
+    [],
+  );
+
+  // Run a workflow's steps in sequence, threading each step's result forward.
+  const runWorkflow = useCallback(
+    async (wf: Workflow) => {
+      if (busy) return;
+      setBusy(true);
+      setNoKey(false);
+      setItems((prev) => [...prev, userItem(`wf_${seqRef.current++}`, `▶ Workflow: ${wf.name}`)]);
+      let context = '';
+      try {
+        for (let i = 0; i < wf.steps.length; i++) {
+          const step = wf.steps[i];
+          setItems((prev) => [...prev, userItem(`wfs_${seqRef.current++}`, `Step ${i + 1}: ${step.prompt}`)]);
+          const fullPrompt = context
+            ? `${step.prompt}\n\n[Context from earlier steps:\n${context}\n]`
+            : step.prompt;
+
+          if (step.mode === 'chat') {
+            const r = await runPlainChat(fullPrompt);
+            if (r.outcome === 'no-key') { setNoKey(true); break; }
+            const text = r.text ?? '';
+            setItems((prev) => [...prev, agentItem(`wfa_${seqRef.current++}`, text)]);
+            context += `\n\nStep ${i + 1} result:\n${text}`;
+          } else {
+            const onEvent = (e: AgentEvent) => setItems((prev) => reduceTranscript(prev, e));
+            const result = await runAgentTask(fullPrompt, { onEvent, onConfirm: makeOnConfirm() });
+            if (result.outcome === 'no-key') { setNoKey(true); break; }
+            context += `\n\nStep ${i + 1} result:\n${result.state?.finalAnswer ?? ''}`;
+          }
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        setItems((prev) => [...prev, { kind: 'error', id: `werr_${seqRef.current++}`, text: message }]);
+      } finally {
+        pendingRef.current = null;
+        setBusy(false);
+      }
+    },
+    [busy, makeOnConfirm],
+  );
+
   // Running a skill (from the Skills view) submits its task in the skill's mode.
   useEffect(() => {
     if (!pendingRun) return;
     void submit(pendingRun.prompt, pendingRun.mode);
     onConsumePending?.();
   }, [pendingRun]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Running a workflow (from the Workflows view) executes its steps in sequence.
+  useEffect(() => {
+    if (!pendingWorkflow) return;
+    void runWorkflow(pendingWorkflow);
+    onConsumeWorkflow?.();
+  }, [pendingWorkflow]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isEmpty = items.length === 0 && !noKey;
 

@@ -4,7 +4,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 export const DB_NAME = 'chrome-buddy';
-const VERSION = 2;
+const VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -17,6 +17,9 @@ export function getDB(): Promise<IDBPDatabase> {
         }
         if (!d.objectStoreNames.contains('skills')) {
           d.createObjectStore('skills', { keyPath: 'id' }).createIndex('createdAt', 'createdAt');
+        }
+        if (!d.objectStoreNames.contains('workflows')) {
+          d.createObjectStore('workflows', { keyPath: 'id' }).createIndex('createdAt', 'createdAt');
         }
       },
     });

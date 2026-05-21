@@ -26,6 +26,7 @@ import { executeWebhook } from './webhook';
 import { executeWebSearch } from './search';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
+import { saveWorkflow, listWorkflows, deleteWorkflow } from '../workflows/store';
 
 chrome.runtime.onInstalled.addListener(() => {
   // Allow clicking the toolbar icon to toggle the side panel open.
@@ -218,6 +219,20 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
       case 'SKILL_DELETE': {
         await deleteSkill(message.id);
         return { type: 'SKILL_DELETE', ok: true };
+      }
+
+      case 'WORKFLOW_SAVE': {
+        await saveWorkflow(message.workflow);
+        return { type: 'WORKFLOW_SAVE', ok: true };
+      }
+
+      case 'WORKFLOW_LIST': {
+        return { type: 'WORKFLOW_LIST', ok: true, workflows: await listWorkflows() };
+      }
+
+      case 'WORKFLOW_DELETE': {
+        await deleteWorkflow(message.id);
+        return { type: 'WORKFLOW_DELETE', ok: true };
       }
 
       case 'IMAGE_GENERATE': {

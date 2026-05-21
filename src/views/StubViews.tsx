@@ -5,22 +5,13 @@ import { hexAlpha } from '../ui/theme';
 import { fetchRuns, clearHistory } from '../memory/request';
 import { fetchSkills, persistSkill, removeSkill } from '../skills/request';
 import { skillFromRun, parseSkillBundle, toSkillBundle } from '../skills/skillData';
+import { fetchWorkflows, persistWorkflow, removeWorkflow } from '../workflows/request';
+import { parseWorkflowSteps, makeWorkflow, WORKFLOW_BUILDER_SYSTEM } from '../workflows/build';
+import { generateViaBackground } from '../llm/instance';
+import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import type { Skill } from '../skills/types';
+import type { Workflow } from '../workflows/types';
 import type { RunRecord } from '../memory/types';
-import type { ReactElement } from 'react';
-
-function EmptyView({ icon, title, desc, cta }: { icon: ReactElement; title: string; desc: string; cta?: string }) {
-  return (
-    <div className="stub">
-      <div className="empty-state">
-        <span className="ic" style={{ width: 30, height: 30 }}>{icon}</span>
-        <div className="empty-state-title">{title}</div>
-        <div className="empty-state-desc">{desc}</div>
-        {cta && <button type="button" className="btn btn-ghost btn-sm">{cta}</button>}
-      </div>
-    </div>
-  );
-}
 
 export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void }) {
   const [skills, setSkills] = useState<Skill[] | null>(null);
@@ -97,8 +88,108 @@ export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void 
   );
 }
 
-export function FlowsView() {
-  return <EmptyView icon={Ic.flow} title="No workflows yet" desc="Multi-step automations. Build one in natural language, edit it as steps, or record your actions." cta="New workflow" />;
+export function FlowsView({ onRunWorkflow }: { onRunWorkflow: (wf: Workflow) => void }) {
+  const [workflows, setWorkflows] = useState<Workflow[] | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const [desc, setDesc] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const refresh = () => fetchWorkflows().then(setWorkflows);
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const generate = async () => {
+    if (!desc.trim()) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const res = await generateViaBackground({
+        model: DEFAULT_REGISTRY.defaultModel,
+        messages: [
+          { role: 'system', content: WORKFLOW_BUILDER_SYSTEM },
+          { role: 'user', content: desc },
+        ],
+        params: { jsonMode: true },
+      });
+      const steps = parseWorkflowSteps(res.text);
+      if (steps.length === 0) {
+        setError('Could not generate steps. Try describing it more concretely.');
+        return;
+      }
+      await persistWorkflow(makeWorkflow(name || desc, steps));
+      setCreating(false);
+      setName('');
+      setDesc('');
+      void refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDelete = async (id: string) => {
+    await removeWorkflow(id);
+    void refresh();
+  };
+
+  const empty = workflows !== null && workflows.length === 0 && !creating;
+
+  return (
+    <div className="stub">
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreating((c) => !c)}>
+          {creating ? 'Cancel' : '+ New workflow'}
+        </button>
+      </div>
+
+      {creating && (
+        <div className="settings-row" style={{ display: 'block' }}>
+          <input className="settings-input" placeholder="Workflow name" value={name} onChange={(e) => setName(e.target.value)} aria-label="Workflow name" />
+          <textarea
+            className="settings-input"
+            style={{ marginTop: 6, resize: 'none' }}
+            rows={3}
+            placeholder="Describe the workflow step by step (e.g. search the web for AI news, then summarize the top 3 into a briefing)"
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            aria-label="Workflow description"
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy || !desc.trim()} onClick={() => void generate()}>
+              {busy ? 'Generating…' : 'Generate steps'}
+            </button>
+          </div>
+          {error && <div className="empty-state-desc" style={{ color: '#B91C1C', marginTop: 6 }}>{error}</div>}
+        </div>
+      )}
+
+      {empty ? (
+        <div className="empty-state">
+          <span className="ic" style={{ width: 30, height: 30 }}>{Ic.flow}</span>
+          <div className="empty-state-title">No workflows yet</div>
+          <div className="empty-state-desc">Multi-step automations. Describe one in plain language and Buddy builds the steps.</div>
+        </div>
+      ) : (
+        <div className="stub-list">
+          {(workflows ?? []).map((w) => (
+            <div key={w.id} className="stub-row">
+              <span className="stub-row-ic" style={{ color: '#A78BFA', background: hexAlpha('#A78BFA', 0.12) }}>{Ic.flow}</span>
+              <div className="stub-row-body">
+                <div className="stub-row-title">{w.name}</div>
+                <div className="stub-row-sub">{w.steps.length} step{w.steps.length === 1 ? '' : 's'} · manual</div>
+              </div>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => onRunWorkflow(w)}>Run</button>
+              <button type="button" className="btn btn-ghost btn-sm" aria-label="Delete workflow" onClick={() => void onDelete(w.id)}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function timeAgo(ts: number): string {
