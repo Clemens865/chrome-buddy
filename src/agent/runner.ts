@@ -105,6 +105,10 @@ export interface RunAgentTaskOptions {
   makeRegistry?: () => ToolRegistry;
   /** Expose call_skill (saved skills) to the model. Off for nested skill runs. */
   exposeSkills?: boolean;
+  /** Per-run step cap (FR-AGENT-9). Defaults to DEFAULT_STEP_BUDGET. */
+  stepBudget?: number;
+  /** Per-run dollar cap (NFR-COST-1). Defaults to DEFAULT_COST_BUDGET. */
+  costBudget?: number;
 }
 
 /** Terminal result of a run, plus a clean no-key signal for the UI. */
@@ -308,8 +312,8 @@ export async function runAgentTask(
 
   const state = await runtime.run(prompt, {
     model,
-    stepBudget: DEFAULT_STEP_BUDGET,
-    costBudget: DEFAULT_COST_BUDGET,
+    stepBudget: options.stepBudget ?? DEFAULT_STEP_BUDGET,
+    costBudget: options.costBudget ?? DEFAULT_COST_BUDGET,
     signal: options.signal,
   });
 

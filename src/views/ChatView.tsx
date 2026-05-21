@@ -18,6 +18,13 @@ import { persistRun, fetchRuns } from '../memory/request';
 import { buildRunRecord } from '../memory/buildRecord';
 import { findSimilarRun } from '../memory/recall';
 import type { RunRecord } from '../memory/types';
+import {
+  BUDGET_KEYS,
+  BUDGET_DEFAULTS,
+  getTodaySpend,
+  addSpend,
+  isOverDailyCap,
+} from '../cost/budget';
 import { useActiveModel } from '../llm/modelPref';
 import {
   isSTTSupported,
@@ -83,7 +90,22 @@ export function ChatView({
   const [attachProfile] = usePersistedState<boolean>('attachProfile', false);
   const [activeModel] = useActiveModel();
   const [sessionCost, setSessionCost] = useState(0);
+  const [perRunCap] = usePersistedState<number>(BUDGET_KEYS.perRun, BUDGET_DEFAULTS.perRun);
+  const [perDayCap] = usePersistedState<number>(BUDGET_KEYS.perDay, BUDGET_DEFAULTS.perDay);
+  const [stepBudget] = usePersistedState<number>(BUDGET_KEYS.steps, BUDGET_DEFAULTS.steps);
+  const [spentToday, setSpentToday] = useState(0);
   const [pastRuns, setPastRuns] = useState<RunRecord[]>([]);
+
+  useEffect(() => {
+    void getTodaySpend().then(setSpentToday);
+  }, []);
+
+  // Record a call's cost: session total (UI) + the persistent daily ledger.
+  const recordCost = useCallback((amount: number) => {
+    if (!amount) return;
+    setSessionCost((c) => c + amount);
+    void addSpend(amount).then(setSpentToday);
+  }, []);
   const pendingRef = useRef<PendingConfirm | null>(null);
 
   // Learned-flow recall: keep recent runs handy and suggest reusing a similar
@@ -101,6 +123,19 @@ export function ChatView({
     async (text: string, forceMode?: ChatMode) => {
       const prompt = text.trim();
       if (!prompt || busy) return;
+      // NFR-COST-1: hard-stop new runs once the daily cap is hit. Raising the
+      // cap in Settings is the explicit "continue".
+      if (isOverDailyCap(spentToday, perDayCap)) {
+        setItems((prev) => [
+          ...prev,
+          {
+            kind: 'error',
+            id: `cap_${seqRef.current++}`,
+            text: `Daily spend cap reached (≈ $${spentToday.toFixed(2)} of $${perDayCap.toFixed(2)}). Raise it in Settings → Budget to continue.`,
+          },
+        ]);
+        return;
+      }
       const effectiveMode = forceMode ?? mode;
       setInput('');
       setNoKey(false);
@@ -140,17 +175,23 @@ export function ChatView({
           const r = await runPlainChat(prompt, { context, model: activeModel });
           if (r.outcome === 'no-key') setNoKey(true);
           else if (r.text) {
-            setSessionCost((c) => c + (r.cost ?? 0));
+            recordCost(r.cost ?? 0);
             setItems((prev) => [...prev, agentItem(`a_${seqRef.current++}`, r.text!)]);
             void persistRun(
               buildRunRecord({ kind: 'chat', task: prompt, answer: r.text, model: activeModel, startedAt }),
             );
           }
         } else {
-          const result = await runAgentTask(prompt, { onEvent, onConfirm, model: activeModel });
+          const result = await runAgentTask(prompt, {
+            onEvent,
+            onConfirm,
+            model: activeModel,
+            costBudget: perRunCap,
+            stepBudget,
+          });
           if (result.outcome === 'no-key') setNoKey(true);
           else if (result.state) {
-            setSessionCost((c) => c + (result.state?.costUsed ?? 0));
+            recordCost(result.state?.costUsed ?? 0);
             const sp = result.state.scratchpad;
             void persistRun(
               buildRunRecord({
@@ -174,7 +215,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel],
+    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -215,15 +256,21 @@ export function ChatView({
           if (step.mode === 'chat') {
             const r = await runPlainChat(fullPrompt, { model: activeModel });
             if (r.outcome === 'no-key') { setNoKey(true); break; }
-            setSessionCost((c) => c + (r.cost ?? 0));
+            recordCost(r.cost ?? 0);
             const text = r.text ?? '';
             setItems((prev) => [...prev, agentItem(`wfa_${seqRef.current++}`, text)]);
             context += `\n\nStep ${i + 1} result:\n${text}`;
           } else {
             const onEvent = (e: AgentEvent) => setItems((prev) => reduceTranscript(prev, e));
-            const result = await runAgentTask(fullPrompt, { onEvent, onConfirm: makeOnConfirm(), model: activeModel });
+            const result = await runAgentTask(fullPrompt, {
+              onEvent,
+              onConfirm: makeOnConfirm(),
+              model: activeModel,
+              costBudget: perRunCap,
+              stepBudget,
+            });
             if (result.outcome === 'no-key') { setNoKey(true); break; }
-            setSessionCost((c) => c + (result.state?.costUsed ?? 0));
+            recordCost(result.state?.costUsed ?? 0);
             context += `\n\nStep ${i + 1} result:\n${result.state?.finalAnswer ?? ''}`;
           }
         }
@@ -235,7 +282,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, makeOnConfirm, activeModel],
+    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget],
   );
 
   // Running a skill (from the Skills view) submits its task in the skill's mode.

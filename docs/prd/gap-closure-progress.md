@@ -17,7 +17,7 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 |---|------|----------|--------|--------|-------|
 | 28 | Key custody → `chrome.storage.session` | NFR-SEC-1 | ✅ | (this push) | screenshot 35; e2e key-custody |
 | 29 | Live cost display in UI | FR-LLM-10, NFR-COST-2, FR-UI-5 | ✅ | (this push) | screenshot 36; e2e cost |
-| 30 | Spend caps + budget settings | NFR-COST-1, FR-SET-1 | ⬜ | — | — |
+| 30 | Spend caps + budget settings | NFR-COST-1, FR-SET-1 | ✅ | (this push) | screenshots 37-38; e2e budget |
 | 31 | Onboarding: BYO-key walkthrough + gating | FR-ONB-1..4 | ⬜ | — | — |
 | 32 | Plan approve/edit/let-run gate | FR-AGENT-3 | ⬜ | — | — |
 | 33 | `ask_user` tool wired | FR-TOOLS-11 | ⬜ | — | — |
@@ -34,6 +34,11 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #30 — Spend caps + budget settings (NFR-COST-1, FR-SET-1) ✅
+- **Was:** only hardcoded step/cost defaults in the runtime; no user control, no daily ledger.
+- **Now:** Settings → Budget exposes per-run cap ($), daily cap ($), and step budget. Per-run cap + step budget flow into `runAgentTask` (the runtime already hard-stops on either). A persistent daily spend ledger (`src/cost/budget.ts`) accumulates per call; when today's spend reaches the daily cap, new runs are **hard-stopped** with a notice (raising the cap is the explicit continue). `0` = no cap.
+- **Proof:** 6 budget unit tests (137 total); e2e: Settings shows the caps (37); seeding the ledger over-cap blocks a run before any model call, input preserved (38).
 
 ### #29 — Live cost display (FR-LLM-10, NFR-COST-2) ✅
 - **Was:** cost was metered in the LLM client + runtime (`costUsed`) but never surfaced in the UI.

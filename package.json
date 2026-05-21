@@ -27,7 +27,8 @@
     "test:e2e:sandbox": "playwright test sandbox.spec.ts",
     "test:e2e:rootfolder": "playwright test root-folder.spec.ts",
     "test:e2e:keycustody": "playwright test key-custody.spec.ts",
-    "test:e2e:cost": "playwright test cost.spec.ts"
+    "test:e2e:cost": "playwright test cost.spec.ts",
+    "test:e2e:budget": "playwright test budget.spec.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",

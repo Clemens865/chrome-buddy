@@ -7,6 +7,7 @@ import { selectableModels, useActiveModel } from '../llm/modelPref';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { useApiKey } from '../key/useApiKey';
 import { isFsSupported, pickRootFolder, forgetRootFolder, rootFolderName } from '../fs/root';
+import { BUDGET_KEYS, BUDGET_DEFAULTS } from '../cost/budget';
 import { EMPTY_PROFILES, type UserProfile, type Profiles, type ProfileKind } from '../agent';
 import { clearHistory } from '../memory/request';
 
@@ -151,6 +152,19 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
       </div>
 
       <div className="settings-section">
+        <div className="settings-section-h">Budget</div>
+        <SettingsRow t="Per-run cap" s="Stop an agent run at this spend">
+          <BudgetInput k={BUDGET_KEYS.perRun} def={BUDGET_DEFAULTS.perRun} step={0.05} />
+        </SettingsRow>
+        <SettingsRow t="Daily cap" s="Pause new runs after this much spend today">
+          <BudgetInput k={BUDGET_KEYS.perDay} def={BUDGET_DEFAULTS.perDay} step={1} />
+        </SettingsRow>
+        <SettingsRow t="Step budget" s="Max plan steps per agent run">
+          <BudgetInput k={BUDGET_KEYS.steps} def={BUDGET_DEFAULTS.steps} step={1} dollar={false} />
+        </SettingsRow>
+      </div>
+
+      <div className="settings-section">
         <div className="settings-section-h">Files</div>
         <SettingsRow t="Root folder" s="Read/write files here (read_file · write_file · save)">
           <RootFolderControl />
@@ -181,6 +195,26 @@ function SettingsRow({ t, s, children }: { t: string; s: string; children: React
         </div>
       </div>
       <div className="settings-row-r">{children}</div>
+    </div>
+  );
+}
+
+// A persisted numeric budget field ($ or count). 0 = no cap.
+function BudgetInput({ k, def, step, dollar = true }: { k: string; def: number; step: number; dollar?: boolean }) {
+  const [value, setValue] = usePersistedState<number>(k, def);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {dollar && <span style={{ color: 'var(--panel-muted)' }}>$</span>}
+      <input
+        type="number"
+        className="settings-input"
+        style={{ width: 78, textAlign: 'right' }}
+        min={0}
+        step={step}
+        value={value}
+        aria-label={k}
+        onChange={(e) => setValue(Math.max(0, Number(e.target.value) || 0))}
+      />
     </div>
   );
 }
