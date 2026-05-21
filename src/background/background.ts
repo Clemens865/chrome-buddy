@@ -22,6 +22,7 @@ import { getLlmClient, resolveProviderId, readSessionApiKey } from '../llm/insta
 import { LlmClient } from '../llm/client';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { executePageTool, capturePageContext } from './pageTools';
+import { executeWebhook } from './webhook';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -169,10 +170,13 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
       }
 
       case 'TOOL_EXEC': {
+        // send_webhook is consequential — it only reaches here AFTER the runtime's
+        // HITL gate obtained user approval (UI side). The SW just performs it.
+        if (message.tool === 'send_webhook') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeWebhook(message.args) };
+        }
         // DOM-first: run page read/act tools in the SW against the active tab.
-        // Restricted URLs are refused inside executePageTool with a structured
-        // error. Consequential side-effecting tools are NOT routed here — the
-        // runtime's HITL gate (UI side) precedes any TOOL_EXEC for those.
+        // Restricted URLs are refused inside executePageTool with a structured error.
         const result = await executePageTool(message.tool, message.args);
         return { type: 'TOOL_EXEC', ok: true, result };
       }

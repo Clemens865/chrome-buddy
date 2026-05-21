@@ -40,6 +40,9 @@ import type {
 /** Page read/act tools that execute in the SW via TOOL_EXEC. */
 const PAGE_TOOLS = new Set(['read_dom', 'extract', 'screenshot', 'navigate', 'click', 'type', 'scroll']);
 
+/** Tools the agent may use: page tools + send_webhook (consequential, HITL-gated). */
+const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'send_webhook']);
+
 /** Provider id whose key custody backs the default model. */
 const GEMINI_PROVIDER = 'google-gemini';
 
@@ -120,12 +123,12 @@ function wireRegistry(send: (m: unknown) => Promise<unknown>, factory: () => Too
   const base = factory();
   const wired = new (base.constructor as typeof ToolRegistry)();
   for (const def of base.list()) {
-    // Only expose tools the agent can actually run (the page tools, executed in
-    // the SW via TOOL_EXEC). Unwired stubs (summarize, send_webhook, call_skill,
-    // read/write_file, ask_user) are NOT declared to the model — otherwise it
-    // picks one that fails the step (e.g. it called `summarize` instead of
-    // `read_dom`). The final answer is produced by the runtime's synthesis step.
-    if (PAGE_TOOLS.has(def.name)) {
+    // Only expose tools the agent can actually run: the page tools and
+    // send_webhook, all executed in the SW via TOOL_EXEC. send_webhook keeps its
+    // `consequential` flag, so the runtime's HITL gate fires before it runs.
+    // Other stubs (call_skill, read/write_file, ask_user) are NOT declared, so
+    // the model can't pick a tool that fails the step.
+    if (AGENT_TOOLS.has(def.name)) {
       wired.register({
         ...def,
         handler: (args) => execPageTool(send, def.name, args as Record<string, unknown>),

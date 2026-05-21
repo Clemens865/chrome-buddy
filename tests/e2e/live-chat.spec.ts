@@ -68,6 +68,29 @@ test('live: Image Studio generates an image', async ({ context, extensionId }) =
   await expect(img).toBeVisible({ timeout: 5_000 });
 });
 
+test('live: consequential action fires the HITL gate, then runs on approve', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 900 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  await panel.getByRole('button', { name: 'Agent', exact: true }).click();
+  await panel
+    .getByPlaceholder('Message Buddy…')
+    .fill('Send a webhook to https://httpbin.org/post with payload {"greeting":"hello from buddy"}.');
+  await panel.getByRole('button', { name: 'Send' }).click();
+
+  // The HITL confirmation card must appear BEFORE anything executes.
+  const card = panel.locator('.hitl');
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await expect(card).toContainText('send_webhook');
+  await panel.screenshot({ path: path.join(SHOTS, '08-hitl.png') });
+
+  // Approve → the action runs and the run completes.
+  await panel.getByRole('button', { name: 'Approve action' }).click();
+  await expect(panel.locator('.msg-agent .msg-body').last()).not.toHaveText('', { timeout: 30_000 });
+  await panel.screenshot({ path: path.join(SHOTS, '09-hitl-approved.png') });
+});
+
 test('live: agent reads the page and answers', async ({ context, extensionId }) => {
   // A normal page so the content script + read_dom have something to read.
   const site = await context.newPage();
