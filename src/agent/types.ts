@@ -148,5 +148,19 @@ export type ApprovalDecision =
   | { approved: true; editedArgs?: Record<string, unknown> }
   | { approved: false };
 
+/**
+ * Plan-approval gate (FR-AGENT-3): the runtime surfaces the proposed plan and
+ * waits for the user to approve, run an edited plan, or cancel — before any
+ * execution begins. Optional: when no approver is supplied the plan auto-runs.
+ */
+export interface PlanApprovalRequest {
+  runId: string;
+  plan: PlanStep[];
+}
+export type PlanDecision =
+  | { approved: true; editedPlan?: PlanStep[] }
+  | { approved: false };
+export type PlanApprover = (req: PlanApprovalRequest) => Promise<PlanDecision>;
+
 /** Re-exported for convenience to consumers of the agent barrel. */
 export type { CostEstimate };

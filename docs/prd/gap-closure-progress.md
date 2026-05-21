@@ -19,7 +19,7 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 29 | Live cost display in UI | FR-LLM-10, NFR-COST-2, FR-UI-5 | ✅ | (this push) | screenshot 36; e2e cost |
 | 30 | Spend caps + budget settings | NFR-COST-1, FR-SET-1 | ✅ | (this push) | screenshots 37-38; e2e budget |
 | 31 | Onboarding: BYO-key walkthrough + gating | FR-ONB-1..4 | ✅ | (this push) | screenshot 39; e2e onboarding |
-| 32 | Plan approve/edit/let-run gate | FR-AGENT-3 | ⬜ | — | — |
+| 32 | Plan approve/edit/let-run gate | FR-AGENT-3 | ✅ | (this push) | screenshots 40-41; e2e plan-gate |
 | 33 | `ask_user` tool wired | FR-TOOLS-11 | ⬜ | — | — |
 | 34 | Prompt-injection guards | NFR-SEC-6 | ⬜ | — | — |
 | 35 | CAPTCHA/login pause-and-handoff | FR-HITL-8 | ⬜ | — | — |
@@ -34,6 +34,11 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #32 — Plan approve/edit/let-run gate (FR-AGENT-3) ✅
+- **Was:** the plan was rendered then auto-executed; no approval step.
+- **Now:** the runtime takes an optional `planApprove` hook; after planning it surfaces the plan and waits. The UI shows a plan-review card (steps + Approve & run / Cancel) before any step runs; Cancel ends the run ("Plan cancelled before execution"). A Settings → Permissions toggle "Review plans before running" (default on) lets power users disable the gate (the "let-run" mode). The runtime also accepts an `editedPlan` from the gate (engine wired + unit-tested); inline editing UI is a follow-up.
+- **Proof:** 2 runtime unit tests (deny → nothing runs; edited plan re-emitted + used) → 8 runtime tests; live e2e plan-gate (cancel before execution; approve → runs). Screenshots 40-41.
 
 ### #31 — Onboarding + key gating (FR-ONB-1..4) ✅
 - **Was:** no first-run flow; the key was only reachable via Settings.

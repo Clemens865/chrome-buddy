@@ -29,6 +29,7 @@ import type {
   ActionRecord,
   AgentEvent,
   EventSink,
+  PlanApprover,
   PlanStep,
   RunOptions,
   RunOutcome,
@@ -58,6 +59,8 @@ export interface RuntimeDeps {
   onEvent?: EventSink;
   /** Vision fallback hook; defaults to the not-wired stub (FR-AGENT-13). */
   computerUse?: ComputerUseHook;
+  /** Plan-approval gate (FR-AGENT-3). When omitted, the plan auto-runs. */
+  planApprove?: PlanApprover;
   /** Target tab threaded into tool contexts. */
   tabId?: number;
   /** Run id factory (overridable for deterministic tests). */
@@ -78,6 +81,7 @@ export class AgentRuntime {
   private readonly approve: ApprovalResolver;
   private readonly emit: EventSink;
   private readonly computerUse: ComputerUseHook;
+  private readonly planApprove?: PlanApprover;
   private readonly tabId?: number;
   private readonly newRunId: () => string;
 
@@ -87,6 +91,7 @@ export class AgentRuntime {
     this.approve = deps.approve;
     this.emit = deps.onEvent ?? (() => {});
     this.computerUse = deps.computerUse ?? computerUseStub;
+    this.planApprove = deps.planApprove;
     this.tabId = deps.tabId;
     this.newRunId = deps.newRunId ?? (() => `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   }
@@ -116,12 +121,26 @@ export class AgentRuntime {
 
     try {
       // --- Plan ---------------------------------------------------------------
-      const plan = await this.planTask(task, options, state);
+      let plan = await this.planTask(task, options, state);
       scratchpad.plan = plan;
       this.emit({ type: 'plan', runId, plan });
 
       if (plan.length === 0) {
         return this.finish(state, 'failed', 'Planner produced no steps.');
+      }
+
+      // --- Plan approval gate (FR-AGENT-3) -----------------------------------
+      // Surface the plan and wait for the user before any execution begins.
+      if (this.planApprove) {
+        const decision = await this.planApprove({ runId, plan });
+        if (!decision.approved) {
+          return this.finish(state, 'cancelled', 'Plan cancelled before execution.');
+        }
+        if (decision.editedPlan && decision.editedPlan.length > 0) {
+          plan = decision.editedPlan;
+          scratchpad.plan = plan;
+          this.emit({ type: 'plan', runId, plan });
+        }
       }
 
       // --- Plan→Act→Observe→Reflect loop -------------------------------------

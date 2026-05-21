@@ -23,7 +23,7 @@
 import { AgentRuntime } from './runtime';
 import type { RuntimeLlm } from './runtime';
 import type { ApprovalResolver } from './hitl';
-import type { AgentEvent, ApprovalDecision, RunOutcome, RunState } from './types';
+import type { AgentEvent, ApprovalDecision, PlanApprover, RunOutcome, RunState } from './types';
 import { createDefaultRegistry, type ToolRegistry } from '../tools';
 import { callSkillTool } from '../tools/defs';
 import type { ToolDefinition } from '../tools/types';
@@ -95,6 +95,8 @@ export interface RunAgentTaskOptions {
   onEvent: (event: AgentEvent) => void;
   /** Resolves the HITL confirmation card. Required for consequential tools. */
   onConfirm: ConfirmHandler;
+  /** Plan-approval gate (FR-AGENT-3). When omitted, the plan auto-runs. */
+  onPlanReview?: PlanApprover;
   /** Registry model id; defaults to the registry default (gemini-3.5-flash). */
   model?: string;
   /** Cancellation signal for the whole run. */
@@ -308,6 +310,7 @@ export async function runAgentTask(
     registry,
     approve,
     onEvent: options.onEvent,
+    planApprove: options.onPlanReview,
   });
 
   const state = await runtime.run(prompt, {

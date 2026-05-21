@@ -371,6 +371,10 @@ html, body {
 .recall-chip:hover { color: var(--panel-fg); border-color: var(--accent); }
 .recall-chip .ic { width: 14px; height: 14px; flex: 0 0 14px; }
 .recall-chip-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-review { margin: 0 12px 8px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 10px; background: var(--panel-elev); }
+.plan-review-hd { font-size: 12px; font-weight: 600; color: var(--panel-fg); margin-bottom: 6px; }
+.plan-review-list { margin: 0 0 8px; padding-left: 18px; font-size: 12.5px; color: var(--panel-fg); line-height: 1.5; }
+.plan-review-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .onb { height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--panel-bg); }
 .onb-card { max-width: 360px; width: 100%; text-align: center; }
 .onb-mark { display: inline-flex; padding: 12px; border-radius: 14px; background: var(--panel-elev); margin-bottom: 14px; }

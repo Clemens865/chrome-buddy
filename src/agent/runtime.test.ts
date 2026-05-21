@@ -95,6 +95,51 @@ describe('AgentRuntime', () => {
     expect(state.finalAnswer).toContain('The page is about Acme pricing.');
   });
 
+  it('cancels before any execution when the plan gate is denied (FR-AGENT-3)', async () => {
+    const registry = makeRegistry();
+    const readHandler = registry.get('read_dom')!.handler as ReturnType<typeof vi.fn>;
+    const llm = scriptedLlm([
+      planResp(['Read the page', 'Finish']),
+      resp({ toolCalls: [call('read_dom')] }),
+    ]);
+    const runtime = new AgentRuntime({
+      llm,
+      registry,
+      approve: async () => ({ approved: true }),
+      planApprove: async () => ({ approved: false }),
+      newRunId: () => 'run_test',
+    });
+
+    const state = await runtime.run('test task', { stepBudget: 20, costBudget: 1 });
+
+    expect(state.outcome).toBe('cancelled');
+    expect(readHandler).not.toHaveBeenCalled(); // nothing ran
+  });
+
+  it('runs an edited plan when the gate returns one', async () => {
+    const registry = makeRegistry();
+    const llm = scriptedLlm([
+      planResp(['Original step']),
+      resp({ text: 'no tool' }),
+      resp({ text: 'final' }),
+    ]);
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime({
+      llm,
+      registry,
+      approve: async () => ({ approved: true }),
+      planApprove: async () => ({ approved: true, editedPlan: [{ index: 1, intent: 'Edited step' }] }),
+      onEvent: (e) => events.push(e),
+      newRunId: () => 'run_test',
+    });
+
+    const state = await runtime.run('t', { stepBudget: 20, costBudget: 1 });
+    expect(state.outcome).toBe('completed');
+    // The edited plan is re-emitted and used for execution.
+    const planEvents = events.filter((e) => e.type === 'plan');
+    expect(planEvents.at(-1)).toMatchObject({ plan: [{ index: 1, intent: 'Edited step' }] });
+  });
+
   it('fires confirmation_required for consequential tools and does NOT execute until approved', async () => {
     const registry = makeRegistry();
     const sendDef = registry.get('send_webhook')!;

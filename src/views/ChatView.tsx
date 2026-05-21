@@ -51,7 +51,7 @@ import {
   type ProfileKind,
 } from '../agent';
 
-import type { AgentEvent, ApprovalDecision } from '../agent';
+import type { AgentEvent, ApprovalDecision, PlanStep, PlanDecision } from '../agent';
 
 const SUGGESTIONS = [
   'Summarize this page',
@@ -94,6 +94,8 @@ export function ChatView({
   const [perDayCap] = usePersistedState<number>(BUDGET_KEYS.perDay, BUDGET_DEFAULTS.perDay);
   const [stepBudget] = usePersistedState<number>(BUDGET_KEYS.steps, BUDGET_DEFAULTS.steps);
   const [spentToday, setSpentToday] = useState(0);
+  const [askBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
+  const [planReview, setPlanReview] = useState<{ plan: PlanStep[]; resolve: (d: PlanDecision) => void } | null>(null);
   const [pastRuns, setPastRuns] = useState<RunRecord[]>([]);
 
   useEffect(() => {
@@ -118,6 +120,19 @@ export function ChatView({
     [input, pastRuns],
   );
   const seqRef = useRef(0);
+
+  // Plan-approval gate (FR-AGENT-3): hold the resolver until the user decides.
+  const onPlanReview = useCallback(
+    (req: { runId: string; plan: PlanStep[] }) =>
+      new Promise<PlanDecision>((resolve) => setPlanReview({ plan: req.plan, resolve })),
+    [],
+  );
+  const decidePlan = useCallback((approved: boolean) => {
+    setPlanReview((cur) => {
+      cur?.resolve(approved ? { approved: true } : { approved: false });
+      return null;
+    });
+  }, []);
 
   const submit = useCallback(
     async (text: string, forceMode?: ChatMode) => {
@@ -185,6 +200,7 @@ export function ChatView({
           const result = await runAgentTask(prompt, {
             onEvent,
             onConfirm,
+            onPlanReview: askBeforePlan ? onPlanReview : undefined,
             model: activeModel,
             costBudget: perRunCap,
             stepBudget,
@@ -215,7 +231,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget],
+    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -265,6 +281,7 @@ export function ChatView({
             const result = await runAgentTask(fullPrompt, {
               onEvent,
               onConfirm: makeOnConfirm(),
+              onPlanReview: askBeforePlan ? onPlanReview : undefined,
               model: activeModel,
               costBudget: perRunCap,
               stepBudget,
@@ -282,7 +299,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget],
+    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview],
   );
 
   // Running a skill (from the Skills view) submits its task in the skill's mode.
@@ -316,6 +333,28 @@ export function ChatView({
           </>
         )}
       </div>
+      {planReview && (
+        <div className="plan-review" role="group" aria-label="Review plan">
+          <div className="plan-review-hd">Review plan before running</div>
+          <ol className="plan-review-list">
+            {planReview.plan.map((p) => (
+              <li key={p.index}>{p.intent}</li>
+            ))}
+          </ol>
+          <div className="plan-review-actions">
+            <button type="button" className="suggest-chip" onClick={() => decidePlan(false)}>Cancel</button>
+            <button
+              type="button"
+              className="composer-send"
+              style={{ width: 'auto', padding: '0 12px', borderRadius: 8 }}
+              aria-label="Approve plan"
+              onClick={() => decidePlan(true)}
+            >
+              Approve &amp; run
+            </button>
+          </div>
+        </div>
+      )}
       {recall && !busy && (
         <button
           type="button"

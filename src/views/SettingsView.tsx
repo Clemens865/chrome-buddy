@@ -32,6 +32,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   const [profiles, setProfiles] = usePersistedState<Profiles>('userProfiles', EMPTY_PROFILES);
   const [activeProfile, setActiveProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile, setAttachProfile] = usePersistedState<boolean>('attachProfile', false);
+  const [askBeforePlan, setAskBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
   const current: UserProfile = profiles[activeProfile] ?? {};
   const updateProfile = (patch: Partial<UserProfile>) =>
     setProfiles({ ...profiles, [activeProfile]: { ...current, ...patch } });
@@ -174,6 +175,9 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
       <div className="settings-section">
         <div className="settings-section-h">Permissions</div>
         <SettingsRow t="Require confirmation for" s="Consequential actions (send · purchase · delete)"><Pill tone="ok">Always on</Pill></SettingsRow>
+        <SettingsRow t="Review plans before running" s="Approve the agent's plan before it acts">
+          <Toggle on={askBeforePlan} onChange={setAskBeforePlan} />
+        </SettingsRow>
       </div>
 
       <div className="settings-section">
