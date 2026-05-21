@@ -19,9 +19,11 @@ import {
   hasProfile,
   userItem,
   agentItem,
+  EMPTY_PROFILES,
   type ChatMode,
   type TranscriptItem,
-  type UserProfile,
+  type Profiles,
+  type ProfileKind,
 } from '../agent';
 import type { AgentEvent, ApprovalDecision } from '../agent';
 
@@ -46,7 +48,8 @@ export function ChatView() {
   const [noKey, setNoKey] = useState(false);
   const [mode, setMode] = usePersistedState<ChatMode>('chatMode', 'auto');
   const [attachPage, setAttachPage] = usePersistedState<boolean>('attachPage', true);
-  const [profile] = usePersistedState<UserProfile>('userProfile', {});
+  const [profiles] = usePersistedState<Profiles>('userProfiles', EMPTY_PROFILES);
+  const [activeProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile] = usePersistedState<boolean>('attachProfile', false);
   const pendingRef = useRef<PendingConfirm | null>(null);
   const seqRef = useRef(0);
@@ -85,9 +88,10 @@ export function ChatView() {
         if (resolveIntent(mode, prompt) === 'chat') {
           // Attach the page content (so chat sees the page without an agentic
           // read_dom round-trip) and/or the user profile, per the toggles.
-          const useProfile = attachProfile && hasProfile(profile);
+          const active = profiles[activeProfile];
+          const useProfile = attachProfile && hasProfile(active);
           const page = attachPage ? await requestPageContext() : null;
-          const context = buildContextBlock(page, useProfile ? profile : null);
+          const context = buildContextBlock(page, useProfile ? active : null, activeProfile);
           const r = await runPlainChat(prompt, { context });
           if (r.outcome === 'no-key') setNoKey(true);
           else if (r.text) setItems((prev) => [...prev, agentItem(`a_${seqRef.current++}`, r.text!)]);
@@ -103,7 +107,7 @@ export function ChatView() {
         setBusy(false);
       }
     },
-    [busy, mode, attachPage, attachProfile, profile],
+    [busy, mode, attachPage, attachProfile, profiles, activeProfile],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {

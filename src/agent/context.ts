@@ -8,6 +8,19 @@ export interface UserProfile {
   about?: string;
 }
 
+/** The user keeps two switchable profiles (cf. MicroLabs personal/professional). */
+export type ProfileKind = 'professional' | 'personal';
+
+export interface Profiles {
+  professional: UserProfile;
+  personal: UserProfile;
+}
+
+export const EMPTY_PROFILES: Profiles = {
+  professional: {},
+  personal: {},
+};
+
 export interface PageSummaryLite {
   url: string;
   title: string;
@@ -18,6 +31,7 @@ export interface PageSummaryLite {
 export function buildContextBlock(
   page: PageSummaryLite | null,
   profile: UserProfile | null,
+  profileLabel?: string,
 ): string {
   const parts: string[] = [];
 
@@ -31,7 +45,10 @@ export function buildContextBlock(
       profile.role?.trim() && `Role: ${profile.role.trim()}`,
       profile.about?.trim(),
     ].filter(Boolean);
-    if (lines.length) parts.push(`# About the user\n${lines.join('\n')}`);
+    if (lines.length) {
+      const heading = profileLabel ? `# About the user (${profileLabel})` : '# About the user';
+      parts.push(`${heading}\n${lines.join('\n')}`);
+    }
   }
 
   return parts.join('\n\n---\n\n');

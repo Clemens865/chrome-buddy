@@ -6,7 +6,7 @@ import { THEMES, type ThemeName } from '../ui/theme';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { useApiKey } from '../key/useApiKey';
-import type { UserProfile } from '../agent';
+import { EMPTY_PROFILES, type UserProfile, type Profiles, type ProfileKind } from '../agent';
 
 // The bundled registry ships a single Gemini provider; keys are stored per
 // provider id in the SW (chrome.storage.session).
@@ -25,9 +25,12 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   const theme = THEMES[themeName] ?? THEMES.slate;
   const defaultModel = DEFAULT_REGISTRY.defaultModel ?? 'gemini-3.5-flash';
   const [overlayEnabled, setOverlayEnabled] = usePersistedState<boolean>('overlayEnabled', true);
-  const [profile, setProfile] = usePersistedState<UserProfile>('userProfile', {});
+  const [profiles, setProfiles] = usePersistedState<Profiles>('userProfiles', EMPTY_PROFILES);
+  const [activeProfile, setActiveProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile, setAttachProfile] = usePersistedState<boolean>('attachProfile', false);
-  const updateProfile = (patch: Partial<UserProfile>) => setProfile({ ...profile, ...patch });
+  const current: UserProfile = profiles[activeProfile] ?? {};
+  const updateProfile = (patch: Partial<UserProfile>) =>
+    setProfiles({ ...profiles, [activeProfile]: { ...current, ...patch } });
 
   return (
     <div className="settings">
@@ -60,19 +63,34 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
 
       <div className="settings-section">
         <div className="settings-section-h">Profile</div>
+        <SettingsRow t="Active profile" s="Which profile Buddy uses when personalizing">
+          <div className="seg">
+            {(['professional', 'personal'] as ProfileKind[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                className={'seg-btn' + (activeProfile === k ? ' is-on' : '')}
+                onClick={() => setActiveProfile(k)}
+                style={{ textTransform: 'capitalize' }}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+        </SettingsRow>
         <div className="settings-row" style={{ display: 'block' }}>
           <input
             className="settings-input"
             placeholder="Your name"
-            value={profile.name ?? ''}
+            value={current.name ?? ''}
             onChange={(e) => updateProfile({ name: e.target.value })}
             aria-label="Name"
           />
           <input
             className="settings-input"
             style={{ marginTop: 6 }}
-            placeholder="Your role (e.g. Product Manager)"
-            value={profile.role ?? ''}
+            placeholder={activeProfile === 'professional' ? 'Role / company (e.g. PM at Acme)' : 'How you describe yourself'}
+            value={current.role ?? ''}
             onChange={(e) => updateProfile({ role: e.target.value })}
             aria-label="Role"
           />
@@ -80,13 +98,17 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
             className="settings-input"
             style={{ marginTop: 6, resize: 'none' }}
             rows={3}
-            placeholder="Anything Buddy should know about you or how you like answers"
-            value={profile.about ?? ''}
+            placeholder={
+              activeProfile === 'professional'
+                ? 'What you do, your goals, how you like work answers'
+                : 'Interests, background, tone you prefer'
+            }
+            value={current.about ?? ''}
             onChange={(e) => updateProfile({ about: e.target.value })}
             aria-label="About"
           />
         </div>
-        <SettingsRow t="Personalize replies" s="Include your profile with chat messages">
+        <SettingsRow t="Personalize replies" s="Attach the active profile to chat messages">
           <Toggle on={attachProfile} onChange={setAttachProfile} />
         </SettingsRow>
       </div>
