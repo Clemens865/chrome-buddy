@@ -27,6 +27,27 @@ test('live: extract top headlines from a real news page', async ({ context, exte
   await panel.screenshot({ path: path.join(SHOTS, '12-news-extract.png') });
 });
 
+test('live: agent navigates the browser to a new URL', async ({ context, extensionId }) => {
+  const site = await context.newPage();
+  await site.goto('https://example.com/', { waitUntil: 'domcontentloaded' });
+  expect(site.url()).toContain('example.com');
+
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 980 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  await panel.getByRole('button', { name: 'Agent', exact: true }).click();
+  await panel
+    .getByPlaceholder('Message Buddy…')
+    .fill('Navigate to https://news.ycombinator.com and tell me the title of the first story.');
+  await panel.getByRole('button', { name: 'Send' }).click();
+
+  // The agent should drive the browser: the tab leaves example.com for HN.
+  await site.waitForURL(/ycombinator\.com/, { timeout: 60_000 });
+  await expect(panel.locator('.msg-agent .msg-body').last()).not.toHaveText('', { timeout: 60_000 });
+  await panel.screenshot({ path: path.join(SHOTS, '14-navigate.png') });
+});
+
 test('live: navigate to a site, then list AI-related items', async ({ context, extensionId }) => {
   const site = await context.newPage();
   await site.goto('https://news.ycombinator.com/', { waitUntil: 'domcontentloaded' });
