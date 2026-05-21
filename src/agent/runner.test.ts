@@ -2,7 +2,7 @@
 // A mock `send` stands in for chrome.runtime.sendMessage so no real SW is hit.
 
 import { describe, it, expect, vi } from 'vitest';
-import { runAgentTask, buildCallSkillTool } from './runner';
+import { runAgentTask, buildCallSkillTool, askUserToolHandler } from './runner';
 import type { AgentEvent } from './types';
 import type { Skill } from '../skills/types';
 
@@ -111,5 +111,24 @@ describe('buildCallSkillTool', () => {
     const tool = buildCallSkillTool([skill]);
     const res = await tool.handler({ skillId: 'nope' }, {} as never);
     expect(res.ok).toBe(false);
+  });
+});
+
+describe('askUserToolHandler', () => {
+  it('passes the question/choices to the resolver and returns the answer', async () => {
+    let seen: { question: string; choices?: string[] } | undefined;
+    const handler = askUserToolHandler(async (req) => {
+      seen = req;
+      return 'blue';
+    });
+    const res = await handler({ question: 'Which color?', choices: ['red', 'blue'] });
+    expect(seen).toEqual({ question: 'Which color?', choices: ['red', 'blue'] });
+    expect(res.ok).toBe(true);
+    if (res.ok) expect((res.data as { answer: string }).answer).toBe('blue');
+  });
+
+  it('errors when no resolver or no question', async () => {
+    expect((await askUserToolHandler(undefined)({ question: 'x' })).ok).toBe(false);
+    expect((await askUserToolHandler(async () => 'a')({})).ok).toBe(false);
   });
 });

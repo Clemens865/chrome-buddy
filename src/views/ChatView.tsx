@@ -96,6 +96,7 @@ export function ChatView({
   const [spentToday, setSpentToday] = useState(0);
   const [askBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
   const [planReview, setPlanReview] = useState<{ plan: PlanStep[]; resolve: (d: PlanDecision) => void } | null>(null);
+  const [askUser, setAskUser] = useState<{ question: string; choices?: string[]; resolve: (a: string) => void } | null>(null);
   const [pastRuns, setPastRuns] = useState<RunRecord[]>([]);
 
   useEffect(() => {
@@ -130,6 +131,19 @@ export function ChatView({
   const decidePlan = useCallback((approved: boolean) => {
     setPlanReview((cur) => {
       cur?.resolve(approved ? { approved: true } : { approved: false });
+      return null;
+    });
+  }, []);
+
+  // ask_user (FR-TOOLS-11): pause and surface a question; resume on the answer.
+  const onAskUser = useCallback(
+    (req: { question: string; choices?: string[] }) =>
+      new Promise<string>((resolve) => setAskUser({ question: req.question, choices: req.choices, resolve })),
+    [],
+  );
+  const answerAsk = useCallback((answer: string) => {
+    setAskUser((cur) => {
+      cur?.resolve(answer);
       return null;
     });
   }, []);
@@ -201,6 +215,7 @@ export function ChatView({
             onEvent,
             onConfirm,
             onPlanReview: askBeforePlan ? onPlanReview : undefined,
+            onAskUser,
             model: activeModel,
             costBudget: perRunCap,
             stepBudget,
@@ -231,7 +246,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview],
+    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -282,6 +297,7 @@ export function ChatView({
               onEvent,
               onConfirm: makeOnConfirm(),
               onPlanReview: askBeforePlan ? onPlanReview : undefined,
+              onAskUser,
               model: activeModel,
               costBudget: perRunCap,
               stepBudget,
@@ -299,7 +315,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview],
+    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser],
   );
 
   // Running a skill (from the Skills view) submits its task in the skill's mode.
@@ -333,6 +349,7 @@ export function ChatView({
           </>
         )}
       </div>
+      {askUser && <AskUserCard question={askUser.question} choices={askUser.choices} onAnswer={answerAsk} />}
       {planReview && (
         <div className="plan-review" role="group" aria-label="Review plan">
           <div className="plan-review-hd">Review plan before running</div>
@@ -633,6 +650,51 @@ const MODES: { v: ChatMode; l: string; title: string }[] = [
   { v: 'ask', l: 'Ask', title: 'Ask: plain chat only — no tools, cheapest' },
   { v: 'agent', l: 'Agent', title: 'Agent: always plan and use tools' },
 ];
+
+// Inline prompt for the ask_user tool: choice buttons or a free-text answer.
+function AskUserCard({
+  question,
+  choices,
+  onAnswer,
+}: {
+  question: string;
+  choices?: string[];
+  onAnswer: (answer: string) => void;
+}) {
+  const [text, setText] = useState('');
+  const hasChoices = !!choices && choices.length > 0;
+  return (
+    <div className="ask-user" role="group" aria-label="Question from Buddy">
+      <div className="ask-user-q">{question}</div>
+      {hasChoices ? (
+        <div className="ask-user-choices">
+          {choices!.map((c) => (
+            <button key={c} type="button" className="suggest-chip" onClick={() => onAnswer(c)}>
+              {c}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="ask-user-form">
+          <input
+            className="settings-input"
+            placeholder="Your answer…"
+            value={text}
+            autoFocus
+            aria-label="Answer"
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && text.trim()) onAnswer(text.trim());
+            }}
+          />
+          <button type="button" className="composer-send" style={{ width: 'auto', padding: '0 12px', borderRadius: 8 }} aria-label="Send answer" disabled={!text.trim()} onClick={() => onAnswer(text.trim())}>
+            Answer
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ChatComposer({
   input,

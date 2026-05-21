@@ -46,8 +46,11 @@ import type {
 /** Page read/act tools that execute in the SW via TOOL_EXEC. */
 const PAGE_TOOLS = new Set(['read_dom', 'extract', 'screenshot', 'navigate', 'click', 'type', 'scroll']);
 
-/** Tools the agent may use: page tools + search_web + file + consequential (HITL-gated) tools. */
-const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'search_web', 'send_webhook', 'write_file', 'read_file']);
+/** Tools the agent may use: page tools + search_web + file + ask_user + consequential (HITL-gated). */
+const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'search_web', 'send_webhook', 'write_file', 'read_file', 'ask_user']);
+
+/** Resolver the agent awaits when it calls ask_user (FR-TOOLS-11). */
+export type AskUserHandler = (req: { question: string; choices?: string[] }) => Promise<string>;
 
 /** File tools run in the UI (they hold the File System Access handle, which the
  * SW can't). read_file requires a root folder; write_file uses the root folder
@@ -97,6 +100,8 @@ export interface RunAgentTaskOptions {
   onConfirm: ConfirmHandler;
   /** Plan-approval gate (FR-AGENT-3). When omitted, the plan auto-runs. */
   onPlanReview?: PlanApprover;
+  /** Resolver for the ask_user tool (FR-TOOLS-11). */
+  onAskUser?: AskUserHandler;
   /** Registry model id; defaults to the registry default (gemini-3.5-flash). */
   model?: string;
   /** Cancellation signal for the whole run. */
@@ -185,6 +190,18 @@ export function buildCallSkillTool(skills: Skill[], deps?: CallSkillDeps): ToolD
   };
 }
 
+/** ask_user (FR-TOOLS-11): pause the run, get the user's answer, feed it back. */
+export function askUserToolHandler(onAskUser?: AskUserHandler) {
+  return async (args: Record<string, unknown>): Promise<ToolResult> => {
+    if (!onAskUser) return err('runtime-error', 'ask_user is not available in this context.');
+    const question = typeof args.question === 'string' ? args.question : '';
+    if (!question.trim()) return err('invalid-args', 'ask_user requires a "question".');
+    const choices = Array.isArray(args.choices) ? (args.choices as unknown[]).map(String) : undefined;
+    const answer = await onAskUser({ question, choices });
+    return ok({ answer });
+  };
+}
+
 /** Probe whether a Gemini key is set in the SW (KEY_STATUS; never returns it). */
 async function hasKey(send: (m: unknown) => Promise<unknown>): Promise<boolean> {
   const msg: KeyStatusMessage = { type: 'KEY_STATUS', provider: GEMINI_PROVIDER };
@@ -221,20 +238,24 @@ function wireRegistry(
   factory: () => ToolRegistry,
   skills: Skill[] = [],
   callSkillDeps?: CallSkillDeps,
+  onAskUser?: AskUserHandler,
 ): ToolRegistry {
   const base = factory();
   const wired = new (base.constructor as typeof ToolRegistry)();
   for (const def of base.list()) {
-    // Only expose tools the agent can actually run: the page tools plus
-    // search_web, send_webhook, and write_file, all executed in the SW via
-    // TOOL_EXEC. send_webhook/write_file keep their `consequential` flag, so the
-    // runtime's HITL gate fires before they run. Remaining stubs (read_file,
-    // ask_user) are NOT declared, so the model can't pick a tool that fails.
+    // Only expose tools the agent can actually run. Page tools + search_web +
+    // send_webhook route through the SW (TOOL_EXEC); read/write_file and ask_user
+    // run UI-side (they need the FSA handle / a user prompt). send_webhook/
+    // write_file keep their `consequential` flag so the HITL gate fires first.
     if (AGENT_TOOLS.has(def.name)) {
-      const handler =
-        def.name === 'read_file' || def.name === 'write_file'
-          ? fileToolHandler(def.name, send)
-          : (args: Record<string, unknown>) => execPageTool(send, def.name, args);
+      let handler;
+      if (def.name === 'read_file' || def.name === 'write_file') {
+        handler = fileToolHandler(def.name, send);
+      } else if (def.name === 'ask_user') {
+        handler = askUserToolHandler(onAskUser);
+      } else {
+        handler = (args: Record<string, unknown>) => execPageTool(send, def.name, args);
+      }
       wired.register({ ...def, handler });
     }
   }
@@ -291,10 +312,13 @@ export async function runAgentTask(
 
   const model = options.model ?? DEFAULT_REGISTRY.defaultModel;
   const skills = options.exposeSkills === false ? [] : await listSavedSkills(send);
-  const registry = wireRegistry(send, options.makeRegistry ?? createDefaultRegistry, skills, {
+  const registry = wireRegistry(
     send,
-    onConfirm: options.onConfirm,
-  });
+    options.makeRegistry ?? createDefaultRegistry,
+    skills,
+    { send, onConfirm: options.onConfirm },
+    options.onAskUser,
+  );
 
   const approve: ApprovalResolver = (request) =>
     options.onConfirm({

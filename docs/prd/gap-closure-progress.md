@@ -20,7 +20,7 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 30 | Spend caps + budget settings | NFR-COST-1, FR-SET-1 | ✅ | (this push) | screenshots 37-38; e2e budget |
 | 31 | Onboarding: BYO-key walkthrough + gating | FR-ONB-1..4 | ✅ | (this push) | screenshot 39; e2e onboarding |
 | 32 | Plan approve/edit/let-run gate | FR-AGENT-3 | ✅ | (this push) | screenshots 40-41; e2e plan-gate |
-| 33 | `ask_user` tool wired | FR-TOOLS-11 | ⬜ | — | — |
+| 33 | `ask_user` tool wired | FR-TOOLS-11 | ✅ | (this push) | screenshots 42-43; e2e ask-user |
 | 34 | Prompt-injection guards | NFR-SEC-6 | ⬜ | — | — |
 | 35 | CAPTCHA/login pause-and-handoff | FR-HITL-8 | ⬜ | — | — |
 | 36 | Agent resumability across SW restart | FR-AGENT-8, NFR-REL-3 | ⬜ | — | — |
@@ -34,6 +34,11 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #33 — ask_user tool (FR-TOOLS-11) ✅
+- **Was:** ask_user was a stub, not exposed to the agent.
+- **Now:** ask_user is exposed and runs UI-side. When the agent calls it, the run pauses on a Promise; the panel shows an inline prompt (choice buttons when the model supplies `choices`, else a free-text answer); the answer is returned as the tool result and the agent resumes. Threaded via `runAgentTask({ onAskUser })` for both chat and workflow agent steps.
+- **Proof:** 2 runner unit tests (handler passes question/choices, returns answer; errors without a resolver/question) → 7 runner tests; live e2e ask-user: agent calls ask_user → inline "Pick a color: red/blue" → answer → final reply mentions the pick. Screenshots 42-43.
 
 ### #32 — Plan approve/edit/let-run gate (FR-AGENT-3) ✅
 - **Was:** the plan was rendered then auto-executed; no approval step.
