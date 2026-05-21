@@ -18,7 +18,7 @@ import {
   type BuddyMessage,
   type BuddyResponse,
 } from '../key/messages';
-import { getLlmClient, resolveProviderId } from '../llm/instance';
+import { getLlmClient, resolveProviderId, readSessionApiKey } from '../llm/instance';
 import { LlmClient } from '../llm/client';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { executePageTool, capturePageContext } from './pageTools';
@@ -92,14 +92,13 @@ async function generateImageNative(
   return { type: 'ERROR', ok: false, error: 'The model did not return an image.' };
 }
 
-/** Read a provider's API key from chrome.storage.local (persists across reloads). */
+/**
+ * Resolve a provider's key: in-app key (storage.local) → DEV .env fallback.
+ * Delegates to the single resolver in instance.ts so KEY_STATUS, LLM_GENERATE
+ * and IMAGE_GENERATE all honor the same lookup.
+ */
 async function getStoredKey(provider: string): Promise<string | undefined> {
-  const store = chrome.storage?.local;
-  if (!store) return undefined;
-  const storageKey = apiKeyStorageKey(provider);
-  const res = await store.get(storageKey);
-  const value = (res as Record<string, unknown>)[storageKey];
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
+  return readSessionApiKey(provider);
 }
 
 /**

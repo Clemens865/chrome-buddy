@@ -29,6 +29,8 @@ let local: ReturnType<typeof makeSessionStore>;
 let sendMessage: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  // Keep tests deterministic regardless of a contributor's local .env key.
+  vi.stubEnv('VITE_GEMINI_API_KEY', '');
   local = makeSessionStore();
   sendMessage = vi.fn();
   (globalThis as { chrome?: unknown }).chrome = {
@@ -44,6 +46,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (globalThis as { chrome?: unknown }).chrome;
+  vi.unstubAllEnvs();
   vi.resetModules();
 });
 

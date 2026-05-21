@@ -30,14 +30,25 @@ import type {
   LlmGenerateResponse,
 } from '../key/messages';
 
-/** Read a provider's API key from chrome.storage.local (SW context only). */
+/**
+ * Resolve a provider's API key: the in-app key (chrome.storage.local) first,
+ * then a DEV-ONLY .env fallback (VITE_GEMINI_API_KEY) so contributors/tests can
+ * run without re-entering a key. The env value is inlined into the build — never
+ * commit a real key or ship a build containing one.
+ */
 export async function readSessionApiKey(provider: string): Promise<string | undefined> {
   const store = chrome.storage?.local;
-  if (!store) return undefined;
-  const storageKey = apiKeyStorageKey(provider);
-  const res = await store.get(storageKey);
-  const value = (res as Record<string, unknown>)[storageKey];
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
+  if (store) {
+    const storageKey = apiKeyStorageKey(provider);
+    const res = await store.get(storageKey);
+    const value = (res as Record<string, unknown>)[storageKey];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  const envKey = import.meta.env?.VITE_GEMINI_API_KEY;
+  if (provider === 'google-gemini' && typeof envKey === 'string' && envKey.length > 0) {
+    return envKey;
+  }
+  return undefined;
 }
 
 /**
