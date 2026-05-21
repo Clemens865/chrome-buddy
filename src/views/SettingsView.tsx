@@ -1,11 +1,12 @@
 // SettingsView.tsx — real settings: appearance (theme + accent), BYO key, model.
 // No mock account/usage data.
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Pill } from '../ui/primitives';
 import { THEMES, type ThemeName } from '../ui/theme';
 import { selectableModels, useActiveModel } from '../llm/modelPref';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { useApiKey } from '../key/useApiKey';
+import { isFsSupported, pickRootFolder, forgetRootFolder, rootFolderName } from '../fs/root';
 import { EMPTY_PROFILES, type UserProfile, type Profiles, type ProfileKind } from '../agent';
 import { clearHistory } from '../memory/request';
 
@@ -150,6 +151,13 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
       </div>
 
       <div className="settings-section">
+        <div className="settings-section-h">Files</div>
+        <SettingsRow t="Root folder" s="Read/write files here (read_file · write_file · save)">
+          <RootFolderControl />
+        </SettingsRow>
+      </div>
+
+      <div className="settings-section">
         <div className="settings-section-h">Permissions</div>
         <SettingsRow t="Require confirmation for" s="Consequential actions (send · purchase · delete)"><Pill tone="ok">Always on</Pill></SettingsRow>
       </div>
@@ -173,6 +181,52 @@ function SettingsRow({ t, s, children }: { t: string; s: string; children: React
         </div>
       </div>
       <div className="settings-row-r">{children}</div>
+    </div>
+  );
+}
+
+// Root-folder picker: choose a folder once (gesture), shows its name, forget it.
+function RootFolderControl() {
+  const [name, setName] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const supported = isFsSupported();
+
+  useEffect(() => {
+    void rootFolderName().then(setName);
+  }, []);
+
+  if (!supported) {
+    return <Pill>Not supported in this browser</Pill>;
+  }
+
+  const choose = async () => {
+    setBusy(true);
+    try {
+      const picked = await pickRootFolder();
+      if (picked) setName(picked);
+    } catch {
+      // user dismissed the picker — ignore
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const forget = async () => {
+    await forgetRootFolder();
+    setName(null);
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      {name && <Pill tone="ok">{name}</Pill>}
+      <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void choose()}>
+        {name ? 'Change' : 'Choose folder'}
+      </button>
+      {name && (
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void forget()}>
+          Forget
+        </button>
+      )}
     </div>
   );
 }

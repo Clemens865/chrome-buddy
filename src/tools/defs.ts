@@ -282,8 +282,8 @@ export const readFileTool: ToolDefinition = {
 export const writeFileTool: ToolDefinition = {
   name: 'write_file',
   description:
-    'Save text content to a file in the user\'s Downloads folder. Use for exporting ' +
-    'results, notes, CSV, or code. Requires user confirmation.',
+    "Save text content to a file in the user's chosen root folder (or Downloads if no " +
+    'folder is set). Use for exporting results, notes, CSV, or code. Requires user confirmation.',
   paramsSchema: objectSchema(
     {
       path: {

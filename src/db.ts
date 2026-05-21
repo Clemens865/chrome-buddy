@@ -4,7 +4,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 export const DB_NAME = 'chrome-buddy';
-const VERSION = 4;
+const VERSION = 5;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -23,6 +23,11 @@ export function getDB(): Promise<IDBPDatabase> {
         }
         if (!d.objectStoreNames.contains('apps')) {
           d.createObjectStore('apps', { keyPath: 'id' }).createIndex('createdAt', 'createdAt');
+        }
+        // Out-of-line store for the File System Access root folder handle
+        // (a structured-cloneable FileSystemDirectoryHandle, keyed 'root').
+        if (!d.objectStoreNames.contains('fsroot')) {
+          d.createObjectStore('fsroot');
         }
       },
     });

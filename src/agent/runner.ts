@@ -28,6 +28,7 @@ import { createDefaultRegistry, type ToolRegistry } from '../tools';
 import { callSkillTool } from '../tools/defs';
 import type { ToolDefinition } from '../tools/types';
 import { ok, err, type ToolResult } from '../types';
+import { getRootHandle, readFromRoot, writeToRoot } from '../fs/root';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import type { Skill } from '../skills/types';
 import type {
@@ -45,8 +46,33 @@ import type {
 /** Page read/act tools that execute in the SW via TOOL_EXEC. */
 const PAGE_TOOLS = new Set(['read_dom', 'extract', 'screenshot', 'navigate', 'click', 'type', 'scroll']);
 
-/** Tools the agent may use: page tools + search_web + consequential (HITL-gated) tools. */
-const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'search_web', 'send_webhook', 'write_file']);
+/** Tools the agent may use: page tools + search_web + file + consequential (HITL-gated) tools. */
+const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'search_web', 'send_webhook', 'write_file', 'read_file']);
+
+/** File tools run in the UI (they hold the File System Access handle, which the
+ * SW can't). read_file requires a root folder; write_file uses the root folder
+ * when set, else falls back to the SW download path. */
+function fileToolHandler(name: string, send: (m: unknown) => Promise<unknown>) {
+  return async (args: Record<string, unknown>): Promise<ToolResult> => {
+    const path = typeof args.path === 'string' ? args.path : '';
+    try {
+      if (name === 'read_file') {
+        const contents = await readFromRoot(path);
+        return ok({ path, contents });
+      }
+      // write_file
+      const contents = typeof args.contents === 'string' ? args.contents : '';
+      if (await getRootHandle()) {
+        const written = await writeToRoot(path, contents);
+        return ok({ path: written, bytes: contents.length, target: 'root-folder' });
+      }
+      // No root folder chosen — fall back to a Downloads save (SW).
+      return execPageTool(send, 'write_file', args);
+    } catch (e) {
+      return err('runtime-error', e instanceof Error ? e.message : String(e));
+    }
+  };
+}
 
 /** Provider id whose key custody backs the default model. */
 const GEMINI_PROVIDER = 'google-gemini';
@@ -199,10 +225,11 @@ function wireRegistry(
     // runtime's HITL gate fires before they run. Remaining stubs (read_file,
     // ask_user) are NOT declared, so the model can't pick a tool that fails.
     if (AGENT_TOOLS.has(def.name)) {
-      wired.register({
-        ...def,
-        handler: (args) => execPageTool(send, def.name, args as Record<string, unknown>),
-      });
+      const handler =
+        def.name === 'read_file' || def.name === 'write_file'
+          ? fileToolHandler(def.name, send)
+          : (args: Record<string, unknown>) => execPageTool(send, def.name, args);
+      wired.register({ ...def, handler });
     }
   }
   // call_skill is only exposed when the user actually has saved skills; its
