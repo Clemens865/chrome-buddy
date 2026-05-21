@@ -40,6 +40,7 @@ async function generateImageNative(
   providerId: string,
   model: string,
   prompt: string,
+  aspect?: string,
   inputImage?: string,
 ): Promise<BuddyResponse> {
   const key = await getStoredKey(providerId);
@@ -58,15 +59,15 @@ async function generateImageNative(
     if (match) parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
   }
 
+  const generationConfig: Record<string, unknown> = { responseModalities: ['IMAGE'] };
+  if (aspect) generationConfig.responseFormat = { image: { aspectRatio: aspect } };
+
   let resp: Response;
   try {
     resp = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts }],
-        generationConfig: { responseModalities: ['IMAGE'] },
-      }),
+      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig }),
     });
   } catch (err) {
     return { type: 'ERROR', ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -185,7 +186,13 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         if (!key) {
           return { type: 'ERROR', ok: false, error: `No API key set for provider '${providerId}'.` };
         }
-        return generateImageNative(providerId, message.model, message.prompt, message.inputImage);
+        return generateImageNative(
+          providerId,
+          message.model,
+          message.prompt,
+          message.aspect,
+          message.inputImage,
+        );
       }
 
       default: {

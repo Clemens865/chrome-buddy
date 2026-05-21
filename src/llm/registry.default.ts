@@ -5,20 +5,25 @@
 // It is pure, inert data — adding a model later is a one-line edit here or a
 // remote config push, with zero code change (LOCKED #6; research/07 §B).
 //
-// Prices/IDs/context windows are sourced from docs/research/03-gemini-models.md
-// (May 2026). The Gemini lineup moves fast — treat these as data to be edited.
+// Model IDs are the EXACT API strings from the official source
+// (https://ai.google.dev/gemini-api/docs/models, verified 2026-05-21).
+// Preview models keep their `-preview[-MM-YYYY]` suffix exactly as documented.
+// Default is a stable GA model so chat works out of the box; pick others in
+// Settings (or via remote config) as needed.
 
 import type { ModelRegistry } from './types';
 
+const GEMINI = 'google-gemini';
+
 export const DEFAULT_REGISTRY: ModelRegistry = {
-  schemaVersion: '1.0',
-  defaultModel: 'gemini-3.5-flash',
+  schemaVersion: '1.1',
+  defaultModel: 'gemini-2.5-flash',
   providers: {
     'google-gemini': {
       id: 'google-gemini',
       displayName: 'Google Gemini',
-      // Gemini exposes an OpenAI-compatible endpoint, so the bundled
-      // openai-compatible adapter covers it (and OpenRouter / Ollama).
+      // Chat/text goes through Gemini's OpenAI-compatible endpoint; image gen
+      // uses the native generateContent endpoint (handled in the background SW).
       adapter: 'openai-compatible',
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
       auth: { method: 'bearer', keyRef: 'secret:gemini' },
@@ -26,110 +31,163 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
     },
   },
   models: {
-    // ⭐ Recommended default workhorse (GA): frontier reasoning, 1M context,
-    // multimodal, ~4x faster output. (research/03 §1, §8)
-    'gemini-3.5-flash': {
-      id: 'gemini-3.5-flash',
-      provider: 'google-gemini',
-      displayName: 'Gemini 3.5 Flash',
+    // ── Gemini 2.5 (stable GA — reliable workhorses) ─────────────────────────
+    'gemini-2.5-flash': {
+      id: 'gemini-2.5-flash',
+      provider: GEMINI,
+      displayName: 'Gemini 2.5 Flash',
       contextWindow: 1_048_576,
       maxOutputTokens: 65_536,
-      pricing: { inputPerMTok: 1.5, outputPerMTok: 9.0, cachedInputPerMTok: 0.15 },
-      capabilities: {
-        vision: true,
-        tools: true,
-        thinking: true,
-        jsonMode: true,
-        streaming: true,
-      },
+      pricing: { inputPerMTok: 0.3, outputPerMTok: 2.5 },
+      capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
       defaultParams: { temperature: 0.7 },
-      paramMap: {},
       tier: 'standard',
       enabled: true,
     },
-
-    // Cheapest budget / lowest-latency cloud (legacy 2.5 line, paid-only).
+    'gemini-2.5-pro': {
+      id: 'gemini-2.5-pro',
+      provider: GEMINI,
+      displayName: 'Gemini 2.5 Pro',
+      contextWindow: 1_048_576,
+      maxOutputTokens: 65_536,
+      pricing: { inputPerMTok: 1.25, outputPerMTok: 10.0 },
+      capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
+      defaultParams: { temperature: 0.7 },
+      tier: 'pro',
+      enabled: true,
+    },
     'gemini-2.5-flash-lite': {
       id: 'gemini-2.5-flash-lite',
-      provider: 'google-gemini',
+      provider: GEMINI,
       displayName: 'Gemini 2.5 Flash-Lite',
       contextWindow: 1_048_576,
       maxOutputTokens: 65_536,
       pricing: { inputPerMTok: 0.1, outputPerMTok: 0.4 },
-      capabilities: {
-        vision: true,
-        tools: true,
-        thinking: false,
-        jsonMode: true,
-        streaming: true,
-      },
+      capabilities: { vision: true, tools: true, thinking: false, jsonMode: true, streaming: true },
       defaultParams: { temperature: 0.7 },
-      paramMap: {},
       tier: 'lite',
       enabled: true,
     },
 
-    // Flagship reasoning — reserve for hard requests (8x output cost, 2M ctx).
-    'gemini-3.1-pro': {
-      id: 'gemini-3.1-pro',
-      provider: 'google-gemini',
-      displayName: 'Gemini 3.1 Pro',
-      contextWindow: 2_000_000,
+    // ── Gemini 3 (newer; 3.5-flash stable, others preview) ───────────────────
+    'gemini-3.5-flash': {
+      id: 'gemini-3.5-flash',
+      provider: GEMINI,
+      displayName: 'Gemini 3.5 Flash',
+      contextWindow: 1_048_576,
       maxOutputTokens: 65_536,
-      pricing: { inputPerMTok: 2.0, outputPerMTok: 12.0, cachedInputPerMTok: 0.2 },
-      capabilities: {
-        vision: true,
-        tools: true,
-        thinking: true,
-        jsonMode: true,
-        streaming: true,
-      },
+      pricing: { inputPerMTok: 1.5, outputPerMTok: 9.0, cachedInputPerMTok: 0.15 },
+      capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
       defaultParams: { temperature: 0.7 },
-      paramMap: {},
+      tier: 'standard',
+      enabled: true,
+    },
+    'gemini-3.1-pro-preview': {
+      id: 'gemini-3.1-pro-preview',
+      provider: GEMINI,
+      displayName: 'Gemini 3.1 Pro (preview)',
+      contextWindow: 1_048_576,
+      maxOutputTokens: 65_536,
+      pricing: { inputPerMTok: 2.0, outputPerMTok: 12.0 },
+      capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
+      defaultParams: { temperature: 0.7 },
       tier: 'pro',
       enabled: true,
     },
+    'gemini-3-flash-preview': {
+      id: 'gemini-3-flash-preview',
+      provider: GEMINI,
+      displayName: 'Gemini 3 Flash (preview)',
+      contextWindow: 1_048_576,
+      maxOutputTokens: 65_536,
+      pricing: { inputPerMTok: 0.5, outputPerMTok: 3.0 },
+      capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
+      defaultParams: { temperature: 0.7 },
+      tier: 'standard',
+      enabled: true,
+    },
+    'gemini-3.1-flash-lite': {
+      id: 'gemini-3.1-flash-lite',
+      provider: GEMINI,
+      displayName: 'Gemini 3.1 Flash-Lite',
+      contextWindow: 1_048_576,
+      maxOutputTokens: 65_536,
+      pricing: { inputPerMTok: 0.25, outputPerMTok: 1.5 },
+      capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
+      defaultParams: { temperature: 0.7 },
+      tier: 'lite',
+      enabled: true,
+    },
 
-    // Purpose-built browser automation: sees a screen, performs UI actions.
-    'gemini-2.5-computer-use': {
-      id: 'gemini-2.5-computer-use',
-      provider: 'google-gemini',
-      displayName: 'Gemini 2.5 Computer Use',
+    // ── Browser automation ───────────────────────────────────────────────────
+    'gemini-2.5-computer-use-preview-10-2025': {
+      id: 'gemini-2.5-computer-use-preview-10-2025',
+      provider: GEMINI,
+      displayName: 'Gemini 2.5 Computer Use (preview)',
       contextWindow: 1_048_576,
       maxOutputTokens: 65_536,
       pricing: { inputPerMTok: 1.25, outputPerMTok: 10.0 },
-      capabilities: {
-        vision: true,
-        tools: true,
-        thinking: false,
-        jsonMode: false,
-        streaming: true,
-        computerUse: true,
-      },
+      capabilities: { vision: true, tools: true, thinking: false, jsonMode: false, streaming: true, computerUse: true },
       defaultParams: { temperature: 0.7 },
-      paramMap: {},
       tier: 'specialized',
       enabled: true,
     },
 
-    // Nano Banana — native image generation/editing. Uses the native
-    // generateContent endpoint (responseModalities: IMAGE), not the chat adapter.
+    // ── Image generation (Nano Banana family; native generateContent) ────────
     'gemini-2.5-flash-image': {
       id: 'gemini-2.5-flash-image',
-      provider: 'google-gemini',
-      displayName: 'Nano Banana (image)',
+      provider: GEMINI,
+      displayName: 'Nano Banana — image (2.5 Flash)',
       contextWindow: 32_768,
       maxOutputTokens: 8_192,
       pricing: { inputPerMTok: 0.3, outputPerMTok: 30.0 },
-      capabilities: {
-        vision: true,
-        tools: false,
-        thinking: false,
-        jsonMode: false,
-        streaming: false,
-      },
-      defaultParams: {},
-      paramMap: {},
+      capabilities: { vision: true, imageOutput: true },
+      tier: 'specialized',
+      enabled: true,
+    },
+    'gemini-3.1-flash-image-preview': {
+      id: 'gemini-3.1-flash-image-preview',
+      provider: GEMINI,
+      displayName: 'Nano Banana 2 — image (3.1 Flash, preview)',
+      contextWindow: 32_768,
+      maxOutputTokens: 8_192,
+      pricing: { inputPerMTok: 0.5, outputPerMTok: 30.0 },
+      capabilities: { vision: true, imageOutput: true },
+      tier: 'specialized',
+      enabled: true,
+    },
+    'gemini-3-pro-image-preview': {
+      id: 'gemini-3-pro-image-preview',
+      provider: GEMINI,
+      displayName: 'Nano Banana Pro — image (3 Pro, preview)',
+      contextWindow: 32_768,
+      maxOutputTokens: 8_192,
+      pricing: { inputPerMTok: 2.0, outputPerMTok: 60.0 },
+      capabilities: { vision: true, imageOutput: true },
+      tier: 'specialized',
+      enabled: true,
+    },
+
+    // ── Embeddings (embedContent endpoint; not used by chat) ─────────────────
+    'gemini-embedding-001': {
+      id: 'gemini-embedding-001',
+      provider: GEMINI,
+      displayName: 'Gemini Embedding 001',
+      contextWindow: 2_048,
+      maxOutputTokens: 1,
+      pricing: { inputPerMTok: 0.15, outputPerMTok: 0 },
+      capabilities: { embedding: true },
+      tier: 'specialized',
+      enabled: true,
+    },
+    'gemini-embedding-2': {
+      id: 'gemini-embedding-2',
+      provider: GEMINI,
+      displayName: 'Gemini Embedding 2 (multimodal)',
+      contextWindow: 8_192,
+      maxOutputTokens: 1,
+      pricing: { inputPerMTok: 0.2, outputPerMTok: 0 },
+      capabilities: { embedding: true },
       tier: 'specialized',
       enabled: true,
     },

@@ -127,6 +127,10 @@ export interface ModelCapabilities {
   streaming?: boolean;
   /** Purpose-built for browser automation (e.g. computer-use). */
   computerUse?: boolean;
+  /** Generates images (native generateContent w/ responseModalities: IMAGE). */
+  imageOutput?: boolean;
+  /** Text/multimodal embedding model (embedContent endpoint). */
+  embedding?: boolean;
 }
 
 /** Per-million-token pricing (USD). Tier-aware pricing is summarized here. */

@@ -7,6 +7,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { Ic, BuddyMark } from '../ui/icons';
+import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import {
   runAgentTask,
   reduceTranscript,
@@ -15,6 +16,8 @@ import {
   type TranscriptItem,
 } from '../agent';
 import type { AgentEvent, ApprovalDecision } from '../agent';
+
+const DEFAULT_MODEL = DEFAULT_REGISTRY.defaultModel ?? 'gemini-2.5-flash';
 
 const SUGGESTIONS = [
   'Summarize this page',
@@ -358,7 +361,7 @@ function ChatComposer({
           <span className="ctx-chip-dot" />
           This page
         </span>
-        <span className="composer-model">gemini-3.5-flash</span>
+        <span className="composer-model">{DEFAULT_MODEL}</span>
       </div>
     </div>
   );

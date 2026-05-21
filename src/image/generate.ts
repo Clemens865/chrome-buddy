@@ -94,7 +94,7 @@ export async function generateImage(req: GenerateRequest): Promise<GenerateOutco
 
   try {
     // Image models use the native generateContent endpoint, not the chat adapter.
-    const dataUrl = await generateImageViaBackground({ model: IMAGE_MODEL, prompt });
+    const dataUrl = await generateImageViaBackground({ model: IMAGE_MODEL, prompt, aspect });
     if (!dataUrl) {
       return {
         ok: false,

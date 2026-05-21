@@ -85,6 +85,8 @@ export interface ImageGenerateMessage {
   /** Image-capable registry model id (e.g. 'gemini-2.5-flash-image'). */
   model: string;
   prompt: string;
+  /** Optional aspect ratio (e.g. '1:1', '16:9') → responseFormat.image.aspectRatio. */
+  aspect?: string;
   /** Optional input image (data URL) for edit-with-AI. */
   inputImage?: string;
 }

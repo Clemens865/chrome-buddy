@@ -4,6 +4,9 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { Ic, BuddyMark } from '../ui/icons';
 import { IconBtn } from '../ui/primitives';
+import { DEFAULT_REGISTRY } from '../llm/registry.default';
+
+const DEFAULT_MODEL = DEFAULT_REGISTRY.defaultModel ?? 'gemini-2.5-flash';
 
 export type View = 'chat' | 'apps' | 'skills' | 'flows' | 'history' | 'settings';
 
@@ -16,7 +19,7 @@ const RAIL_ITEMS: { id: View; icon: ReactElement; label: string }[] = [
 ];
 
 const TITLES: Record<View, { title: string; sub: string }> = {
-  chat: { title: 'Chat with Buddy', sub: 'gemini-3.5-flash' },
+  chat: { title: 'Chat with Buddy', sub: DEFAULT_MODEL },
   apps: { title: 'Apps', sub: 'Tailored tools for one job' },
   skills: { title: 'Skills', sub: 'Saved, parameterized actions' },
   flows: { title: 'Workflows', sub: 'Multi-step automations' },
