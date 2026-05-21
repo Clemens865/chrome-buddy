@@ -21,7 +21,8 @@
     "test:e2e:modelpicker": "playwright test model-picker.spec.ts",
     "test:e2e:voice": "playwright test voice.spec.ts",
     "test:e2e:triggers": "playwright test workflow-triggers.spec.ts",
-    "test:e2e:filewrite": "playwright test file-write.spec.ts"
+    "test:e2e:filewrite": "playwright test file-write.spec.ts",
+    "test:e2e:recall": "playwright test recall.spec.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",

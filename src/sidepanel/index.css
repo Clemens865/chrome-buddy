@@ -367,6 +367,10 @@ html, body {
 .msg-speak.is-on { color: var(--accent); opacity: 1; }
 .msg-speak .ic { width: 15px; height: 15px; }
 .wf-due-badge { margin-left: 6px; font-size: 10px; font-weight: 600; color: #fff; background: var(--accent); border-radius: 5px; padding: 1px 6px; vertical-align: middle; }
+.recall-chip { display: flex; align-items: center; gap: 6px; width: calc(100% - 24px); margin: 0 12px 6px; padding: 6px 10px; border: 1px solid var(--panel-border); border-radius: 9px; background: var(--panel-elev); color: var(--panel-muted); cursor: pointer; font-size: 12px; text-align: left; }
+.recall-chip:hover { color: var(--panel-fg); border-color: var(--accent); }
+.recall-chip .ic { width: 14px; height: 14px; flex: 0 0 14px; }
+.recall-chip-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; resize: none; font: inherit; font-size: 13.5px; color: var(--panel-fg); padding: 8px 4px; max-height: 120px; line-height: 1.4; }
 .composer-input::placeholder { color: var(--panel-muted-soft); }
 .composer-send { width: 30px; height: 30px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 30px; }

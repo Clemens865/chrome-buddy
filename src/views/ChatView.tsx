@@ -5,7 +5,7 @@
 // inline → final answer. The API key is never touched here; everything routes
 // through the background (see src/agent/runner.ts for the security posture).
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PendingRun } from '../ui/PanelApp';
 import type { Workflow } from '../workflows/types';
 import { Ic, BuddyMark } from '../ui/icons';
@@ -14,8 +14,10 @@ import { ArtifactCard, ArtifactView } from './Artifacts';
 import { extractArtifacts, type Artifact } from '../artifacts/extract';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { requestPageContext } from '../page/request';
-import { persistRun } from '../memory/request';
+import { persistRun, fetchRuns } from '../memory/request';
 import { buildRunRecord } from '../memory/buildRecord';
+import { findSimilarRun } from '../memory/recall';
+import type { RunRecord } from '../memory/types';
 import { useActiveModel } from '../llm/modelPref';
 import {
   isSTTSupported,
@@ -80,7 +82,18 @@ export function ChatView({
   const [activeProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile] = usePersistedState<boolean>('attachProfile', false);
   const [activeModel] = useActiveModel();
+  const [pastRuns, setPastRuns] = useState<RunRecord[]>([]);
   const pendingRef = useRef<PendingConfirm | null>(null);
+
+  // Learned-flow recall: keep recent runs handy and suggest reusing a similar
+  // past one as the user types. Reload when a run finishes (busy -> false).
+  useEffect(() => {
+    if (!busy) void fetchRuns().then(setPastRuns);
+  }, [busy]);
+  const recall = useMemo(
+    () => (input.trim().length >= 6 ? findSimilarRun(input, pastRuns) : null),
+    [input, pastRuns],
+  );
   const seqRef = useRef(0);
 
   const submit = useCallback(
@@ -251,6 +264,17 @@ export function ChatView({
           </>
         )}
       </div>
+      {recall && !busy && (
+        <button
+          type="button"
+          className="recall-chip"
+          onClick={() => void submit(recall.run.task, recall.run.kind === 'agent' ? 'agent' : 'ask')}
+          title="Reuse a similar past run"
+        >
+          <span className="ic">{Ic.history}</span>
+          <span className="recall-chip-txt">Reuse: {recall.run.task}</span>
+        </button>
+      )}
       <ChatComposer
         input={input}
         onChange={setInput}
