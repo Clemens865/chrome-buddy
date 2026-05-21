@@ -40,7 +40,6 @@ async function generateImageNative(
   providerId: string,
   model: string,
   prompt: string,
-  aspect?: string,
   inputImage?: string,
 ): Promise<BuddyResponse> {
   const key = await getStoredKey(providerId);
@@ -59,8 +58,9 @@ async function generateImageNative(
     if (match) parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
   }
 
+  // Aspect ratio is conveyed via the prompt text (generation_config.response_format
+  // .image.aspect_ratio is rejected by this endpoint), so we only set the modality.
   const generationConfig: Record<string, unknown> = { responseModalities: ['IMAGE'] };
-  if (aspect) generationConfig.responseFormat = { image: { aspectRatio: aspect } };
 
   let resp: Response;
   try {
@@ -190,13 +190,7 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         if (!key) {
           return { type: 'ERROR', ok: false, error: `No API key set for provider '${providerId}'.` };
         }
-        return generateImageNative(
-          providerId,
-          message.model,
-          message.prompt,
-          message.aspect,
-          message.inputImage,
-        );
+        return generateImageNative(providerId, message.model, message.prompt, message.inputImage);
       }
 
       default: {

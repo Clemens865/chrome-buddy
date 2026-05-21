@@ -28,6 +28,31 @@ test('live: plain chat answers a question end-to-end', async ({ context, extensi
   await page.screenshot({ path: path.join(SHOTS, '03-answer.png') });
 });
 
+test('live: Image Studio generates an image', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 900 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  // Apps → Image Generator.
+  await panel.getByRole('button', { name: 'Apps', exact: true }).click();
+  await panel.getByText('Image Generator').first().click();
+
+  const prompt = panel.getByPlaceholder('Describe an image to generate…');
+  await expect(prompt).toBeVisible();
+  await prompt.fill('A friendly robot mascot, flat minimal vector illustration, mint green background');
+  await panel.screenshot({ path: path.join(SHOTS, '05-image-prompt.png') });
+
+  await panel.getByRole('button', { name: 'Generate' }).click();
+
+  // Real Nano Banana call — wait for the generated image (or capture whatever
+  // state we land in, so the screenshot is useful even on a model error).
+  const img = panel.locator('.img-result img.art');
+  await img.waitFor({ state: 'visible', timeout: 60_000 }).catch(() => {});
+  await panel.waitForTimeout(500);
+  await panel.screenshot({ path: path.join(SHOTS, '06-image.png') });
+  await expect(img).toBeVisible({ timeout: 5_000 });
+});
+
 test('live: agent reads the page and answers', async ({ context, extensionId }) => {
   // A normal page so the content script + read_dom have something to read.
   const site = await context.newPage();
