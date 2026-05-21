@@ -9,6 +9,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PendingRun } from '../ui/PanelApp';
 import { Ic, BuddyMark } from '../ui/icons';
 import { Markdown } from '../ui/Markdown';
+import { ArtifactCard, ArtifactView } from './Artifacts';
+import { extractArtifacts, type Artifact } from '../artifacts/extract';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { requestPageContext } from '../page/request';
 import { persistRun } from '../memory/request';
@@ -60,6 +62,7 @@ export function ChatView({
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [noKey, setNoKey] = useState(false);
+  const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [mode, setMode] = usePersistedState<ChatMode>('chatMode', 'auto');
   const [attachPage, setAttachPage] = usePersistedState<boolean>('attachPage', true);
   const [profiles] = usePersistedState<Profiles>('userProfiles', EMPTY_PROFILES);
@@ -166,13 +169,14 @@ export function ChatView({
 
   return (
     <div className="chat">
+      {artifact && <ArtifactView artifact={artifact} onClose={() => setArtifact(null)} />}
       <div className="chat-scroller">
         {isEmpty ? (
           <Greeting onPick={setInput} />
         ) : (
           <>
             {items.map((it) => (
-              <TranscriptRow key={it.id} item={it} onDecide={decide} />
+              <TranscriptRow key={it.id} item={it} onDecide={decide} onOpenArtifact={setArtifact} />
             ))}
             {noKey && <NoKeyNotice />}
           </>
@@ -233,12 +237,32 @@ function NoKeyNotice() {
   );
 }
 
+function AgentBody({ text, onOpenArtifact }: { text: string; onOpenArtifact: (a: Artifact) => void }) {
+  const { text: stripped, artifacts } = extractArtifacts(text);
+  if (artifacts.length === 0) return <Markdown>{text}</Markdown>;
+  // Interleave prose segments with artifact cards in original order.
+  const parts = stripped.split(/\[\[ARTIFACT:(art_\d+)\]\]/);
+  return (
+    <>
+      {parts.map((part, idx) => {
+        if (idx % 2 === 1) {
+          const a = artifacts.find((x) => x.id === part);
+          return a ? <ArtifactCard key={part} artifact={a} onOpen={() => onOpenArtifact(a)} /> : null;
+        }
+        return part.trim() ? <Markdown key={`p${idx}`}>{part}</Markdown> : null;
+      })}
+    </>
+  );
+}
+
 function TranscriptRow({
   item,
   onDecide,
+  onOpenArtifact,
 }: {
   item: TranscriptItem;
   onDecide: (step: number, callId: string, approved: boolean) => void;
+  onOpenArtifact: (a: Artifact) => void;
 }) {
   switch (item.kind) {
     case 'user':
@@ -255,7 +279,7 @@ function TranscriptRow({
             <BuddyMark size={18} />
           </div>
           <div className="msg-body">
-            <Markdown>{item.text}</Markdown>
+            <AgentBody text={item.text} onOpenArtifact={onOpenArtifact} />
           </div>
         </div>
       );

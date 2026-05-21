@@ -69,6 +69,24 @@ test('live: promote a run to a skill, then run the skill', async ({ context, ext
   await panel.screenshot({ path: path.join(SHOTS, '11-skill-run.png') });
 });
 
+test('live: a code answer becomes an openable artifact', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 900 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  await panel.getByPlaceholder('Message Buddy…').fill('Write a Python hello world function in a single code block.');
+  await panel.getByRole('button', { name: 'Send' }).click();
+
+  const card = panel.locator('.artifact-card');
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await panel.screenshot({ path: path.join(SHOTS, '16-artifact-card.png') });
+
+  await card.first().click();
+  await expect(panel.locator('.artifact-view')).toBeVisible();
+  await expect(panel.locator('.artifact-code')).toContainText(/def|print/i);
+  await panel.screenshot({ path: path.join(SHOTS, '17-artifact-view.png') });
+});
+
 test('live: Image Studio generates an image', async ({ context, extensionId }) => {
   const panel = await context.newPage();
   await panel.setViewportSize({ width: 440, height: 900 });
