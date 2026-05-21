@@ -23,7 +23,8 @@
     "test:e2e:triggers": "playwright test workflow-triggers.spec.ts",
     "test:e2e:filewrite": "playwright test file-write.spec.ts",
     "test:e2e:recall": "playwright test recall.spec.ts",
-    "test:e2e:appgen": "playwright test app-generator.spec.ts"
+    "test:e2e:appgen": "playwright test app-generator.spec.ts",
+    "test:e2e:sandbox": "playwright test sandbox.spec.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",

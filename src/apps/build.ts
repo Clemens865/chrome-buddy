@@ -54,7 +54,45 @@ export function parseAppConfig(jsonText: string): AppConfig | null {
     name,
     description: typeof o.description === 'string' ? o.description.trim() : '',
     inputs,
+    tier: 1,
     promptTemplate,
+    createdAt: Date.now(),
+  };
+}
+
+export const CODE_APP_BUILDER_SYSTEM = `You design a small SANDBOXED CODE app: a form bound to a pure JavaScript transform.
+Return ONLY JSON of the shape:
+{"name": string, "description": string,
+ "inputs": [{"id": string, "label": string, "type": "text"|"textarea", "placeholder"?: string}],
+ "code": string}
+Rules:
+- 1-4 inputs. "id" is a short lowercase identifier (a-z0-9_), unique.
+- "code" is the BODY of a function (inputs) => ... It MUST end with a \`return\` of the output (a string or JSON-serialisable value).
+- Read values via the \`inputs\` object, keyed by input id (values are strings).
+- PURE JavaScript only: no network, no fetch, no DOM, no imports, no async. Standard JS (String, Number, Math, JSON, Array, RegExp) only.
+No prose, no markdown fences — just the JSON object.`;
+
+/** Parse the code-app generator's JSON into a Tier-2 AppConfig, or null. */
+export function parseCodeApp(jsonText: string): AppConfig | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(jsonText);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+  const o = data as Record<string, unknown>;
+  const name = typeof o.name === 'string' ? o.name.trim() : '';
+  const code = typeof o.code === 'string' ? o.code.trim() : '';
+  const inputs = cleanInputs(o.inputs);
+  if (!name || !code || inputs.length === 0) return null;
+  return {
+    id: idOf(),
+    name,
+    description: typeof o.description === 'string' ? o.description.trim() : '',
+    inputs,
+    tier: 2,
+    code,
     createdAt: Date.now(),
   };
 }

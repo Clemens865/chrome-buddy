@@ -16,8 +16,12 @@ export interface AppConfig {
   description: string;
   /** Form fields shown to the user. */
   inputs: AppInput[];
-  /** Prompt template with {{inputId}} placeholders. */
-  promptTemplate: string;
+  /** 1 = declarative (prompt template + LLM); 2 = sandboxed code. Default 1. */
+  tier?: 1 | 2;
+  /** Tier-1: prompt template with {{inputId}} placeholders. */
+  promptTemplate?: string;
+  /** Tier-2: JS function body `(inputs) => ...` run in the sandbox. */
+  code?: string;
   createdAt: number;
 }
 

@@ -14,6 +14,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         sidepanel: resolve(root, 'sidepanel.html'),
+        sandbox: resolve(root, 'sandbox.html'),
         background: resolve(root, 'src/background/background.ts'),
       },
       output: {

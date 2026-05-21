@@ -11,7 +11,8 @@ import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { runPlainChat } from '../agent';
 import { useActiveModel } from '../llm/modelPref';
 import { fetchApps, persistApp, removeApp } from '../apps/request';
-import { parseAppConfig, renderTemplate, APP_BUILDER_SYSTEM } from '../apps/build';
+import { parseAppConfig, parseCodeApp, renderTemplate, APP_BUILDER_SYSTEM, CODE_APP_BUILDER_SYSTEM } from '../apps/build';
+import { runInSandbox } from '../sandbox/host';
 import type { AppConfig } from '../apps/types';
 
 export type AppId = 'summarizer' | 'console' | 'image';
@@ -49,6 +50,7 @@ export function AppsView({ onOpenApp, recents = ['summarizer', 'image'] }: { onO
   const [genApps, setGenApps] = useState<AppConfig[]>([]);
   const [openGen, setOpenGen] = useState<AppConfig | null>(null);
   const [creating, setCreating] = useState(false);
+  const [tier, setTier] = useState<1 | 2>(1);
   const [desc, setDesc] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -66,12 +68,12 @@ export function AppsView({ onOpenApp, recents = ['summarizer', 'image'] }: { onO
       const res = await generateViaBackground({
         model: DEFAULT_REGISTRY.defaultModel,
         messages: [
-          { role: 'system', content: APP_BUILDER_SYSTEM },
+          { role: 'system', content: tier === 2 ? CODE_APP_BUILDER_SYSTEM : APP_BUILDER_SYSTEM },
           { role: 'user', content: desc },
         ],
         params: { jsonMode: true },
       });
-      const cfg = parseAppConfig(res.text);
+      const cfg = tier === 2 ? parseCodeApp(res.text) : parseAppConfig(res.text);
       if (!cfg) {
         setError('Could not build an app from that. Try describing inputs and output more concretely.');
         return;
@@ -108,7 +110,7 @@ export function AppsView({ onOpenApp, recents = ['summarizer', 'image'] }: { onO
             {genApps.map((a) => (
               <AppCard
                 key={a.id}
-                app={{ id: a.id, icon: Ic.sparkle, name: a.name, desc: a.description, color: GEN_COLOR }}
+                app={{ id: a.id, icon: Ic.sparkle, name: a.name, desc: a.tier === 2 ? `${a.description} · sandboxed` : a.description, color: GEN_COLOR }}
                 onOpen={() => setOpenGen(a)}
                 onDelete={async () => {
                   await removeApp(a.id);
@@ -127,11 +129,23 @@ export function AppsView({ onOpenApp, recents = ['summarizer', 'image'] }: { onO
 
       {creating ? (
         <div className="settings-row" style={{ display: 'block', marginTop: 10 }}>
+          <div className="seg seg-sm" role="group" aria-label="App type" style={{ marginBottom: 6 }}>
+            <button type="button" className={'seg-btn' + (tier === 1 ? ' is-on' : '')} aria-pressed={tier === 1} onClick={() => setTier(1)}>
+              Prompt app
+            </button>
+            <button type="button" className={'seg-btn' + (tier === 2 ? ' is-on' : '')} aria-pressed={tier === 2} onClick={() => setTier(2)}>
+              Code app (sandboxed)
+            </button>
+          </div>
           <textarea
             className="settings-input"
             style={{ resize: 'none' }}
             rows={3}
-            placeholder="Describe an app to generate (e.g. rewrite text in a tone I choose; or a tweet-thread drafter from notes)"
+            placeholder={
+              tier === 2
+                ? 'Describe a deterministic transform (e.g. count words and characters; convert CSV to JSON; slugify a title)'
+                : 'Describe an app to generate (e.g. rewrite text in a tone I choose; or a tweet-thread drafter from notes)'
+            }
             value={desc}
             onChange={(e) => setDesc(e.target.value)}
             aria-label="App description"
@@ -186,7 +200,20 @@ function GeneratedApp({ app, onBack }: { app: AppConfig; onBack: () => void }) {
     setNoKey(false);
     setOutput(null);
     try {
-      const prompt = renderTemplate(app.promptTemplate, values);
+      // Tier-2: run generated code in the opaque-origin sandbox (no key needed).
+      if (app.tier === 2 && app.code) {
+        const res = await runInSandbox(app.code, values);
+        setOutput(
+          res.ok
+            ? typeof res.result === 'string'
+              ? res.result
+              : '```json\n' + JSON.stringify(res.result, null, 2) + '\n```'
+            : `**Error:** ${res.error}`,
+        );
+        return;
+      }
+      // Tier-1: fill the template and run a plain LLM call.
+      const prompt = renderTemplate(app.promptTemplate ?? '', values);
       const r = await runPlainChat(prompt, { model: activeModel });
       if (r.outcome === 'no-key') setNoKey(true);
       else setOutput(r.text ?? '');
