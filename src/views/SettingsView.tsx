@@ -122,7 +122,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
 
       <div className="settings-section">
         <div className="settings-section-h">API key</div>
-        <SettingsRow t="Gemini API key" s="Kept in memory only · used for all cloud calls">
+        <SettingsRow t="Gemini API key" s="Stored locally on this device · used for all cloud calls">
           <ApiKeyControl />
         </SettingsRow>
       </div>

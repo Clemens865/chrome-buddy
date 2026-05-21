@@ -183,8 +183,8 @@ function NoKeyNotice() {
         <span className="hitl-title">No API key set</span>
       </div>
       <div className="hitl-foot">
-        Add your Gemini API key in Settings to let Buddy plan and act. Your key stays in this browser session
-        and is never sent anywhere but the model provider.
+        Add your Gemini API key in Settings to let Buddy plan and act. Your key is stored locally on this
+        device and is never sent anywhere but the model provider.
       </div>
     </div>
   );

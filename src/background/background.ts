@@ -92,12 +92,12 @@ async function generateImageNative(
   return { type: 'ERROR', ok: false, error: 'The model did not return an image.' };
 }
 
-/** Read the message type for a stored key from chrome.storage.session. */
+/** Read a provider's API key from chrome.storage.local (persists across reloads). */
 async function getStoredKey(provider: string): Promise<string | undefined> {
-  const session = chrome.storage?.session;
-  if (!session) return undefined;
+  const store = chrome.storage?.local;
+  if (!store) return undefined;
   const storageKey = apiKeyStorageKey(provider);
-  const res = await session.get(storageKey);
+  const res = await store.get(storageKey);
   const value = (res as Record<string, unknown>)[storageKey];
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
@@ -110,12 +110,12 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
   try {
     switch (message.type) {
       case 'KEY_SET': {
-        const session = chrome.storage?.session;
+        const store = chrome.storage?.local;
         const storageKey = apiKeyStorageKey(message.provider);
         if (message.key.length === 0) {
-          await session?.remove(storageKey);
+          await store?.remove(storageKey);
         } else {
-          await session?.set({ [storageKey]: message.key });
+          await store?.set({ [storageKey]: message.key });
         }
         return { type: 'KEY_SET', ok: true };
       }

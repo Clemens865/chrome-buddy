@@ -30,12 +30,12 @@ import type {
   LlmGenerateResponse,
 } from '../key/messages';
 
-/** Read a provider's API key from chrome.storage.session (SW context only). */
+/** Read a provider's API key from chrome.storage.local (SW context only). */
 export async function readSessionApiKey(provider: string): Promise<string | undefined> {
-  const session = chrome.storage?.session;
-  if (!session) return undefined;
+  const store = chrome.storage?.local;
+  if (!store) return undefined;
   const storageKey = apiKeyStorageKey(provider);
-  const res = await session.get(storageKey);
+  const res = await store.get(storageKey);
   const value = (res as Record<string, unknown>)[storageKey];
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }

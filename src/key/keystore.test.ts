@@ -1,8 +1,8 @@
 // Unit tests for the key-custody message protocol and the background handlers.
 //
-// We mock chrome.* (storage.session + runtime) so no real network/key is needed.
+// We mock chrome.* (storage.local + runtime) so no real network/key is needed.
 // Coverage:
-//   - KEY_SET stores the key in chrome.storage.session under apiKey:<provider>.
+//   - KEY_SET stores the key in chrome.storage.local under apiKey:<provider>.
 //   - KEY_STATUS reports existence and NEVER leaks the key value.
 //   - LLM_GENERATE without a stored key returns an ERROR (key custody intact).
 //   - generateViaBackground posts a well-formed LLM_GENERATE message.
@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiKeyStorageKey, isBuddyMessage } from './messages';
 
-/** A minimal in-memory chrome.storage.session double. */
+/** A minimal in-memory chrome.storage.local double. */
 function makeSessionStore() {
   const data: Record<string, unknown> = {};
   return {
@@ -25,14 +25,14 @@ function makeSessionStore() {
   };
 }
 
-let session: ReturnType<typeof makeSessionStore>;
+let local: ReturnType<typeof makeSessionStore>;
 let sendMessage: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  session = makeSessionStore();
+  local = makeSessionStore();
   sendMessage = vi.fn();
   (globalThis as { chrome?: unknown }).chrome = {
-    storage: { session },
+    storage: { local },
     runtime: {
       sendMessage,
       onMessage: { addListener: vi.fn() },
@@ -63,7 +63,7 @@ describe('message protocol', () => {
 });
 
 describe('handleBuddyMessage (background handlers)', () => {
-  it('KEY_SET stores the key in chrome.storage.session', async () => {
+  it('KEY_SET stores the key in chrome.storage.local', async () => {
     const { handleBuddyMessage } = await import('../background/background');
     const res = await handleBuddyMessage({
       type: 'KEY_SET',
@@ -71,16 +71,16 @@ describe('handleBuddyMessage (background handlers)', () => {
       key: 'sk-secret-123',
     });
     expect(res).toEqual({ type: 'KEY_SET', ok: true });
-    expect(session.set).toHaveBeenCalledWith({ 'apiKey:google-gemini': 'sk-secret-123' });
-    expect(session.data['apiKey:google-gemini']).toBe('sk-secret-123');
+    expect(local.set).toHaveBeenCalledWith({ 'apiKey:google-gemini': 'sk-secret-123' });
+    expect(local.data['apiKey:google-gemini']).toBe('sk-secret-123');
   });
 
   it('KEY_SET with empty key removes the stored key', async () => {
-    session.data['apiKey:google-gemini'] = 'existing';
+    local.data['apiKey:google-gemini'] = 'existing';
     const { handleBuddyMessage } = await import('../background/background');
     await handleBuddyMessage({ type: 'KEY_SET', provider: 'google-gemini', key: '' });
-    expect(session.remove).toHaveBeenCalledWith('apiKey:google-gemini');
-    expect(session.data['apiKey:google-gemini']).toBeUndefined();
+    expect(local.remove).toHaveBeenCalledWith('apiKey:google-gemini');
+    expect(local.data['apiKey:google-gemini']).toBeUndefined();
   });
 
   it('KEY_STATUS reports existence but NEVER leaks the key', async () => {
@@ -89,7 +89,7 @@ describe('handleBuddyMessage (background handlers)', () => {
     const unset = await handleBuddyMessage({ type: 'KEY_STATUS', provider: 'google-gemini' });
     expect(unset).toEqual({ type: 'KEY_STATUS', hasKey: false });
 
-    session.data['apiKey:google-gemini'] = 'sk-secret-123';
+    local.data['apiKey:google-gemini'] = 'sk-secret-123';
     const set = await handleBuddyMessage({ type: 'KEY_STATUS', provider: 'google-gemini' });
     expect(set).toEqual({ type: 'KEY_STATUS', hasKey: true });
     // Critical: the response object must not contain the key value anywhere.
