@@ -35,6 +35,13 @@ import {
   DUE_WORKFLOWS_KEY,
 } from '../workflows/schedule';
 
+// NFR-SEC-1: keep session storage (where the API key lives) unreadable from
+// content scripts / page contexts. TRUSTED_CONTEXTS is the MV3 default, but we
+// set it explicitly so the key custody guarantee doesn't depend on a default.
+chrome.storage?.session
+  ?.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' })
+  .catch(() => {});
+
 chrome.runtime.onInstalled.addListener(() => {
   // Allow clicking the toolbar icon to toggle the side panel open.
   chrome.sidePanel
@@ -105,7 +112,7 @@ async function generateImageNative(
 }
 
 /**
- * Resolve a provider's key: in-app key (storage.local) → DEV .env fallback.
+ * Resolve a provider's key: in-app key (storage.session) → DEV .env fallback.
  * Delegates to the single resolver in instance.ts so KEY_STATUS, LLM_GENERATE
  * and IMAGE_GENERATE all honor the same lookup.
  */
@@ -121,7 +128,9 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
   try {
     switch (message.type) {
       case 'KEY_SET': {
-        const store = chrome.storage?.local;
+        // NFR-SEC-1: keys live ONLY in chrome.storage.session (in-memory, cleared
+        // when the browser session ends) — never storage.local/sync/disk.
+        const store = chrome.storage?.session;
         const storageKey = apiKeyStorageKey(message.provider);
         if (message.key.length === 0) {
           await store?.remove(storageKey);

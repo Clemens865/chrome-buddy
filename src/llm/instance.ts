@@ -31,13 +31,14 @@ import type {
 } from '../key/messages';
 
 /**
- * Resolve a provider's API key: the in-app key (chrome.storage.local) first,
- * then a DEV-ONLY .env fallback (VITE_GEMINI_API_KEY) so contributors/tests can
- * run without re-entering a key. The env value is inlined into the build — never
- * commit a real key or ship a build containing one.
+ * Resolve a provider's API key: the in-app key (chrome.storage.SESSION — kept in
+ * memory only, never written to disk, per NFR-SEC-1) first, then a DEV-ONLY .env
+ * fallback (VITE_GEMINI_API_KEY) so contributors/tests can run without
+ * re-entering a key. The env value is inlined into the build — never commit a
+ * real key or ship a build containing one.
  */
 export async function readSessionApiKey(provider: string): Promise<string | undefined> {
-  const store = chrome.storage?.local;
+  const store = chrome.storage?.session;
   if (store) {
     const storageKey = apiKeyStorageKey(provider);
     const res = await store.get(storageKey);
