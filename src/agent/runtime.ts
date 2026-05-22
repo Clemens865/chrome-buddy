@@ -74,6 +74,8 @@ export interface RuntimeDeps {
 }
 
 const DEFAULT_MAX_RETRIES = 2;
+// Max ReAct continuation rounds after the upfront plan (each may add steps).
+const MAX_REPLAN_ROUNDS = 3;
 const ZERO_USAGE: UsageStats = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
 // Gemini tends to *announce* an action ("I'll now read the file") instead of
@@ -203,8 +205,27 @@ export class AgentRuntime {
         // graceful partial completion (FR-AGENT-11).
       }
 
+      // --- Replanning (ReAct continuation) -----------------------------------
+      // The upfront plan can be too shallow (e.g. it learns a filename at runtime
+      // but never planned the read). After the plan, ask whether more steps are
+      // needed to actually finish; append + run them. Consequential actions still
+      // pass the per-action HITL gate. Bounded to avoid runaway loops.
+      for (let round = 0; round < MAX_REPLAN_ROUNDS; round++) {
+        if (this.cancelled(options) || this.checkBudgets(state, options)) break;
+        const more = await this.replan(task, options, state);
+        if (more.length === 0) break; // model judged the task complete
+        scratchpad.plan.push(...more);
+        this.emit({ type: 'plan', runId, plan: scratchpad.plan });
+        for (const extra of more) {
+          if (this.cancelled(options) || this.checkBudgets(state, options)) break;
+          const verdict = await this.runStep(extra, options, state);
+          if (verdict === 'succeeded') scratchpad.completedSteps.push(extra.index);
+          this.checkpoint(state);
+        }
+      }
+
       const succeeded = scratchpad.completedSteps.length;
-      const outcome: RunOutcome = succeeded === plan.length ? 'completed' : 'partial';
+      const outcome: RunOutcome = succeeded === scratchpad.plan.length ? 'completed' : 'partial';
       // Synthesize a real answer from the gathered tool results (FR-AGENT-6):
       // without this the user only saw a generic "Completed N/N steps" summary.
       const answer = await this.synthesizeAnswer(options, state);
@@ -221,10 +242,7 @@ export class AgentRuntime {
   // --- Planner --------------------------------------------------------------
 
   private async planTask(task: string, options: RunOptions, state: RunState): Promise<PlanStep[]> {
-    const toolList = this.registry
-      .list(options.allowedTools)
-      .map((d) => `- ${d.name}: ${d.description}`)
-      .join('\n');
+    const toolList = this.toolList(options);
 
     const messages: ChatMessage[] = [
       {
@@ -258,6 +276,57 @@ export class AgentRuntime {
 
     const parsed = this.parsePlannerOutput(res.text);
     return parsed.steps.map((s, i) => ({ index: i + 1, intent: s.intent }));
+  }
+
+  private toolList(options: RunOptions): string {
+    return this.registry
+      .list(options.allowedTools)
+      .map((d) => `- ${d.name}: ${d.description}`)
+      .join('\n');
+  }
+
+  /**
+   * After the plan runs, decide whether MORE steps are needed to actually finish
+   * and answer the task (ReAct continuation). Returns the next concrete steps, or
+   * [] when the model judges the task complete. New steps continue the index seq.
+   */
+  private async replan(task: string, options: RunOptions, state: RunState): Promise<PlanStep[]> {
+    const sp = state.scratchpad;
+    const done = sp.actions.length
+      ? sp.actions.map((a) => `#${a.step} ${a.toolName} → ${a.verdict ?? 'pending'}`).join('\n')
+      : '(no tool actions yet)';
+    const results = compressEvidence(
+      sp.actions
+        .filter((a) => a.result?.ok)
+        .map((a) => ({ toolName: a.toolName, text: evidenceText(a.result && a.result.ok ? a.result.data : undefined) })),
+      { keepRecent: 2 },
+    );
+
+    const messages: ChatMessage[] = [
+      {
+        role: 'system',
+        content:
+          'You are the Planner continuing a browser agent run. Given the task, the ' +
+          'steps already executed, and their results, decide if MORE tool steps are ' +
+          'needed to FULLY complete and answer the task. If the task is already ' +
+          'satisfied (the results contain the answer / the action is done), return ' +
+          '{"steps":[]}. Otherwise return ONLY the next concrete step(s) not already ' +
+          'done — e.g. if a filename was just discovered, add the read step. ' +
+          'Respond ONLY with JSON: {"steps":[{"intent":"..."}]}.',
+      },
+      {
+        role: 'user',
+        content:
+          `Task: ${task}\n\nSteps already executed:\n${done}\n\n` +
+          `Results so far:\n${fenceUntrusted(results)}\n\nAvailable tools:\n${this.toolList(options)}`,
+      },
+    ];
+
+    const res = await this.llm.generate({ model: options.model, messages, params: { jsonMode: true }, signal: options.signal });
+    this.account(state, res);
+    const parsed = this.parsePlannerOutput(res.text);
+    const base = sp.plan.length;
+    return parsed.steps.map((s, i) => ({ index: base + i + 1, intent: s.intent }));
   }
 
   private parsePlannerOutput(text: string): PlannerOutput {

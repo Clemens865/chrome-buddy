@@ -354,6 +354,35 @@ describe('AgentRuntime', () => {
     expect(state.outcome).toBe('partial');
   });
 
+  it('replans after the plan to add a missing step and finishes', async () => {
+    const registry = makeRegistry();
+    const llm = scriptedLlm([
+      planResp(['List what is in the folder']), // shallow 1-step plan
+      resp({ toolCalls: [call('read_dom')] }), // step 1 acts
+      resp({ text: JSON.stringify({ steps: [{ intent: 'Read the discovered item' }] }) }), // replan: add a step
+      resp({ toolCalls: [call('read_dom', {}, 'read2')] }), // the added step acts
+      resp({ text: JSON.stringify({ steps: [] }) }), // replan: now complete
+      resp({ text: 'Here is the final answer.' }), // synthesis
+    ]);
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime({
+      llm,
+      registry,
+      approve: async () => ({ approved: true }),
+      onEvent: (e) => events.push(e),
+      newRunId: () => 'run_test',
+    });
+
+    const state = await runtime.run('what is in my folder and what does it say', { stepBudget: 30, costBudget: 1 });
+
+    expect(state.outcome).toBe('completed');
+    // Two steps executed: the planned one + the replanned one.
+    expect(events.filter((e) => e.type === 'step_start')).toHaveLength(2);
+    expect(state.scratchpad.plan).toHaveLength(2);
+    expect(state.scratchpad.completedSteps).toEqual([1, 2]);
+    expect(state.finalAnswer).toContain('Here is the final answer.');
+  });
+
   it('re-prompts when an actionable step returns prose instead of a tool call', async () => {
     const registry = makeRegistry();
     const llm = scriptedLlm([
