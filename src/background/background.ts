@@ -20,6 +20,7 @@ import {
 } from '../key/messages';
 import { getLlmClient, resolveProviderId, readSessionApiKey, refreshEffectiveRegistry } from '../llm/instance';
 import { USER_REGISTRY_KEY } from '../llm/userRegistry';
+import { updateRemoteRegistry } from '../llm/remoteRegistry';
 import { LlmClient } from '../llm/client';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { executePageTool, capturePageContext } from './pageTools';
@@ -44,9 +45,15 @@ chrome.storage?.session
   ?.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' })
   .catch(() => {});
 
-// Load the effective model registry (bundled + user overlay) and keep it fresh
-// when the user edits it (FR-MR-1/8).
-void refreshEffectiveRegistry();
+// Load the effective model registry (bundled + remote + user overlay) and keep
+// it fresh when the user edits it or a verified remote update lands (FR-MR-1/5/8).
+const REGISTRY_POLL_ALARM = 'registry-poll';
+async function pollRemoteRegistry(): Promise<void> {
+  await updateRemoteRegistry(); // verifies signature; keeps last-good on failure
+  await refreshEffectiveRegistry();
+}
+void refreshEffectiveRegistry().then(() => void pollRemoteRegistry());
+chrome.alarms?.create?.(REGISTRY_POLL_ALARM, { periodInMinutes: 1440 }); // daily (FR-MR-5)
 chrome.storage?.onChanged?.addListener((changes, areaName) => {
   if (areaName === 'local' && USER_REGISTRY_KEY in changes) void refreshEffectiveRegistry();
 });
@@ -406,9 +413,13 @@ async function markWorkflowDue(id: string, reason: string): Promise<void> {
   }
 }
 
-// Scheduled alarm fired → mark due.
+// Scheduled alarm fired → mark due; daily registry poll → fetch + verify.
 if (chrome.alarms?.onAlarm) {
   chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === REGISTRY_POLL_ALARM) {
+      void pollRemoteRegistry();
+      return;
+    }
     const id = workflowIdFromAlarm(alarm.name);
     if (id) void markWorkflowDue(id, 'scheduled');
   });

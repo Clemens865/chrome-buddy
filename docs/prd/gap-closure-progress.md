@@ -28,13 +28,18 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 38 | Skills editor + import consent | FR-SKILL-4,5,6,9,10 | ✅ | (this push) | screenshots 51-52; e2e skills-editor |
 | 39 | Workflows: event trigger + export/import + editor | FR-WF-2,4,7 | ✅ | (this push) | screenshot 53; e2e workflow-editor |
 | 40 | Model registry: Test + in-app model editor | FR-MR-8,12,13 | ✅ | (this push) | screenshots 54-55; e2e model-registry |
-| 41 | Signed remote registry update | FR-MR-5,6, NFR-SEC-5 | ⬜ | — | — |
+| 41 | Signed remote registry update | FR-MR-5,6, NFR-SEC-5 | ✅ | (this push) | crypto unit tests (SW; no UI) |
 | 42 | Tier-2 capability bridge + code-review gate | FR-T2-3,4,5 | ⬜ | — | — |
 | 43 | Gemini Nano on-device path | FR-LLM-8, NFR-PRIV-2 | ⬜ | — | — |
 | 44 | Debugger: permission + Console Inspector + CDP trusted-input | FR-BC-2/3 | ✅ | (this push) | screenshots 45-46; e2e cdp + console |
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #41 — Signed remote registry update (FR-MR-5,6, NFR-SEC-5) ✅
+- **Now:** `src/llm/remoteRegistry.ts` — a published registry is accepted ONLY if its **Ed25519 signature verifies** (`crypto.subtle`, against a bundled public key) AND it passes shape + schema-major validation. Verified payloads are cached as "last-good"; bad/unsigned/incompatible payloads are rejected and the last-good (or bundled) is retained (FR-MR-6). `effectiveRegistry` now layers **user > remote > bundled** (FR-MR-5). The SW polls on startup + a daily `chrome.alarms` (`registry-poll`), refreshing the effective registry.
+- **Proof:** 6 crypto unit tests (174 total): correctly-signed accepted; tampered signature, wrong key, and validly-signed-but-malformed all rejected; shape/version validation. No UI surface (SW-only) — proof is the test suite, like the injection guards.
+- **Note:** the publisher holds the private key; the embedded public key is real. The remote URL is a placeholder that won't resolve yet, so `updateRemoteRegistry` safely no-ops (keeps last-good) until a real endpoint exists.
 
 ### #40 — Model registry: Test button + in-app model editor (FR-MR-8,12,13) ✅
 - **Was:** the bundled registry was read-only; no Test, no user-added models.

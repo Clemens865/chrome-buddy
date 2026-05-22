@@ -3,6 +3,7 @@
 // (precedence: user > bundled). Pure merge + thin storage wrappers. API keys
 // are NOT here — they live in storage.session (NFR-SEC-1).
 import { DEFAULT_REGISTRY } from './registry.default';
+import { loadRemoteRegistry } from './remoteRegistry';
 import type { ModelConfig, ModelRegistry, ProviderConfig } from './types';
 
 export const USER_REGISTRY_KEY = 'userRegistry';
@@ -48,7 +49,13 @@ export async function removeUserModel(id: string): Promise<void> {
   await save({ ...reg, models });
 }
 
-/** The effective registry = bundled floor + user overlay. */
+/**
+ * The effective registry, precedence user > remote > bundled (FR-MR-5):
+ * bundled floor, then the verified remote (last-good), then the user overlay.
+ */
 export async function effectiveRegistry(): Promise<ModelRegistry> {
-  return mergeRegistry(DEFAULT_REGISTRY, await loadUserRegistry());
+  const [remote, user] = await Promise.all([loadRemoteRegistry(), loadUserRegistry()]);
+  let reg = DEFAULT_REGISTRY;
+  if (remote) reg = mergeRegistry(reg, { models: remote.models, providers: remote.providers });
+  return mergeRegistry(reg, user);
 }
