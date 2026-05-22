@@ -64,6 +64,8 @@ export interface RuntimeDeps {
   planApprove?: PlanApprover;
   /** Human handoff for CAPTCHA/login walls (FR-HITL-8). When omitted, no pause. */
   onHumanGate?: (req: { kind: 'captcha' | 'login' }) => Promise<void>;
+  /** Persist a run-state snapshot after the plan + each step (FR-AGENT-8). */
+  onCheckpoint?: (state: RunState) => void;
   /** Target tab threaded into tool contexts. */
   tabId?: number;
   /** Run id factory (overridable for deterministic tests). */
@@ -86,6 +88,7 @@ export class AgentRuntime {
   private readonly computerUse: ComputerUseHook;
   private readonly planApprove?: PlanApprover;
   private readonly onHumanGate?: (req: { kind: 'captcha' | 'login' }) => Promise<void>;
+  private readonly onCheckpoint?: (state: RunState) => void;
   private readonly tabId?: number;
   private readonly newRunId: () => string;
 
@@ -97,6 +100,7 @@ export class AgentRuntime {
     this.computerUse = deps.computerUse ?? computerUseStub;
     this.planApprove = deps.planApprove;
     this.onHumanGate = deps.onHumanGate;
+    this.onCheckpoint = deps.onCheckpoint;
     this.tabId = deps.tabId;
     this.newRunId = deps.newRunId ?? (() => `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   }
@@ -107,8 +111,10 @@ export class AgentRuntime {
    * surfaced as events + a non-`completed` outcome.
    */
   async run(task: string, options: RunOptions): Promise<RunState> {
-    const runId = this.newRunId();
-    const scratchpad: Scratchpad = {
+    // Resume (FR-AGENT-8): rehydrate the saved scratchpad and skip done steps.
+    const resuming = !!options.resume;
+    const runId = options.resume?.runId ?? this.newRunId();
+    const scratchpad: Scratchpad = options.resume?.scratchpad ?? {
       task,
       plan: [],
       actions: [],
@@ -116,7 +122,7 @@ export class AgentRuntime {
       provenance: [],
       completedSteps: [],
     };
-    const state: RunState = {
+    const state: RunState = options.resume ?? {
       runId,
       scratchpad,
       stepsUsed: 0,
@@ -126,30 +132,40 @@ export class AgentRuntime {
 
     try {
       // --- Plan ---------------------------------------------------------------
-      let plan = await this.planTask(task, options, state);
-      scratchpad.plan = plan;
-      this.emit({ type: 'plan', runId, plan });
+      let plan = scratchpad.plan;
+      if (!resuming) {
+        plan = await this.planTask(task, options, state);
+        scratchpad.plan = plan;
+        this.emit({ type: 'plan', runId, plan });
 
-      if (plan.length === 0) {
-        return this.finish(state, 'failed', 'Planner produced no steps.');
-      }
+        if (plan.length === 0) {
+          return this.finish(state, 'failed', 'Planner produced no steps.');
+        }
 
-      // --- Plan approval gate (FR-AGENT-3) -----------------------------------
-      // Surface the plan and wait for the user before any execution begins.
-      if (this.planApprove) {
-        const decision = await this.planApprove({ runId, plan });
-        if (!decision.approved) {
-          return this.finish(state, 'cancelled', 'Plan cancelled before execution.');
+        // --- Plan approval gate (FR-AGENT-3) ---------------------------------
+        // Surface the plan and wait for the user before any execution begins.
+        if (this.planApprove) {
+          const decision = await this.planApprove({ runId, plan });
+          if (!decision.approved) {
+            return this.finish(state, 'cancelled', 'Plan cancelled before execution.');
+          }
+          if (decision.editedPlan && decision.editedPlan.length > 0) {
+            plan = decision.editedPlan;
+            scratchpad.plan = plan;
+            this.emit({ type: 'plan', runId, plan });
+          }
         }
-        if (decision.editedPlan && decision.editedPlan.length > 0) {
-          plan = decision.editedPlan;
-          scratchpad.plan = plan;
-          this.emit({ type: 'plan', runId, plan });
-        }
+      } else {
+        // Resumed run: re-show the plan so the panel can render the transcript.
+        this.emit({ type: 'plan', runId, plan });
       }
+      this.checkpoint(state);
 
       // --- Plan→Act→Observe→Reflect loop -------------------------------------
       for (const planStep of plan) {
+        // Skip steps already completed before the interruption (no re-run of
+        // consequential actions — NFR-REL-3).
+        if (scratchpad.completedSteps.includes(planStep.index)) continue;
         if (this.cancelled(options)) {
           return this.finish(state, 'cancelled', this.summarize(scratchpad));
         }
@@ -162,6 +178,7 @@ export class AgentRuntime {
         if (verdict === 'succeeded') {
           scratchpad.completedSteps.push(planStep.index);
         }
+        this.checkpoint(state); // FR-AGENT-8: persist after each step
         // A failed step does not abort the whole run: continue to deliver
         // graceful partial completion (FR-AGENT-11).
       }
@@ -495,6 +512,15 @@ export class AgentRuntime {
       return `Cost budget reached ($${options.costBudget.toFixed(4)}).`;
     }
     return null;
+  }
+
+  /** Persist a run snapshot for resume (FR-AGENT-8). Best-effort, never throws. */
+  private checkpoint(state: RunState): void {
+    try {
+      this.onCheckpoint?.(state);
+    } catch {
+      /* checkpointing must never break a run */
+    }
   }
 
   private account(state: RunState, res: NormalizedResponse & { cost: { totalCost: number } }): void {

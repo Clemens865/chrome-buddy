@@ -77,6 +77,9 @@ export interface RunOptions {
   maxRetriesPerStep?: number;
   /** Optional cancellation signal for the whole run. */
   signal?: AbortSignal;
+  /** Resume a previous run from its checkpointed state (FR-AGENT-8): the saved
+   *  plan is reused and already-completed steps are skipped. */
+  resume?: RunState;
 }
 
 /** Why a run finished. */

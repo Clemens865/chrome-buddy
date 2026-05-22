@@ -29,6 +29,7 @@ import { callSkillTool } from '../tools/defs';
 import type { ToolDefinition } from '../tools/types';
 import { ok, err, type ToolResult } from '../types';
 import { getRootHandle, readFromRoot, writeToRoot } from '../fs/root';
+import { saveCheckpoint, clearCheckpoint } from './checkpoint';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import type { Skill } from '../skills/types';
 import type {
@@ -104,6 +105,8 @@ export interface RunAgentTaskOptions {
   onAskUser?: AskUserHandler;
   /** Human handoff for CAPTCHA/login walls (FR-HITL-8). */
   onHumanGate?: (req: { kind: 'captcha' | 'login' }) => Promise<void>;
+  /** Resume a checkpointed run (FR-AGENT-8): reuse its plan, skip done steps. */
+  resume?: RunState;
   /** Registry model id; defaults to the registry default (gemini-3.5-flash). */
   model?: string;
   /** Cancellation signal for the whole run. */
@@ -331,6 +334,10 @@ export async function runAgentTask(
       summary: request.summary,
     });
 
+  // Checkpoint top-level runs only — nested skill runs (exposeSkills:false)
+  // must not clobber the outer run's checkpoint.
+  const topLevel = options.exposeSkills !== false;
+
   const runtime = new AgentRuntime({
     llm: makeLlm(send, model),
     registry,
@@ -338,6 +345,7 @@ export async function runAgentTask(
     onEvent: options.onEvent,
     planApprove: options.onPlanReview,
     onHumanGate: options.onHumanGate,
+    onCheckpoint: topLevel ? (s) => void saveCheckpoint(s.scratchpad.task, s) : undefined,
   });
 
   const state = await runtime.run(prompt, {
@@ -345,7 +353,12 @@ export async function runAgentTask(
     stepBudget: options.stepBudget ?? DEFAULT_STEP_BUDGET,
     costBudget: options.costBudget ?? DEFAULT_COST_BUDGET,
     signal: options.signal,
+    resume: options.resume,
   });
+
+  // The run reached a terminal state — drop its checkpoint so we don't offer
+  // to resume a finished run.
+  if (topLevel) void clearCheckpoint();
 
   return { outcome: state.outcome ?? 'failed', state };
 }

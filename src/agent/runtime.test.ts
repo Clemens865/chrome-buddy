@@ -95,6 +95,45 @@ describe('AgentRuntime', () => {
     expect(state.finalAnswer).toContain('The page is about Acme pricing.');
   });
 
+  it('resumes a checkpointed run, skipping completed steps (FR-AGENT-8/NFR-REL-3)', async () => {
+    const registry = makeRegistry();
+    const readHandler = registry.get('read_dom')!.handler as ReturnType<typeof vi.fn>;
+    // Step 1 already done; only step 2 should execute on resume.
+    const resume = {
+      runId: 'r1',
+      scratchpad: {
+        task: 'two-step task',
+        plan: [{ index: 1, intent: 'Read page' }, { index: 2, intent: 'Read again' }],
+        actions: [],
+        notes: [],
+        provenance: [],
+        completedSteps: [1],
+      },
+      stepsUsed: 1,
+      costUsed: 0,
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    };
+    const llm = scriptedLlm([
+      resp({ toolCalls: [call('read_dom')] }), // step 2 executor (no plan call on resume)
+      resp({ text: 'done' }), // synthesis
+    ]);
+    const checkpoints: number[] = [];
+    const runtime = new AgentRuntime({
+      llm,
+      registry,
+      approve: async () => ({ approved: true }),
+      onCheckpoint: (s) => checkpoints.push(s.scratchpad.completedSteps.length),
+      newRunId: () => 'should-not-be-used',
+    });
+
+    const state = await runtime.run('two-step task', { stepBudget: 20, costBudget: 1, resume });
+
+    expect(state.runId).toBe('r1'); // kept the resumed run id
+    expect(readHandler).toHaveBeenCalledTimes(1); // ONLY step 2 ran (step 1 skipped)
+    expect(state.scratchpad.completedSteps.sort()).toEqual([1, 2]);
+    expect(checkpoints.length).toBeGreaterThan(0); // checkpointed during the run
+  });
+
   it('cancels before any execution when the plan gate is denied (FR-AGENT-3)', async () => {
     const registry = makeRegistry();
     const readHandler = registry.get('read_dom')!.handler as ReturnType<typeof vi.fn>;

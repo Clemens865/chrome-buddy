@@ -18,6 +18,7 @@ import { persistRun, fetchRuns } from '../memory/request';
 import { buildRunRecord } from '../memory/buildRecord';
 import { findSimilarRun } from '../memory/recall';
 import type { RunRecord } from '../memory/types';
+import { loadCheckpoint, clearCheckpoint, type RunCheckpoint } from '../agent/checkpoint';
 import {
   BUDGET_KEYS,
   BUDGET_DEFAULTS,
@@ -98,10 +99,15 @@ export function ChatView({
   const [planReview, setPlanReview] = useState<{ plan: PlanStep[]; resolve: (d: PlanDecision) => void } | null>(null);
   const [askUser, setAskUser] = useState<{ question: string; choices?: string[]; resolve: (a: string) => void } | null>(null);
   const [humanGate, setHumanGate] = useState<{ kind: 'captcha' | 'login'; resolve: () => void } | null>(null);
+  const [resumable, setResumable] = useState<RunCheckpoint | null>(null);
   const [pastRuns, setPastRuns] = useState<RunRecord[]>([]);
 
   useEffect(() => {
     void getTodaySpend().then(setSpentToday);
+    // FR-AGENT-8: offer to resume a run that was interrupted (panel closed mid-run).
+    void loadCheckpoint().then((cp) => {
+      if (cp && !cp.state.outcome) setResumable(cp);
+    });
   }, []);
 
   // Record a call's cost: session total (UI) + the persistent daily ledger.
@@ -334,6 +340,44 @@ export function ChatView({
     [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate],
   );
 
+  // Resume an interrupted run (FR-AGENT-8): reuse the saved plan, skip done steps.
+  const resumeRun = useCallback(
+    async (cp: RunCheckpoint) => {
+      if (busy) return;
+      setResumable(null);
+      setBusy(true);
+      setNoKey(false);
+      setItems((prev) => [...prev, userItem(`resume_${seqRef.current++}`, `▶ Resuming: ${cp.task}`)]);
+      const onEvent = (e: AgentEvent) => setItems((prev) => reduceTranscript(prev, e));
+      try {
+        const result = await runAgentTask(cp.task, {
+          onEvent,
+          onConfirm: makeOnConfirm(),
+          onPlanReview: askBeforePlan ? onPlanReview : undefined,
+          onAskUser,
+          onHumanGate,
+          model: activeModel,
+          costBudget: perRunCap,
+          stepBudget,
+          resume: cp.state,
+        });
+        if (result.outcome === 'no-key') setNoKey(true);
+        else recordCost(result.state?.costUsed ?? 0);
+      } catch (e) {
+        setItems((prev) => [...prev, { kind: 'error', id: `rerr_${seqRef.current++}`, text: e instanceof Error ? e.message : String(e) }]);
+      } finally {
+        pendingRef.current = null;
+        setBusy(false);
+      }
+    },
+    [busy, makeOnConfirm, askBeforePlan, onPlanReview, onAskUser, onHumanGate, activeModel, perRunCap, stepBudget, recordCost],
+  );
+
+  const dismissResume = useCallback(() => {
+    setResumable(null);
+    void clearCheckpoint();
+  }, []);
+
   // Running a skill (from the Skills view) submits its task in the skill's mode.
   useEffect(() => {
     if (!pendingRun) return;
@@ -365,6 +409,27 @@ export function ChatView({
           </>
         )}
       </div>
+      {resumable && !busy && (
+        <div className="resume-card" role="group" aria-label="Resume run">
+          <div className="resume-card-txt">
+            <span className="ic">{Ic.history}</span>
+            Resume interrupted run: <strong>{resumable.task}</strong>
+            {` (${resumable.state.scratchpad.completedSteps.length}/${resumable.state.scratchpad.plan.length} steps done)`}
+          </div>
+          <div className="resume-card-actions">
+            <button type="button" className="suggest-chip" onClick={dismissResume}>Dismiss</button>
+            <button
+              type="button"
+              className="composer-send"
+              style={{ width: 'auto', padding: '0 12px', borderRadius: 8 }}
+              aria-label="Resume run"
+              onClick={() => void resumeRun(resumable)}
+            >
+              Resume
+            </button>
+          </div>
+        </div>
+      )}
       {humanGate && (
         <div className="human-gate" role="group" aria-label="Human action needed">
           <div className="human-gate-q">

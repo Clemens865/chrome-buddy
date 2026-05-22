@@ -23,7 +23,7 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 33 | `ask_user` tool wired | FR-TOOLS-11 | ✅ | (this push) | screenshots 42-43; e2e ask-user |
 | 34 | Prompt-injection guards | NFR-SEC-6 | ✅ | (this push) | runtime + guards unit tests (internal; gate = screenshots 27-28) |
 | 35 | CAPTCHA/login pause-and-handoff | FR-HITL-8 | ✅ | (this push) | screenshot 44; e2e human-gate |
-| 36 | Agent resumability across SW restart | FR-AGENT-8, NFR-REL-3 | ⬜ | — | — |
+| 36 | Agent resumability across SW restart | FR-AGENT-8, NFR-REL-3 | ✅ | (this push) | screenshot 49; e2e resume |
 | 37 | Computer Use vision fallback | FR-BC-5, FR-LLM-9, FR-AGENT-13 | ⬜ | — | — |
 | 38 | Skills editor + import consent | FR-SKILL-4,5,6,9,10 | ⬜ | — | — |
 | 39 | Workflows: event trigger + export/import + editor | FR-WF-2,4,7 | ⬜ | — | — |
@@ -35,6 +35,12 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #36 — Agent resumability across SW restart (FR-AGENT-8, NFR-REL-3) ✅
+- **Was:** the run scratchpad lived only in memory; a closed/reloaded panel lost an in-flight run.
+- **Now:** the runtime checkpoints its JSON-serialisable RunState after the plan and after each step to IndexedDB (db v6 'runState' store, single 'active' key; `src/agent/checkpoint.ts`). On resume it reuses the saved plan and **skips already-completed steps** (no duplicate consequential actions — NFR-REL-3); runs clear their checkpoint on terminal. Nested skill runs don't checkpoint (no clobber). ChatView shows a "Resume interrupted run (N/M steps done)" banner on load with Resume/Dismiss.
+- **Proof:** runtime unit test (resume skips step 1, runs only step 2, keeps the run id) + checkpoint store tests (155 total); e2e resume: seed a non-terminal checkpoint → reload → banner with task + "1/2 steps done" → Dismiss clears it. Screenshot 49.
+- **Note:** the agent loop runs in the panel (not the SW), so the realistic interruption is a panel close/reload — which this covers. A true headless SW-side resume would need moving the loop into the SW (larger; out of scope here).
 
 ### Apps — grid cleanup + Audio Transcriber ✅
 After an app-vs-chat analysis (and a survey of the MicroLabs catalog: ~28 of 64 apps were chat-coverable), decided to only build apps that need special UI/function.
