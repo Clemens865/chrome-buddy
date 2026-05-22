@@ -5,7 +5,6 @@ import { THEMES, applyTheme, type ThemeName } from './theme';
 import { BuddyPanel, type View } from '../panel/BuddyPanel';
 import { ChatView } from '../views/ChatView';
 import { AppsView, type AppId } from '../views/AppsView';
-import { SummarizerApp } from '../views/apps/SummarizerApp';
 import { ConsoleApp } from '../views/apps/ConsoleApp';
 import { ImageApp } from '../views/apps/ImageApp';
 import { SkillsView, FlowsView, HistoryView } from '../views/StubViews';
@@ -70,12 +69,18 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
     setView(next);
   };
 
+  // App cards that are chat-coverable (e.g. Summarizer) seed a chat prompt.
+  const runPreset = (preset: { prompt: string; mode: ChatMode }) => {
+    setPendingRun({ prompt: preset.prompt, mode: preset.mode });
+    setOpenApp(null);
+    setView('chat');
+  };
+
   let content;
   if (view === 'apps') {
-    if (openApp === 'summarizer') content = <SummarizerApp onBack={() => setOpenApp(null)} />;
-    else if (openApp === 'console') content = <ConsoleApp onBack={() => setOpenApp(null)} />;
+    if (openApp === 'console') content = <ConsoleApp onBack={() => setOpenApp(null)} />;
     else if (openApp === 'image') content = <ImageApp onBack={() => setOpenApp(null)} />;
-    else content = <AppsView onOpenApp={setOpenApp} />;
+    else content = <AppsView onOpenApp={setOpenApp} onPreset={runPreset} />;
   } else if (view === 'skills') content = <SkillsView onRunSkill={runSkill} />;
   else if (view === 'flows') content = <FlowsView onRunWorkflow={runWorkflow} />;
   else if (view === 'history') content = <HistoryView />;

@@ -34,7 +34,8 @@
     "test:e2e:askuser": "playwright test ask-user.spec.ts",
     "test:e2e:humangate": "playwright test human-gate.spec.ts",
     "test:e2e:cdp": "playwright test cdp-trusted.spec.ts",
-    "test:e2e:console": "playwright test console-inspector.spec.ts"
+    "test:e2e:console": "playwright test console-inspector.spec.ts",
+    "test:e2e:appsgrid": "playwright test apps-grid.spec.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",
