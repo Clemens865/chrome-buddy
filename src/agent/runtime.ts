@@ -26,6 +26,7 @@ import {
 } from './hitl';
 import { computerUseStub, type ComputerUseHook } from './computerUse';
 import { fenceUntrusted, INJECTION_GUARD } from './guards';
+import { compressEvidence } from './compress';
 import type {
   ActionRecord,
   AgentEvent,
@@ -580,10 +581,14 @@ export class AgentRuntime {
    */
   private async synthesizeAnswer(options: RunOptions, state: RunState): Promise<string> {
     const sp = state.scratchpad;
-    const evidence = sp.actions
-      .filter((a) => a.result?.ok)
-      .map((a) => `## ${a.toolName}\n${evidenceText(a.result && a.result.ok ? a.result.data : undefined).slice(0, 6000)}`)
-      .join('\n\n');
+    const evidence = compressEvidence(
+      sp.actions
+        .filter((a) => a.result?.ok)
+        .map((a) => ({
+          toolName: a.toolName,
+          text: evidenceText(a.result && a.result.ok ? a.result.data : undefined),
+        })),
+    );
 
     // Screenshots gathered this run are fed back as actual IMAGES so the model
     // can SEE the page (FR-BC-4/5), not just read a base64 blob.
