@@ -96,6 +96,16 @@ test('live: agent writes a markdown file to the root folder, then reads it back 
   // The synthesized answer (from the file's contents) names Paris.
   await expect(panel.locator('.msg-agent .msg-body').last()).toContainText(/paris/i, { timeout: 45_000 });
   await panel.screenshot({ path: path.join(SHOTS, '64-read-back.png') });
+
+  // 4) NEW chat: "can you see the file?" — list_files must enumerate the folder
+  //    and the answer names the file (the reported failure: no listing tool).
+  await panel.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(panel.locator('.chat-greeting-title')).toBeVisible();
+  await panel.getByRole('button', { name: 'Agent', exact: true }).click();
+  await panel.getByPlaceholder('Message Buddy…').fill('Can you see the md file in my root folder? List what is there.');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await expect(panel.locator('.msg-agent .msg-body').last()).toContainText(/france\.md/i, { timeout: 45_000 });
+  await panel.screenshot({ path: path.join(SHOTS, '67-list-files.png') });
 });
 
 // Regression for the reported bug: in AUTO mode (no manual Agent toggle), a plain

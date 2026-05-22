@@ -29,7 +29,7 @@ import { createDefaultRegistry, type ToolRegistry } from '../tools';
 import { callSkillTool } from '../tools/defs';
 import type { ToolDefinition } from '../tools/types';
 import { ok, err, type ToolResult } from '../types';
-import { getRootHandle, readFromRoot, writeToRoot } from '../fs/root';
+import { getRootHandle, readFromRoot, writeToRoot, listRoot } from '../fs/root';
 import { saveCheckpoint, clearCheckpoint } from './checkpoint';
 import { nanoPrompt } from '../llm/nano';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
@@ -50,7 +50,7 @@ import type {
 const PAGE_TOOLS = new Set(['read_dom', 'extract', 'screenshot', 'navigate', 'click', 'type', 'scroll']);
 
 /** Tools the agent may use: page tools + search_web + file + ask_user + consequential (HITL-gated). */
-const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'search_web', 'send_webhook', 'write_file', 'read_file', 'ask_user']);
+const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'search_web', 'send_webhook', 'write_file', 'read_file', 'list_files', 'ask_user']);
 
 /** Resolver the agent awaits when it calls ask_user (FR-TOOLS-11). */
 export type AskUserHandler = (req: { question: string; choices?: string[] }) => Promise<string>;
@@ -62,6 +62,10 @@ function fileToolHandler(name: string, send: (m: unknown) => Promise<unknown>) {
   return async (args: Record<string, unknown>): Promise<ToolResult> => {
     const path = typeof args.path === 'string' ? args.path : '';
     try {
+      if (name === 'list_files') {
+        const entries = await listRoot(path);
+        return ok({ path: path || '(root)', count: entries.length, entries });
+      }
       if (name === 'read_file') {
         const contents = await readFromRoot(path);
         return ok({ path, contents });
@@ -300,7 +304,7 @@ function wireRegistry(
     // write_file keep their `consequential` flag so the HITL gate fires first.
     if (AGENT_TOOLS.has(def.name)) {
       let handler;
-      if (def.name === 'read_file' || def.name === 'write_file') {
+      if (def.name === 'read_file' || def.name === 'write_file' || def.name === 'list_files') {
         handler = fileToolHandler(def.name, send);
       } else if (def.name === 'ask_user') {
         handler = askUserToolHandler(onAskUser);

@@ -147,6 +147,28 @@ export async function readFromRoot(path: string): Promise<string> {
   return readFileAt(root as unknown as DirHandleLike, path);
 }
 
+export interface DirEntry {
+  name: string;
+  kind: 'file' | 'directory';
+}
+
+/** List the entries of the root folder (or a subfolder under it). */
+export async function listRoot(path = ''): Promise<DirEntry[]> {
+  const root = await getRootHandle();
+  if (!root) throw new Error('No root folder set. Choose one in Settings.');
+  if (!(await ensureHandlePermission(root, 'read')))
+    throw new Error('Folder access expired. Open Settings and reconnect the root folder, or re-approve.');
+  let dir = root as unknown as DirHandleLike;
+  for (const seg of stripRootName(splitPath(path), root.name)) dir = await dir.getDirectoryHandle(seg);
+  const out: DirEntry[] = [];
+  // Real FileSystemDirectoryHandle exposes an async-iterable values().
+  const iterable = dir as unknown as { values?: () => AsyncIterable<{ name: string; kind: 'file' | 'directory' }> };
+  if (iterable.values) {
+    for await (const h of iterable.values()) out.push({ name: h.name, kind: h.kind });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Write a file to the root folder. Returns the relative path written. */
 export async function writeToRoot(path: string, contents: string): Promise<string> {
   const root = await getRootHandle();

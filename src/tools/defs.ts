@@ -271,10 +271,31 @@ export const sendWebhookTool: ToolDefinition = {
   handler: notWired('send_webhook'),
 };
 
+// --- list_files (FR-TOOLS-10) ----------------------------------------------
+export const listFilesTool: ToolDefinition = {
+  name: 'list_files',
+  description:
+    "List the files and subfolders in the user's chosen root folder. Use this to see " +
+    'what is in the folder before reading a specific file (e.g. to answer "what files are there?").',
+  paramsSchema: objectSchema(
+    {
+      path: {
+        type: 'string',
+        description: 'Optional subfolder relative to the root folder. Omit to list the root.',
+      },
+    },
+    [],
+  ),
+  consequential: false,
+  handler: notWired('list_files'),
+};
+
 // --- read_file (FR-TOOLS-10) -----------------------------------------------
 export const readFileTool: ToolDefinition = {
   name: 'read_file',
-  description: 'Read a file from the user-selected root folder (File System Access).',
+  description:
+    'Read a file from the user-selected root folder (File System Access). Use list_files first ' +
+    'if you do not know the exact filename.',
   paramsSchema: objectSchema(
     {
       path: {
@@ -343,6 +364,7 @@ export const stubToolDefs: ToolDefinition[] = [
   searchWebTool,
   callSkillTool,
   sendWebhookTool,
+  listFilesTool,
   readFileTool,
   writeFileTool,
   askUserTool,

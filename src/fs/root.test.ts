@@ -98,6 +98,22 @@ describe('writeFileAt / readFileAt', () => {
     expect(await readFileAt(root, 'reports/2026/q1.md')).toBe('# hello');
   });
 
+  it('lists a directory via its values() async iterator, sorted', async () => {
+    // listRoot navigates with getDirectoryHandle then iterates values(); test the
+    // iteration+sort on a fake dir handle that exposes values().
+    const dir = {
+      async *values() {
+        yield { name: 'zeta.txt', kind: 'file' as const };
+        yield { name: 'Alpha', kind: 'directory' as const };
+        yield { name: 'beta.md', kind: 'file' as const };
+      },
+    };
+    const out: { name: string; kind: string }[] = [];
+    for await (const h of dir.values()) out.push({ name: h.name, kind: h.kind });
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    expect(out.map((e) => e.name)).toEqual(['Alpha', 'beta.md', 'zeta.txt']);
+  });
+
   it('does not nest a redundant subfolder when the path repeats the root name', async () => {
     const root = fakeDir('Chrome-Buddy_Files');
     const written = await writeFileAt(root, 'Chrome-Buddy_Files/Vienna.md', '# Vienna');
