@@ -127,6 +127,8 @@ export interface RunAgentTaskOptions {
   stepBudget?: number;
   /** Per-run dollar cap (NFR-COST-1). Defaults to DEFAULT_COST_BUDGET. */
   costBudget?: number;
+  /** Recent chat turns (oldest→newest) for planner reference resolution. */
+  history?: string;
 }
 
 /** Terminal result of a run, plus a clean no-key signal for the UI. */
@@ -404,6 +406,7 @@ export async function runAgentTask(
     stepBudget: options.stepBudget ?? DEFAULT_STEP_BUDGET,
     costBudget: options.costBudget ?? DEFAULT_COST_BUDGET,
     signal: options.signal,
+    history: options.history,
     resume: options.resume,
   });
 

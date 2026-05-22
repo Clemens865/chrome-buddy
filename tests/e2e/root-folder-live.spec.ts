@@ -106,6 +106,14 @@ test('live: agent writes a markdown file to the root folder, then reads it back 
   await panel.getByRole('button', { name: 'Send' }).click();
   await expect(panel.locator('.msg-agent .msg-body').last()).toContainText(/france\.md/i, { timeout: 45_000 });
   await panel.screenshot({ path: path.join(SHOTS, '67-list-files.png') });
+
+  // 5) SAME chat follow-up: "what's in that file?" must resolve the reference
+  //    from history (france.md) and actually read it — the reported failure
+  //    where it asked for the name then stopped without reading.
+  await panel.getByPlaceholder('Message Buddy…').fill('Can you tell me what stands in this file? Summarize it.');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await expect(panel.locator('.msg-agent .msg-body').last()).toContainText(/paris|capital/i, { timeout: 60_000 });
+  await panel.screenshot({ path: path.join(SHOTS, '68-read-this-file.png') });
 });
 
 // Regression for the reported bug: in AUTO mode (no manual Agent toggle), a plain

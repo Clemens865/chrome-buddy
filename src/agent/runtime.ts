@@ -212,9 +212,20 @@ export class AgentRuntime {
         content:
           'You are the Planner of a browser agent. Produce a concise numbered plan ' +
           'of concrete steps to accomplish the task using the available tools. ' +
+          'The plan must be COMPLETE: include every tool step needed to actually ' +
+          'finish and answer — do not stop at gathering a detail. For files in the ' +
+          "user's folder, prefer list_files then read_file; only use ask_user when " +
+          'genuinely ambiguous, and if you ask, still include the follow-up read step. ' +
+          'Use the prior conversation to resolve references like "this file" or "it" ' +
+          '(e.g. a filename already mentioned) instead of re-asking. ' +
           'Respond ONLY with JSON: {"steps":[{"intent":"..."}]}.',
       },
-      { role: 'user', content: `Task: ${task}\n\nAvailable tools:\n${toolList}` },
+      {
+        role: 'user',
+        content:
+          (options.history ? `Recent conversation:\n${fenceUntrusted(options.history)}\n\n` : '') +
+          `Task: ${task}\n\nAvailable tools:\n${toolList}`,
+      },
     ];
 
     const res = await this.llm.generate({

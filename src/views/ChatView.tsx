@@ -78,6 +78,16 @@ interface PendingConfirm {
   resolve: (decision: ApprovalDecision) => void;
 }
 
+/** The last few user/agent turns, so an agent run can resolve references like
+ *  "this file" to what was established earlier in the conversation. */
+function recentHistory(items: TranscriptItem[], max = 6): string {
+  return items
+    .filter((it): it is Extract<TranscriptItem, { kind: 'user' | 'agent' }> => it.kind === 'user' || it.kind === 'agent')
+    .slice(-max)
+    .map((it) => `${it.kind === 'user' ? 'User' : 'Buddy'}: ${it.text}`)
+    .join('\n');
+}
+
 export function ChatView({
   pendingRun,
   onConsumePending,
@@ -136,6 +146,9 @@ export function ChatView({
     void addSpend(amount).then(setSpentToday);
   }, []);
   const pendingRef = useRef<PendingConfirm | null>(null);
+  // Mirror items so the (memoised) submit closure can read the latest transcript.
+  const itemsRef = useRef<TranscriptItem[]>(items);
+  itemsRef.current = items;
 
   // Auto-scroll the transcript to the newest content (so confirm cards, answers,
   // and tool traces stay in view). We "stick" to the bottom unless the user has
@@ -343,6 +356,7 @@ export function ChatView({
             model: activeModel,
             costBudget: perRunCap,
             stepBudget,
+            history: recentHistory(itemsRef.current),
           });
           if (result.outcome === 'no-key') setNoKey(true);
           else if (result.state) {
