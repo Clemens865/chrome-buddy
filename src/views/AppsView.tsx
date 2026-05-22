@@ -15,7 +15,7 @@ import { parseAppConfig, parseCodeApp, renderTemplate, APP_BUILDER_SYSTEM, CODE_
 import { runInSandbox } from '../sandbox/host';
 import type { AppConfig } from '../apps/types';
 
-export type AppId = 'console' | 'image';
+export type AppId = 'console' | 'image' | 'transcriber';
 
 /** Chat presets launched from an app card instead of opening an app view. */
 export type AppPreset = { prompt: string; mode: 'auto' | 'ask' | 'agent' };
@@ -36,6 +36,7 @@ export const APPS: AppMeta[] = [
   { id: 'summarizer', icon: Ic.reader, name: 'Page Summarizer', desc: 'Distill any page into TL;DR + key points.', color: '#0EA5E9' },
   { id: 'console', icon: Ic.console, name: 'Console Inspector', desc: 'Read console logs and explain errors.', color: '#10B981' },
   { id: 'image', icon: Ic.image, name: 'Image Generator', desc: 'Generate images from a prompt.', color: '#A78BFA' },
+  { id: 'transcriber', icon: Ic.mic, name: 'Audio Transcriber', desc: 'Turn an audio file into text.', color: '#0EA5E9' },
   { id: 'scrape', icon: Ic.scrape, name: 'Scrape to Table', desc: 'Extract structured data to CSV.', color: '#F43F5E' },
   { id: 'watch', icon: Ic.watch, name: 'Price Watch', desc: 'Ping me when something changes.', color: '#6366F1' },
 ];
@@ -55,7 +56,7 @@ export function AppsView({
   onPreset: (preset: AppPreset) => void;
   recents?: string[];
 }) {
-  const openable = new Set<AppId>(['console', 'image']);
+  const openable = new Set<AppId>(['console', 'image', 'transcriber']);
   const open = (id: string) => {
     if (PRESETS[id]) {
       onPreset(PRESETS[id]); // chat-coverable (e.g. Summarizer) → seed a chat prompt

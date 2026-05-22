@@ -7,6 +7,7 @@ import { ChatView } from '../views/ChatView';
 import { AppsView, type AppId } from '../views/AppsView';
 import { ConsoleApp } from '../views/apps/ConsoleApp';
 import { ImageApp } from '../views/apps/ImageApp';
+import { TranscriberApp } from '../views/apps/TranscriberApp';
 import { SkillsView, FlowsView, HistoryView } from '../views/StubViews';
 import { SettingsView } from '../views/SettingsView';
 import { Onboarding } from '../views/Onboarding';
@@ -80,6 +81,7 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
   if (view === 'apps') {
     if (openApp === 'console') content = <ConsoleApp onBack={() => setOpenApp(null)} />;
     else if (openApp === 'image') content = <ImageApp onBack={() => setOpenApp(null)} />;
+    else if (openApp === 'transcriber') content = <TranscriberApp onBack={() => setOpenApp(null)} />;
     else content = <AppsView onOpenApp={setOpenApp} onPreset={runPreset} />;
   } else if (view === 'skills') content = <SkillsView onRunSkill={runSkill} />;
   else if (view === 'flows') content = <FlowsView onRunWorkflow={runWorkflow} />;

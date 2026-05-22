@@ -36,6 +36,12 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 ## Log
 _(newest first — one entry per landed item)_
 
+### Apps — grid cleanup + Audio Transcriber ✅
+After an app-vs-chat analysis (and a survey of the MicroLabs catalog: ~28 of 64 apps were chat-coverable), decided to only build apps that need special UI/function.
+- **Grid cleanup:** Page Summarizer is now a chat preset (seeds "Summarize this page"); Translator removed (chat + Chrome's native translate cover it); dropped Price Watch's fake "running" dot. e2e apps-grid; screenshot 47.
+- **Audio Transcriber (new app):** upload an audio file → playback → transcribe via Gemini native generateContent (audio inlineData) → transcript + copy. Earns an app via the file input + `<audio>` playback (device/file UI). New AUDIO_TRANSCRIBE message + SW handler (`transcribeAudioNative`) + `src/audio/request.ts` + TranscriberApp. Live e2e with a `say`-generated speech fixture → transcript returned "The quick brown fox…" verbatim. Screenshot 48. 152 unit tests.
+- Still-valid future apps (not built this round): Scrape to Table, Price Watch, Screenshot→Code. Decision recorded in memory (apps-vs-chat-decision).
+
 ### #44 — Debugger permission + Console Inspector + CDP trusted-input (FR-BC-2/3) ✅
 - **Was:** `chrome.debugger` was unavailable (no `"debugger"` permission), so Console Inspector couldn't capture and the CDP control path was a stub.
 - **Now:** added the `"debugger"` permission. `src/page/cdp.ts` implements the real CDP trusted-input engine (lazy attach, `Input.dispatchMouseEvent`/`insertText`/`dispatchKeyEvent`, injection-safe locator builder); `act(engine:'cdp')` delegates to it. The `click`/`type` tools gain a `trusted` arg → SW routes to CDP and fires a one-time "debugging banner expected" notification (FR-BC-3). Console Inspector now captures live (the `CaptureController` was already built — just needed the permission) and shows its own banner notice.

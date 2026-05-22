@@ -112,6 +112,55 @@ async function generateImageNative(
 }
 
 /**
+ * Transcribe audio via the native Gemini generateContent endpoint: send the
+ * audio as inlineData with a transcription instruction, return the text parts.
+ * Mirrors generateImageNative (same key custody, same base-URL derivation).
+ */
+async function transcribeAudioNative(
+  providerId: string,
+  model: string,
+  audioBase64: string,
+  mimeType: string,
+  prompt: string,
+): Promise<BuddyResponse> {
+  const key = await getStoredKey(providerId);
+  if (!key) return { type: 'ERROR', ok: false, error: `No API key set for provider '${providerId}'.` };
+
+  const provider = DEFAULT_REGISTRY.providers[providerId];
+  const base =
+    (provider?.baseUrl ?? '').replace(/\/openai\/?$/, '') ||
+    'https://generativelanguage.googleapis.com/v1beta';
+  const url = `${base}/models/${model}:generateContent`;
+
+  const parts = [{ text: prompt }, { inlineData: { mimeType, data: audioBase64 } }];
+
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({ contents: [{ role: 'user', parts }] }),
+    });
+  } catch (err) {
+    return { type: 'ERROR', ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    return { type: 'ERROR', ok: false, error: `Audio API ${resp.status}: ${body.slice(0, 300)}` };
+  }
+
+  const data = (await resp.json()) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+  };
+  const text = (data.candidates?.[0]?.content?.parts ?? [])
+    .map((p) => p.text ?? '')
+    .join('')
+    .trim();
+  if (!text) return { type: 'ERROR', ok: false, error: 'The model returned no transcript.' };
+  return { type: 'AUDIO_TRANSCRIBE', ok: true, text };
+}
+
+/**
  * Resolve a provider's key: in-app key (storage.session) → DEV .env fallback.
  * Delegates to the single resolver in instance.ts so KEY_STATUS, LLM_GENERATE
  * and IMAGE_GENERATE all honor the same lookup.
@@ -119,6 +168,11 @@ async function generateImageNative(
 async function getStoredKey(provider: string): Promise<string | undefined> {
   return readSessionApiKey(provider);
 }
+
+/** Default model for audio transcription (audio-understanding capable). */
+const TRANSCRIBE_MODEL = 'gemini-2.5-flash';
+const TRANSCRIBE_PROMPT =
+  'Transcribe this audio verbatim into plain text. Output only the transcript, no commentary.';
 
 /**
  * Handle one inbound message and produce a response. Exported (and pure w.r.t.
@@ -281,6 +335,19 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
           return { type: 'ERROR', ok: false, error: `No API key set for provider '${providerId}'.` };
         }
         return generateImageNative(providerId, message.model, message.prompt, message.inputImage);
+      }
+
+      case 'AUDIO_TRANSCRIBE': {
+        const model = message.model ?? TRANSCRIBE_MODEL;
+        const providerId = resolveProviderId(model);
+        if (!providerId) return { type: 'ERROR', ok: false, error: 'Unknown or disabled model.' };
+        return transcribeAudioNative(
+          providerId,
+          model,
+          message.audioBase64,
+          message.mimeType,
+          message.prompt ?? TRANSCRIBE_PROMPT,
+        );
       }
 
       default: {

@@ -95,6 +95,23 @@ export interface ImageGenerateMessage {
   inputImage?: string;
 }
 
+/**
+ * Transcribe audio via the native Gemini generateContent endpoint (audio
+ * inlineData → text). Like image gen, audio can't go through the OpenAI-compat
+ * chat adapter. Runs in the SW (key custody).
+ */
+export interface AudioTranscribeMessage {
+  type: 'AUDIO_TRANSCRIBE';
+  /** Audio-capable registry model id; omit to use a sensible default. */
+  model?: string;
+  /** Base64 audio payload (no data: prefix). */
+  audioBase64: string;
+  /** MIME type, e.g. 'audio/wav', 'audio/mp3', 'audio/webm'. */
+  mimeType: string;
+  /** Optional instruction (default: verbatim transcription). */
+  prompt?: string;
+}
+
 /** Capture a compact summary of the active page (for attaching to chat). */
 export interface PageContextMessage {
   type: 'PAGE_CONTEXT';
@@ -160,6 +177,7 @@ export type BuddyMessage =
   | LlmGenerateMessage
   | ToolExecMessage
   | ImageGenerateMessage
+  | AudioTranscribeMessage
   | PageContextMessage
   | MemorySaveRunMessage
   | MemoryListRunsMessage
@@ -216,6 +234,13 @@ export interface ImageGenerateResponse {
   ok: true;
   /** Generated image as a data URL (data:image/...;base64,...). */
   dataUrl: string;
+}
+
+export interface AudioTranscribeResponse {
+  type: 'AUDIO_TRANSCRIBE';
+  ok: true;
+  /** The transcript text. */
+  text: string;
 }
 
 export interface PageContextResponse {
@@ -312,6 +337,7 @@ export type BuddyResponse =
   | LlmGenerateResponse
   | ToolExecResponse
   | ImageGenerateResponse
+  | AudioTranscribeResponse
   | PageContextResponse
   | MemorySaveRunResponse
   | MemoryListRunsResponse
@@ -338,6 +364,7 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'LLM_GENERATE' ||
     t === 'TOOL_EXEC' ||
     t === 'IMAGE_GENERATE' ||
+    t === 'AUDIO_TRANSCRIBE' ||
     t === 'PAGE_CONTEXT' ||
     t === 'MEMORY_SAVE_RUN' ||
     t === 'MEMORY_LIST_RUNS' ||
