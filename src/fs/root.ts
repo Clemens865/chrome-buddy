@@ -107,17 +107,43 @@ export async function rootFolderName(): Promise<string | null> {
   return h?.name ?? null;
 }
 
-/** Ensure read (or readwrite) permission on the handle; may need a gesture. */
-async function ensurePermission(handle: FsdHandle, mode: 'read' | 'readwrite'): Promise<boolean> {
-  if (await handle.queryPermission?.({ mode }) === 'granted') return true;
-  return (await handle.requestPermission?.({ mode })) === 'granted';
+/** Ensure read (or readwrite) permission on the handle; may need a gesture.
+ *
+ * File System Access permissions reset to "prompt" each browser session and
+ * `requestPermission` needs a transient user gesture. We bound the request with
+ * a timeout so a stuck/unanswerable prompt (a known side-panel quirk) fails
+ * cleanly instead of freezing the run. Re-granting happens at the Approve click
+ * (a real gesture) — see ChatView; by the time a write runs, this is "granted". */
+interface PermissionHandle {
+  queryPermission?(d: { mode: string }): Promise<PermissionState>;
+  requestPermission?(d: { mode: string }): Promise<PermissionState>;
+}
+export async function ensureHandlePermission(
+  handle: PermissionHandle,
+  mode: 'read' | 'readwrite',
+  timeoutMs = 15_000,
+): Promise<boolean> {
+  if ((await handle.queryPermission?.({ mode })) === 'granted') return true;
+  if (!handle.requestPermission) return false;
+  const timeout = new Promise<PermissionState>((r) => setTimeout(() => r('prompt'), timeoutMs));
+  const granted = await Promise.race([handle.requestPermission({ mode }), timeout]).catch(() => 'prompt');
+  return granted === 'granted';
+}
+
+/** Re-acquire permission on the chosen root folder. MUST be called from within a
+ * user gesture (e.g. an Approve click) so `requestPermission` is allowed. */
+export async function ensureRootPermission(mode: 'read' | 'readwrite' = 'readwrite'): Promise<boolean> {
+  const root = await getRootHandle();
+  if (!root) return false;
+  return ensureHandlePermission(root, mode);
 }
 
 /** Read a file from the root folder (resolves the handle + permission first). */
 export async function readFromRoot(path: string): Promise<string> {
   const root = await getRootHandle();
   if (!root) throw new Error('No root folder set. Choose one in Settings.');
-  if (!(await ensurePermission(root, 'read'))) throw new Error('Read permission denied for the root folder.');
+  if (!(await ensureHandlePermission(root, 'read')))
+    throw new Error('Folder access expired. Open Settings and reconnect the root folder, or re-approve the read.');
   return readFileAt(root as unknown as DirHandleLike, path);
 }
 
@@ -125,6 +151,7 @@ export async function readFromRoot(path: string): Promise<string> {
 export async function writeToRoot(path: string, contents: string): Promise<string> {
   const root = await getRootHandle();
   if (!root) throw new Error('No root folder set. Choose one in Settings.');
-  if (!(await ensurePermission(root, 'readwrite'))) throw new Error('Write permission denied for the root folder.');
+  if (!(await ensureHandlePermission(root, 'readwrite')))
+    throw new Error('Folder access expired. Open Settings and reconnect the root folder, or re-approve the write.');
   return writeFileAt(root as unknown as DirHandleLike, path, contents);
 }

@@ -17,6 +17,7 @@ import { requestPageContext } from '../page/request';
 import { persistRun, fetchRuns } from '../memory/request';
 import { buildRunRecord } from '../memory/buildRecord';
 import { findSimilarRun } from '../memory/recall';
+import { ensureRootPermission } from '../fs/root';
 import type { RunRecord } from '../memory/types';
 import { loadCheckpoint, clearCheckpoint, type RunCheckpoint } from '../agent/checkpoint';
 import {
@@ -73,6 +74,7 @@ const SUGGESTIONS = [
 interface PendingConfirm {
   step: number;
   callId: string;
+  tool: string;
   resolve: (decision: ApprovalDecision) => void;
 }
 
@@ -298,7 +300,7 @@ export function ChatView({
         // confirmation_required before awaiting this resolver). We just hold the
         // resolver until the user clicks Approve/Cancel on the matching card.
         new Promise<ApprovalDecision>((resolve) => {
-          pendingRef.current = { step: req.step, callId: req.summary, resolve };
+          pendingRef.current = { step: req.step, callId: req.summary, tool: req.tool, resolve };
         });
 
       try {
@@ -361,11 +363,23 @@ export function ChatView({
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
-    setItems((prev) => resolveConfirmation(prev, step, callId, approved ? 'approved' : 'denied'));
     const pending = pendingRef.current;
+    const fileTool = pending?.tool === 'write_file' || pending?.tool === 'read_file';
+    // File System Access permission resets each session and `requestPermission`
+    // needs a user gesture. The Approve click IS that gesture, so re-acquire the
+    // root-folder permission HERE (synchronously kicked off) before letting the
+    // agent's deferred write/read run — otherwise it would prompt mid-loop with
+    // no activation and stall. Started before any await to keep activation live.
+    const permP = approved && fileTool ? ensureRootPermission('readwrite') : Promise.resolve(true);
+    setItems((prev) => resolveConfirmation(prev, step, callId, approved ? 'approved' : 'denied'));
     if (pending && pending.step === step) {
-      pending.resolve(approved ? { approved: true } : { approved: false });
       pendingRef.current = null;
+      void permP.then((granted) => {
+        // Deny cleanly if the folder permission couldn't be (re)granted, so the
+        // run reports it instead of erroring deep in the write.
+        if (approved && fileTool && !granted) pending.resolve({ approved: false });
+        else pending.resolve(approved ? { approved: true } : { approved: false });
+      });
     }
   }, []);
 
@@ -374,7 +388,7 @@ export function ChatView({
     () =>
       (req: { runId: string; step: number; tool: string; args: Record<string, unknown>; summary: string }) =>
         new Promise<ApprovalDecision>((resolve) => {
-          pendingRef.current = { step: req.step, callId: req.summary, resolve };
+          pendingRef.current = { step: req.step, callId: req.summary, tool: req.tool, resolve };
         }),
     [],
   );

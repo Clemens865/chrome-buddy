@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitPath, stripRootName, readFileAt, writeFileAt, type DirHandleLike } from './root';
+import { splitPath, stripRootName, ensureHandlePermission, readFileAt, writeFileAt, type DirHandleLike } from './root';
 
 // A tiny in-memory FileSystemDirectoryHandle stand-in.
 function fakeDir(name = 'root'): DirHandleLike & { files: Map<string, string>; dirs: Map<string, ReturnType<typeof fakeDir>> } {
@@ -51,6 +51,42 @@ describe('stripRootName', () => {
     expect(stripRootName(['Vienna.md'], 'Chrome-Buddy_Files')).toEqual(['Vienna.md']);
     expect(stripRootName(['data', 'out.csv'], 'Notes')).toEqual(['data', 'out.csv']);
     expect(stripRootName(['Notes'], 'Notes')).toEqual(['Notes']); // a file named like the folder
+  });
+});
+
+describe('ensureHandlePermission', () => {
+  it('returns true without prompting when already granted', async () => {
+    let requested = false;
+    const h = {
+      async queryPermission() { return 'granted' as PermissionState; },
+      async requestPermission() { requested = true; return 'granted' as PermissionState; },
+    };
+    expect(await ensureHandlePermission(h, 'readwrite')).toBe(true);
+    expect(requested).toBe(false);
+  });
+
+  it('re-requests when the permission has lapsed to "prompt"', async () => {
+    const h = {
+      async queryPermission() { return 'prompt' as PermissionState; },
+      async requestPermission() { return 'granted' as PermissionState; },
+    };
+    expect(await ensureHandlePermission(h, 'readwrite')).toBe(true);
+  });
+
+  it('returns false when the user denies', async () => {
+    const h = {
+      async queryPermission() { return 'prompt' as PermissionState; },
+      async requestPermission() { return 'denied' as PermissionState; },
+    };
+    expect(await ensureHandlePermission(h, 'readwrite')).toBe(false);
+  });
+
+  it('does not hang on an unanswerable prompt — times out to false', async () => {
+    const h = {
+      async queryPermission() { return 'prompt' as PermissionState; },
+      requestPermission: () => new Promise<PermissionState>(() => {}), // never resolves
+    };
+    expect(await ensureHandlePermission(h, 'readwrite', 20)).toBe(false);
   });
 });
 
