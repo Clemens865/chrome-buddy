@@ -24,6 +24,12 @@ const AGENT_PATTERNS: RegExp[] = [
   /\b(find|look up|latest|recent|newest)\b[^.]*\b(news|articles|papers|posts|releases|updates)\b/i,
   /\b(across|multiple|several)\b[^.]*\b(sites|pages|tabs|websites)\b/i,
   /\bfor each\b|\band then\b|\bstep by step\b/i,
+  // Writing/saving files needs the write_file tool (root folder or Downloads).
+  // Require an explicit file/format word so "write a haiku" stays plain chat.
+  /\b(write|save|export|create|make|generate|store)\b[^.\n]{0,48}\b(file|files|markdown|csv|spreadsheet|\.md|\.csv|\.txt|\.json)\b/i,
+  /\b(save|write|export|store|put|download)\b[^.\n]{0,48}\b(folder|directory|disk|root)\b/i,
+  // An explicit filename (e.g. "Vienna.md", "data.csv") implies a file action.
+  /\b[\w-]+\.(md|markdown|txt|csv|json|html?|pdf|docx?|xlsx?)\b/i,
 ];
 
 /** Pure heuristic: does this message need the agent (tools), or just a chat answer? */

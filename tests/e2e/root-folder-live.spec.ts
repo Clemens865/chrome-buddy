@@ -14,7 +14,7 @@ import path from 'node:path';
 const SHOTS = path.join(process.cwd(), 'screenshots');
 
 // Injected before any page script: replace the native picker with an OPFS-backed
-// directory handle named "BuddyTestRoot", and make permission queries grant
+// directory handle named "Chrome-Buddy_Files", and make permission queries grant
 // (OPFS handles don't implement query/requestPermission, which the app needs).
 const FAKE_PICKER = `
   (() => {
@@ -25,7 +25,7 @@ const FAKE_PICKER = `
     }
     window.showDirectoryPicker = async () => {
       const opfs = await navigator.storage.getDirectory();
-      return opfs.getDirectoryHandle('BuddyTestRoot', { create: true });
+      return opfs.getDirectoryHandle('Chrome-Buddy_Files', { create: true });
     };
   })();
 `;
@@ -42,14 +42,14 @@ test('live: agent writes a markdown file to the root folder, then reads it back 
   // Start from a clean OPFS so the assertions are deterministic.
   await panel.evaluate(async () => {
     const opfs = await navigator.storage.getDirectory();
-    await opfs.removeEntry('BuddyTestRoot', { recursive: true }).catch(() => {});
+    await opfs.removeEntry('Chrome-Buddy_Files', { recursive: true }).catch(() => {});
   });
 
   // 1) Choose the root folder in Settings (drives pickRootFolder → IDB persist).
   await panel.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(panel.getByText('Root folder')).toBeVisible();
   await panel.getByRole('button', { name: 'Choose folder' }).click();
-  await expect(panel.getByText('BuddyTestRoot')).toBeVisible({ timeout: 10_000 });
+  await expect(panel.getByText('Chrome-Buddy_Files')).toBeVisible({ timeout: 10_000 });
   await panel.screenshot({ path: path.join(SHOTS, '61-root-chosen.png') });
 
   // 2) New agent chat: ask Buddy to write a markdown file into the root folder.
@@ -78,7 +78,7 @@ test('live: agent writes a markdown file to the root folder, then reads it back 
   // Ground truth: the file really exists in the chosen folder with Paris in it.
   const onDisk = await panel.evaluate(async () => {
     const opfs = await navigator.storage.getDirectory();
-    const root = await opfs.getDirectoryHandle('BuddyTestRoot');
+    const root = await opfs.getDirectoryHandle('Chrome-Buddy_Files');
     const fh = await root.getFileHandle('france.md');
     return (await fh.getFile()).text();
   });
@@ -96,4 +96,63 @@ test('live: agent writes a markdown file to the root folder, then reads it back 
   // The synthesized answer (from the file's contents) names Paris.
   await expect(panel.locator('.msg-agent .msg-body').last()).toContainText(/paris/i, { timeout: 45_000 });
   await panel.screenshot({ path: path.join(SHOTS, '64-read-back.png') });
+});
+
+// Regression for the reported bug: in AUTO mode (no manual Agent toggle), a plain
+// "create an md file … and save it in the root folder" must route to the agent
+// and call write_file — not fall back to a tool-less chat answer that refuses.
+test('live: AUTO mode routes a "save a file" request to the agent (write_file)', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.addInitScript(FAKE_PICKER);
+  await panel.setViewportSize({ width: 440, height: 980 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  await panel.evaluate(async () => {
+    const opfs = await navigator.storage.getDirectory();
+    await opfs.removeEntry('Chrome-Buddy_Files', { recursive: true }).catch(() => {});
+  });
+
+  // Choose the root folder.
+  await panel.getByRole('button', { name: 'Settings', exact: true }).click();
+  await panel.getByRole('button', { name: 'Choose folder' }).click();
+  await expect(panel.getByText('Chrome-Buddy_Files')).toBeVisible({ timeout: 10_000 });
+
+  // Back to chat — leave the mode on the default (Auto). Use the user's wording.
+  await panel.getByRole('button', { name: 'Chat', exact: true }).click();
+  await panel
+    .getByPlaceholder('Message Buddy…')
+    .fill('Can you create an md file about Vienna and save it in the root folder Chrome-Buddy_Files');
+  await panel.getByRole('button', { name: 'Send' }).click();
+
+  // It must reach the agent and gate write_file (not refuse in plain chat).
+  const hitl = panel.locator('.hitl');
+  await expect(hitl).toBeVisible({ timeout: 45_000 });
+  await expect(hitl).toContainText('write_file');
+  await panel.screenshot({ path: path.join(SHOTS, '65-auto-vienna-hitl.png') });
+  await panel.getByRole('button', { name: 'Approve action' }).click();
+  await expect(panel.locator('.msg-agent .msg-body').last()).not.toHaveText('', { timeout: 45_000 });
+
+  // A markdown file mentioning Vienna really landed in the folder (recurse, in
+  // case the model nested it under a redundant subfolder).
+  const files = await panel.evaluate(async () => {
+    const opfs = await navigator.storage.getDirectory();
+    const root = await opfs.getDirectoryHandle('Chrome-Buddy_Files');
+    const out: Record<string, string> = {};
+    const walk = async (dir: FileSystemDirectoryHandle, prefix: string) => {
+      // @ts-expect-error async iterator on the directory handle
+      for await (const [name, h] of dir.entries()) {
+        if (h.kind === 'file') out[prefix + name] = await (await h.getFile()).text();
+        else await walk(h, prefix + name + '/');
+      }
+    };
+    await walk(root, '');
+    return out;
+  });
+  const md = Object.entries(files).find(([n]) => n.toLowerCase().endsWith('.md'));
+  expect(md, `expected a .md file, got: ${Object.keys(files).join(', ')}`).toBeTruthy();
+  expect(md![1]).toMatch(/vienna/i);
+  // The file lands at the TOP level of the chosen folder — no redundant nested
+  // "Chrome-Buddy_Files/" subfolder even though the prompt named the folder.
+  expect(md![0]).not.toContain('/');
+  await panel.screenshot({ path: path.join(SHOTS, '66-auto-vienna-done.png') });
 });

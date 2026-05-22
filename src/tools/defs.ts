@@ -298,7 +298,9 @@ export const writeFileTool: ToolDefinition = {
     {
       path: {
         type: 'string',
-        description: 'Filename to save (e.g. "notes.txt" or "data/out.csv").',
+        description:
+          'Filename relative to the chosen root folder (e.g. "notes.txt" or "data/out.csv"). ' +
+          "Do NOT include the root folder's own name — files are already saved inside it.",
       },
       contents: { type: 'string', description: 'File contents to write.' },
     },

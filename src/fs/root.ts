@@ -35,9 +35,22 @@ export function splitPath(path: string): string[] {
     .filter((s) => s && s !== '.' && s !== '..');
 }
 
+/**
+ * Drop a leading segment that just repeats the root folder's own name. Models
+ * often echo the chosen folder into the path (e.g. root "Notes" + "Notes/x.md"),
+ * which would otherwise nest a redundant subfolder. Keep the segment if it's the
+ * whole path (a file named exactly like the folder at the root). Case-insensitive.
+ */
+export function stripRootName(segs: string[], rootName?: string): string[] {
+  if (rootName && segs.length > 1 && segs[0].toLowerCase() === rootName.toLowerCase()) {
+    return segs.slice(1);
+  }
+  return segs;
+}
+
 /** Read a file under `root` by relative path. Throws if it doesn't exist. */
 export async function readFileAt(root: DirHandleLike, path: string): Promise<string> {
-  const segs = splitPath(path);
+  const segs = stripRootName(splitPath(path), root.name);
   if (segs.length === 0) throw new Error('A file path is required.');
   let dir = root;
   for (let i = 0; i < segs.length - 1; i++) dir = await dir.getDirectoryHandle(segs[i]);
@@ -48,7 +61,7 @@ export async function readFileAt(root: DirHandleLike, path: string): Promise<str
 
 /** Write (creating dirs as needed) a file under `root` by relative path. */
 export async function writeFileAt(root: DirHandleLike, path: string, contents: string): Promise<string> {
-  const segs = splitPath(path);
+  const segs = stripRootName(splitPath(path), root.name);
   if (segs.length === 0) throw new Error('A file path is required.');
   let dir = root;
   for (let i = 0; i < segs.length - 1; i++) dir = await dir.getDirectoryHandle(segs[i], { create: true });
