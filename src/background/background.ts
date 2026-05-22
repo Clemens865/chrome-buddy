@@ -18,7 +18,8 @@ import {
   type BuddyMessage,
   type BuddyResponse,
 } from '../key/messages';
-import { getLlmClient, resolveProviderId, readSessionApiKey } from '../llm/instance';
+import { getLlmClient, resolveProviderId, readSessionApiKey, refreshEffectiveRegistry } from '../llm/instance';
+import { USER_REGISTRY_KEY } from '../llm/userRegistry';
 import { LlmClient } from '../llm/client';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { executePageTool, capturePageContext } from './pageTools';
@@ -42,6 +43,13 @@ import { matchesEventTrigger } from '../workflows/build';
 chrome.storage?.session
   ?.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' })
   .catch(() => {});
+
+// Load the effective model registry (bundled + user overlay) and keep it fresh
+// when the user edits it (FR-MR-1/8).
+void refreshEffectiveRegistry();
+chrome.storage?.onChanged?.addListener((changes, areaName) => {
+  if (areaName === 'local' && USER_REGISTRY_KEY in changes) void refreshEffectiveRegistry();
+});
 
 chrome.runtime.onInstalled.addListener(() => {
   // Allow clicking the toolbar icon to toggle the side panel open.

@@ -19,8 +19,10 @@
 
 import { LlmClient } from './client';
 import { DEFAULT_REGISTRY } from './registry.default';
+import { effectiveRegistry } from './userRegistry';
 import { resolveDefaultModel, resolveModel } from './router';
 import type { GenerateResult } from './client';
+import type { ModelRegistry } from './types';
 import { apiKeyStorageKey } from '../key/messages';
 import type {
   ErrorResponse,
@@ -52,13 +54,24 @@ export async function readSessionApiKey(provider: string): Promise<string | unde
   return undefined;
 }
 
+// Effective registry = bundled floor + user overlay (FR-MR-1/8). Cached in the
+// SW and refreshed on demand / storage change so user-added models resolve.
+let effective: ModelRegistry = DEFAULT_REGISTRY;
+export async function refreshEffectiveRegistry(): Promise<void> {
+  effective = await effectiveRegistry();
+}
+export function currentRegistry(): ModelRegistry {
+  return effective;
+}
+
 /**
  * Build an LlmClient for background-context use. The injected getApiKey reads
  * the key for `provider` from chrome.storage.session at request time, so the
- * key is resolved lazily and only inside the SW.
+ * key is resolved lazily and only inside the SW. Uses the effective registry so
+ * user-added models work.
  */
 export function getLlmClient(provider: string): LlmClient {
-  return new LlmClient(DEFAULT_REGISTRY, () => readSessionApiKey(provider));
+  return new LlmClient(effective, () => readSessionApiKey(provider));
 }
 
 /**
@@ -66,9 +79,7 @@ export function getLlmClient(provider: string): LlmClient {
  * the SW to pick the right stored key for an LLM_GENERATE request.
  */
 export function resolveProviderId(modelId: string | undefined): string | undefined {
-  const resolved = modelId
-    ? resolveModel(DEFAULT_REGISTRY, modelId)
-    : resolveDefaultModel(DEFAULT_REGISTRY);
+  const resolved = modelId ? resolveModel(effective, modelId) : resolveDefaultModel(effective);
   return resolved?.provider.id;
 }
 

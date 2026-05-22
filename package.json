@@ -40,7 +40,8 @@
     "test:e2e:resume": "playwright test resume.spec.ts",
     "test:e2e:vision": "playwright test vision.spec.ts",
     "test:e2e:skillseditor": "playwright test skills-editor.spec.ts",
-    "test:e2e:wfeditor": "playwright test workflow-editor.spec.ts"
+    "test:e2e:wfeditor": "playwright test workflow-editor.spec.ts",
+    "test:e2e:registry": "playwright test model-registry.spec.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",

@@ -4,6 +4,10 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Pill } from '../ui/primitives';
 import { THEMES, type ThemeName } from '../ui/theme';
 import { selectableModels, useActiveModel } from '../llm/modelPref';
+import { DEFAULT_REGISTRY } from '../llm/registry.default';
+import { generateViaBackground } from '../llm/instance';
+import { loadUserRegistry, mergeRegistry, saveUserModel } from '../llm/userRegistry';
+import type { ModelConfig } from '../llm/types';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { useApiKey } from '../key/useApiKey';
 import { isFsSupported, pickRootFolder, forgetRootFolder, rootFolderName } from '../fs/root';
@@ -27,7 +31,17 @@ const THEME_NAMES: ThemeName[] = ['slate', 'cream', 'graphite'];
 export function SettingsView({ themeName, accent, onThemeChange, onAccentChange }: SettingsProps) {
   const theme = THEMES[themeName] ?? THEMES.slate;
   const [activeModel, setActiveModel] = useActiveModel();
-  const models = selectableModels();
+  // Effective model list = bundled floor + user overlay (FR-MR-8).
+  const [models, setModels] = useState<ModelConfig[]>(selectableModels());
+  const reloadModels = () => {
+    void loadUserRegistry().then((u) => {
+      const merged = mergeRegistry(DEFAULT_REGISTRY, u);
+      setModels(Object.values(merged.models).filter((m) => m.enabled !== false && m.capabilities?.tools !== false));
+    });
+  };
+  useEffect(() => {
+    reloadModels();
+  }, []);
   const [overlayEnabled, setOverlayEnabled] = usePersistedState<boolean>('overlayEnabled', true);
   const [profiles, setProfiles] = usePersistedState<Profiles>('userProfiles', EMPTY_PROFILES);
   const [activeProfile, setActiveProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
@@ -137,7 +151,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
         <SettingsRow t="Active model" s="Used for chat, agent runs, and skills">
           <select
             className="settings-input"
-            style={{ maxWidth: 180 }}
+            style={{ maxWidth: 150 }}
             aria-label="Active model"
             value={activeModel}
             onChange={(e) => setActiveModel(e.target.value)}
@@ -149,6 +163,10 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
             ))}
           </select>
         </SettingsRow>
+        <SettingsRow t="Test the active model" s="A tiny live call: latency + status">
+          <ModelTestButton model={activeModel} />
+        </SettingsRow>
+        <ModelEditor onAdded={reloadModels} />
         <SettingsRow t="Computer Use fallback" s="When DOM tools aren't enough"><Pill>gemini-2.5-computer-use</Pill></SettingsRow>
       </div>
 
@@ -219,6 +237,99 @@ function BudgetInput({ k, def, step, dollar = true }: { k: string; def: number; 
         aria-label={k}
         onChange={(e) => setValue(Math.max(0, Number(e.target.value) || 0))}
       />
+    </div>
+  );
+}
+
+// FR-MR-12/13: a tiny live call against a model → latency + green/red status;
+// an invalid model fails fast with a clear error.
+function ModelTestButton({ model }: { model: string }) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ ok: boolean; ms?: number; error?: string } | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setStatus(null);
+    const t0 = performance.now();
+    try {
+      await generateViaBackground({ model, messages: [{ role: 'user', content: 'ping' }], params: { maxOutputTokens: 1 } });
+      setStatus({ ok: true, ms: Math.round(performance.now() - t0) });
+    } catch (e) {
+      setStatus({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void run()}>
+        {busy ? 'Testing…' : 'Test'}
+      </button>
+      {status &&
+        (status.ok ? (
+          <Pill tone="ok">✓ {status.ms} ms</Pill>
+        ) : (
+          <span style={{ color: '#B91C1C', fontSize: 12 }}>{(status.error ?? 'failed').slice(0, 44)}</span>
+        ))}
+    </div>
+  );
+}
+
+// FR-MR-8: add a Gemini model entry in-app (id, display name, pricing, caps).
+// Stored in the user overlay and merged over the bundled registry.
+function ModelEditor({ onAdded }: { onAdded: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [id, setId] = useState('');
+  const [name, setName] = useState('');
+  const [inP, setInP] = useState('0.3');
+  const [outP, setOutP] = useState('2.5');
+  const [tools, setTools] = useState(true);
+  const [vision, setVision] = useState(true);
+
+  const add = async () => {
+    if (!id.trim()) return;
+    const model: ModelConfig = {
+      id: id.trim(),
+      provider: 'google-gemini',
+      displayName: name.trim() || id.trim(),
+      contextWindow: 1_048_576,
+      maxOutputTokens: 8192,
+      pricing: { inputPerMTok: Number(inP) || 0, outputPerMTok: Number(outP) || 0 },
+      capabilities: { tools, vision, jsonMode: true, streaming: true },
+      enabled: true,
+    };
+    await saveUserModel(model);
+    setOpen(false);
+    setId('');
+    setName('');
+    onAdded();
+  };
+
+  if (!open) {
+    return (
+      <SettingsRow t="Custom model" s="Add a Gemini model id by config (no code change)">
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>+ Add</button>
+      </SettingsRow>
+    );
+  }
+  return (
+    <div className="settings-row" style={{ display: 'block' }}>
+      <input className="settings-input" placeholder="Model id (e.g. gemini-3-pro)" value={id} onChange={(e) => setId(e.target.value)} aria-label="Model id" />
+      <input className="settings-input" style={{ marginTop: 6 }} placeholder="Display name" value={name} onChange={(e) => setName(e.target.value)} aria-label="Model display name" />
+      <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+        <span style={{ color: 'var(--panel-muted)', fontSize: 12 }}>$/M</span>
+        <input className="settings-input" style={{ width: 80 }} type="number" step="0.1" value={inP} onChange={(e) => setInP(e.target.value)} aria-label="Input price per M tokens" />
+        <input className="settings-input" style={{ width: 80 }} type="number" step="0.1" value={outP} onChange={(e) => setOutP(e.target.value)} aria-label="Output price per M tokens" />
+        <label style={{ fontSize: 12, display: 'flex', gap: 4, alignItems: 'center' }}>
+          <input type="checkbox" checked={tools} onChange={(e) => setTools(e.target.checked)} /> tools
+        </label>
+        <label style={{ fontSize: 12, display: 'flex', gap: 4, alignItems: 'center' }}>
+          <input type="checkbox" checked={vision} onChange={(e) => setVision(e.target.checked)} /> vision
+        </label>
+      </div>
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 8 }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+        <button type="button" className="btn btn-primary btn-sm" disabled={!id.trim()} onClick={() => void add()}>Add model</button>
+      </div>
     </div>
   );
 }

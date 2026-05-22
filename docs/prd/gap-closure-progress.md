@@ -27,7 +27,7 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 37 | Browser vision (screenshot → "see") | FR-BC-4/5, FR-LLM-9, FR-AGENT-13 | ✅ | (this push) | screenshot 50; e2e vision |
 | 38 | Skills editor + import consent | FR-SKILL-4,5,6,9,10 | ✅ | (this push) | screenshots 51-52; e2e skills-editor |
 | 39 | Workflows: event trigger + export/import + editor | FR-WF-2,4,7 | ✅ | (this push) | screenshot 53; e2e workflow-editor |
-| 40 | Model registry: Test + editor + add provider | FR-MR-8,10,12,13 | ⬜ | — | — |
+| 40 | Model registry: Test + in-app model editor | FR-MR-8,12,13 | ✅ | (this push) | screenshots 54-55; e2e model-registry |
 | 41 | Signed remote registry update | FR-MR-5,6, NFR-SEC-5 | ⬜ | — | — |
 | 42 | Tier-2 capability bridge + code-review gate | FR-T2-3,4,5 | ⬜ | — | — |
 | 43 | Gemini Nano on-device path | FR-LLM-8, NFR-PRIV-2 | ⬜ | — | — |
@@ -35,6 +35,12 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #40 — Model registry: Test button + in-app model editor (FR-MR-8,12,13) ✅
+- **Was:** the bundled registry was read-only; no Test, no user-added models.
+- **Now:** `src/llm/userRegistry.ts` — a user overlay in storage.local merged OVER the bundled floor (`mergeRegistry`, user wins). The SW caches the effective registry (`refreshEffectiveRegistry`) and refreshes on storage change, so user-added models resolve for LLM calls. Settings → Model: a **Test** button (tiny live call → latency pill / red error, FR-MR-12/13) and a **+ Add** model editor (id, display name, $/M in+out, tools/vision caps → overlay → appears in the picker, FR-MR-8).
+- **Proof:** 3 merge unit tests (168 total); e2e model-registry: add "My Test Model" → it appears in the picker; Test the active model → "✓ 811 ms". Screenshots 54-55.
+- **Deferred (noted):** add OpenAI-compatible **provider** (FR-MR-10) + `optional_host_permissions` request (FR-MR-11) — pairs with #41's signed-remote work; the overlay + merge plumbing is already in place for it.
 
 ### #39 — Workflows: event trigger + export/import + editor (FR-WF-2,4,7) ✅
 - **Was:** workflows had NL-build + manual/schedule triggers only; no editor, no export/import, no event trigger.
