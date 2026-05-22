@@ -348,6 +348,9 @@ html, body {
 .hitl-tool-args > div { display: flex; gap: 8px; }
 .hitl-tool-args span { color: var(--panel-muted); font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; min-width: 56px; }
 .hitl-tool-args code { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11.5px; color: var(--panel-fg); background: var(--code); padding: 1px 6px; border-radius: 4px; }
+/* Long payloads (e.g. a file's contents) scroll inside the card so the
+   Approve/Cancel buttons are never pushed off-screen. */
+.hitl-tool-args code { display: block; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .hitl-actions { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--panel-border-soft); justify-content: flex-end; }
 .hitl-foot { padding: 0 12px 12px; font-size: 11.5px; color: var(--panel-muted); }
 .hitl-opt { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }

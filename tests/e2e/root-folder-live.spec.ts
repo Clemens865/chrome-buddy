@@ -128,8 +128,12 @@ test('live: AUTO mode routes a "save a file" request to the agent (write_file)',
   const hitl = panel.locator('.hitl');
   await expect(hitl).toBeVisible({ timeout: 45_000 });
   await expect(hitl).toContainText('write_file');
+  // The transcript auto-scrolls and the long contents preview is capped, so the
+  // Approve button is in view without the user having to scroll (the reported bug).
+  const approve = panel.getByRole('button', { name: 'Approve action' });
+  await expect(approve).toBeInViewport();
   await panel.screenshot({ path: path.join(SHOTS, '65-auto-vienna-hitl.png') });
-  await panel.getByRole('button', { name: 'Approve action' }).click();
+  await approve.click();
   await expect(panel.locator('.msg-agent .msg-body').last()).not.toHaveText('', { timeout: 45_000 });
 
   // A markdown file mentioning Vienna really landed in the folder (recurse, in

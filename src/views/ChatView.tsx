@@ -5,7 +5,7 @@
 // inline → final answer. The API key is never touched here; everything routes
 // through the background (see src/agent/runner.ts for the security posture).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PendingRun } from '../ui/PanelApp';
 import type { Workflow } from '../workflows/types';
 import { Ic, BuddyMark } from '../ui/icons';
@@ -136,6 +136,16 @@ export function ChatView({
     void addSpend(amount).then(setSpentToday);
   }, []);
   const pendingRef = useRef<PendingConfirm | null>(null);
+
+  // Auto-scroll the transcript to the newest content (so confirm cards, answers,
+  // and tool traces stay in view). We "stick" to the bottom unless the user has
+  // scrolled up to read history, so a long card's Approve button is reachable.
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
+  const onScrollerScroll = useCallback(() => {
+    const el = scrollerRef.current;
+    if (el) stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+  }, []);
 
   // --- Multi-session chat history -----------------------------------------
   const [activeChatId, setActiveChatId] = usePersistedState<string>('activeChatId', '');
@@ -498,6 +508,12 @@ export function ChatView({
 
   const isEmpty = items.length === 0 && !noKey;
 
+  // Keep the view pinned to the latest content as items/cards stream in.
+  useLayoutEffect(() => {
+    const el = scrollerRef.current;
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
+  }, [items, noKey, busy]);
+
   return (
     <div className="chat">
       {artifact && <ArtifactView artifact={artifact} onClose={() => setArtifact(null)} />}
@@ -514,7 +530,7 @@ export function ChatView({
           onClose={() => onCloseChatList?.()}
         />
       )}
-      <div className="chat-scroller">
+      <div className="chat-scroller" ref={scrollerRef} onScroll={onScrollerScroll}>
         {isEmpty ? (
           <Greeting onPick={setInput} />
         ) : (
