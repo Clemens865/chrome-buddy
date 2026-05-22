@@ -31,6 +31,7 @@ import type { ToolDefinition } from '../tools/types';
 import { ok, err, type ToolResult } from '../types';
 import { getRootHandle, readFromRoot, writeToRoot } from '../fs/root';
 import { saveCheckpoint, clearCheckpoint } from './checkpoint';
+import { nanoPrompt } from '../llm/nano';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import type { Skill } from '../skills/types';
 import type {
@@ -431,9 +432,18 @@ export interface PlainChatResult {
  */
 export async function runPlainChat(
   prompt: string,
-  options: { model?: string; context?: string; send?: (m: unknown) => Promise<unknown> } = {},
+  options: { model?: string; context?: string; send?: (m: unknown) => Promise<unknown>; preferNano?: boolean } = {},
 ): Promise<PlainChatResult> {
   const send = options.send ?? defaultSend;
+
+  // On-device first (FR-LLM-8 / NFR-PRIV-2): for short, context-free prompts when
+  // the user opted in and Nano is available — zero network egress, $0. Falls
+  // through to the cloud on any miss.
+  if (options.preferNano && !options.context && prompt.length < 900) {
+    const nano = await nanoPrompt(prompt);
+    if (nano) return { outcome: 'ok', text: nano, cost: 0 };
+  }
+
   if (!(await hasKey(send))) return { outcome: 'no-key' };
 
   const messages: LlmGenerateMessage['messages'] = [{ role: 'system', content: PLAIN_CHAT_SYSTEM }];

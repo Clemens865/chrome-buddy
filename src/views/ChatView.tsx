@@ -96,6 +96,7 @@ export function ChatView({
   const [stepBudget] = usePersistedState<number>(BUDGET_KEYS.steps, BUDGET_DEFAULTS.steps);
   const [spentToday, setSpentToday] = useState(0);
   const [askBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
+  const [preferNano] = usePersistedState<boolean>('preferNano', false);
   const [planReview, setPlanReview] = useState<{ plan: PlanStep[]; resolve: (d: PlanDecision) => void } | null>(null);
   const [askUser, setAskUser] = useState<{ question: string; choices?: string[]; resolve: (a: string) => void } | null>(null);
   const [humanGate, setHumanGate] = useState<{ kind: 'captcha' | 'login'; resolve: () => void } | null>(null);
@@ -221,7 +222,7 @@ export function ChatView({
           const useProfile = attachProfile && hasProfile(active);
           const page = attachPage ? await requestPageContext() : null;
           const context = buildContextBlock(page, useProfile ? active : null, activeProfile);
-          const r = await runPlainChat(prompt, { context, model: activeModel });
+          const r = await runPlainChat(prompt, { context, model: activeModel, preferNano });
           if (r.outcome === 'no-key') setNoKey(true);
           else if (r.text) {
             recordCost(r.cost ?? 0);
@@ -267,7 +268,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate],
+    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -306,7 +307,7 @@ export function ChatView({
             : step.prompt;
 
           if (step.mode === 'chat') {
-            const r = await runPlainChat(fullPrompt, { model: activeModel });
+            const r = await runPlainChat(fullPrompt, { model: activeModel, preferNano });
             if (r.outcome === 'no-key') { setNoKey(true); break; }
             recordCost(r.cost ?? 0);
             const text = r.text ?? '';
@@ -337,7 +338,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate],
+    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano],
   );
 
   // Resume an interrupted run (FR-AGENT-8): reuse the saved plan, skip done steps.

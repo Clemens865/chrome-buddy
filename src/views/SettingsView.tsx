@@ -47,6 +47,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   const [activeProfile, setActiveProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile, setAttachProfile] = usePersistedState<boolean>('attachProfile', false);
   const [askBeforePlan, setAskBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
+  const [preferNano, setPreferNano] = usePersistedState<boolean>('preferNano', false);
   const current: UserProfile = profiles[activeProfile] ?? {};
   const updateProfile = (patch: Partial<UserProfile>) =>
     setProfiles({ ...profiles, [activeProfile]: { ...current, ...patch } });
@@ -165,6 +166,9 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
         </SettingsRow>
         <SettingsRow t="Test the active model" s="A tiny live call: latency + status">
           <ModelTestButton model={activeModel} />
+        </SettingsRow>
+        <SettingsRow t="Prefer on-device (Nano)" s="Short private chats run on-device when available — $0, no upload">
+          <Toggle on={preferNano} onChange={setPreferNano} />
         </SettingsRow>
         <ModelEditor onAdded={reloadModels} />
         <SettingsRow t="Computer Use fallback" s="When DOM tools aren't enough"><Pill>gemini-2.5-computer-use</Pill></SettingsRow>

@@ -30,11 +30,16 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 40 | Model registry: Test + in-app model editor | FR-MR-8,12,13 | ✅ | (this push) | screenshots 54-55; e2e model-registry |
 | 41 | Signed remote registry update | FR-MR-5,6, NFR-SEC-5 | ✅ | (this push) | crypto unit tests (SW; no UI) |
 | 42 | Tier-2 capability bridge + code-review gate | FR-T2-3,4,5 | ✅ | (this push) | screenshots 56-57; e2e tier2-bridge |
-| 43 | Gemini Nano on-device path | FR-LLM-8, NFR-PRIV-2 | ⬜ | — | — |
+| 43 | Gemini Nano on-device path | FR-LLM-8, NFR-PRIV-2 | ✅ | (this push) | screenshot 58; e2e nano |
 | 44 | Debugger: permission + Console Inspector + CDP trusted-input | FR-BC-2/3 | ✅ | (this push) | screenshots 45-46; e2e cdp + console |
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #43 — Gemini Nano on-device path (FR-LLM-8, NFR-PRIV-2) ✅ — queue complete
+- **Now:** `src/llm/nano.ts` feature-detects Chrome's built-in `LanguageModel` (Prompt API) and runs short prompts on-device — `nanoPrompt` returns null on any miss so callers fall back to the cloud. `runPlainChat` tries Nano first when the user opts in AND the prompt is short + context-free (zero network egress, $0), else cloud. Settings → "Prefer on-device (Nano)" toggle. Runs in the panel (window) context, never the SW.
+- **Proof:** 4 nano unit tests with a mocked `LanguageModel` (runs when available; null → cloud fallback when only downloadable / on error; unsupported); 179 unit total. e2e nano: toggle present + enables (58); with it on but Nano unavailable (headless), a chat turn still answers via the cloud — proving the mandatory fallback.
+- **Note:** real on-device output needs Chrome with the model downloaded (not available in headless CI), so the live test verifies the fallback, not Nano output.
 
 ### #42 — Tier-2 capability bridge + code-review gate (FR-T2-3,4,5) ✅
 - **Was:** the Tier-2 sandbox ran pure compute only — no way to call host ops, no per-app permissions, no review.
