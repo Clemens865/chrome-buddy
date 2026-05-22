@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ToolRegistry } from '../tools';
 import { ok } from '../types';
 import type { NormalizedResponse, NormalizedToolCall } from '../llm';
-import { AgentRuntime } from './runtime';
+import { AgentRuntime, stepNeedsTool } from './runtime';
 import type { RuntimeLlm } from './runtime';
 import type { ApprovalResolver } from './hitl';
 import type { AgentEvent } from './types';
@@ -352,5 +352,39 @@ describe('AgentRuntime', () => {
 
     expect(readHandler).not.toHaveBeenCalled();
     expect(state.outcome).toBe('partial');
+  });
+
+  it('re-prompts when an actionable step returns prose instead of a tool call', async () => {
+    const registry = makeRegistry();
+    const llm = scriptedLlm([
+      planResp(['Read the page DOM']),
+      resp({ text: "I'll now read the page." }), // prose, no tool call — must NOT pass as done
+      resp({ toolCalls: [call('read_dom')] }), // forced re-prompt → actually calls the tool
+      resp({ text: 'The page is about Acme.' }), // synthesis
+    ]);
+    const events: AgentEvent[] = [];
+    const runtime = new AgentRuntime({
+      llm,
+      registry,
+      approve: async () => ({ approved: true }),
+      onEvent: (e) => events.push(e),
+      newRunId: () => 'run_test',
+    });
+
+    const state = await runtime.run('read the page', { stepBudget: 20, costBudget: 1 });
+
+    expect(state.outcome).toBe('completed');
+    expect(events.some((e) => e.type === 'tool_call' && e.call.name === 'read_dom')).toBe(true);
+    expect(state.finalAnswer).toContain('Acme');
+  });
+});
+
+describe('stepNeedsTool', () => {
+  it('flags action intents and ignores pure-reasoning intents', () => {
+    expect(stepNeedsTool('Read the file france.md')).toBe(true);
+    expect(stepNeedsTool('Click the subscribe button')).toBe(true);
+    expect(stepNeedsTool('Search the web for Vienna')).toBe(true);
+    expect(stepNeedsTool('Compose the markdown content')).toBe(false);
+    expect(stepNeedsTool('Summarize the findings')).toBe(false);
   });
 });
