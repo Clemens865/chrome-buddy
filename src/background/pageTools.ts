@@ -139,7 +139,12 @@ export async function executePageTool(
         if (!action) {
           return err('invalid-args', `Missing required arguments for "${tool}".`);
         }
-        const result = await act(tabId, action);
+        // FR-BC-2/3: 'trusted' routes to the CDP engine for hardened sites that
+        // ignore synthetic events. It surfaces the un-hideable debugging banner,
+        // so we warn the user once per session before relying on it.
+        const useCdp = action.type !== 'navigate' && args.trusted === true;
+        if (useCdp) notifyDebuggerBannerOnce();
+        const result = await act(tabId, action, useCdp ? { engine: 'cdp' } : {});
         if (isActUndriveable(result)) {
           return err('undriveable', result.message);
         }
@@ -155,6 +160,22 @@ export async function executePageTool(
     }
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
+// FR-BC-3: the CDP "extension is debugging this browser" banner is un-hideable;
+// tell the user it's expected the first time we attach this session.
+let debuggerBannerNotified = false;
+function notifyDebuggerBannerOnce(): void {
+  if (debuggerBannerNotified) return;
+  debuggerBannerNotified = true;
+  if (chrome.notifications?.create) {
+    chrome.notifications.create('cb-debugger-banner', {
+      type: 'basic',
+      iconUrl: 'icon-128.png',
+      title: 'Chrome Buddy is using trusted input',
+      message: 'A "Chrome Buddy started debugging this browser" banner is expected while it acts on this page.',
+    });
   }
 }
 

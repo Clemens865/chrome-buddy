@@ -62,6 +62,11 @@ export const clickTool: ToolDefinition = {
         type: 'string',
         description: 'Visible text to match when no selector is given.',
       },
+      trusted: {
+        type: 'boolean',
+        description:
+          'Use OS-level trusted input (CDP) for hardened sites that ignore synthetic clicks. Shows a debugging banner. Default false.',
+      },
     },
     [],
   ),
@@ -84,6 +89,11 @@ export const typeTool: ToolDefinition = {
         type: 'boolean',
         description: 'Press Enter after typing.',
         default: false,
+      },
+      trusted: {
+        type: 'boolean',
+        description:
+          'Use OS-level trusted input (CDP) for hardened sites that ignore synthetic typing. Shows a debugging banner. Default false.',
       },
     },
     ['text'],

@@ -53,7 +53,7 @@ describe('executePageTool', () => {
   it('click routes to Browser Control act()', async () => {
     act.mockResolvedValue({ ok: true, engine: 'scripting', note: 'clicked selector' });
     const res = await executePageTool('click', { selector: '#go' });
-    expect(act).toHaveBeenCalledWith(7, { type: 'click', selector: '#go', text: undefined });
+    expect(act).toHaveBeenCalledWith(7, { type: 'click', selector: '#go', text: undefined }, {});
     expect(res.ok).toBe(true);
   });
 

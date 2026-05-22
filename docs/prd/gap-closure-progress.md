@@ -31,9 +31,16 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 41 | Signed remote registry update | FR-MR-5,6, NFR-SEC-5 | ⬜ | — | — |
 | 42 | Tier-2 capability bridge + code-review gate | FR-T2-3,4,5 | ⬜ | — | — |
 | 43 | Gemini Nano on-device path | FR-LLM-8, NFR-PRIV-2 | ⬜ | — | — |
+| 44 | Debugger: permission + Console Inspector + CDP trusted-input | FR-BC-2/3 | ✅ | (this push) | screenshots 45-46; e2e cdp + console |
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #44 — Debugger permission + Console Inspector + CDP trusted-input (FR-BC-2/3) ✅
+- **Was:** `chrome.debugger` was unavailable (no `"debugger"` permission), so Console Inspector couldn't capture and the CDP control path was a stub.
+- **Now:** added the `"debugger"` permission. `src/page/cdp.ts` implements the real CDP trusted-input engine (lazy attach, `Input.dispatchMouseEvent`/`insertText`/`dispatchKeyEvent`, injection-safe locator builder); `act(engine:'cdp')` delegates to it. The `click`/`type` tools gain a `trusted` arg → SW routes to CDP and fires a one-time "debugging banner expected" notification (FR-BC-3). Console Inspector now captures live (the `CaptureController` was already built — just needed the permission) and shows its own banner notice.
+- **Proof:** 5 cdp unit tests; live e2e `cdp-trusted` (trusted type+click drove an httpbin form, `"custname":"Ada via CDP"` reached the server, engine:'cdp' — screenshot 45); live e2e `console-inspector` (debugger present, Start captures example.com's favicon 404 with no "unavailable" error — screenshot 46). 152 unit tests.
+- **Note:** the `"debugger"` permission draws heavy Web Store review; it's appropriate for these features but a deliberate footprint decision for public release.
 
 ### #35 — CAPTCHA/login pause-and-handoff (FR-HITL-8) ✅
 - **Was:** the agent had no detection for verification/login walls.

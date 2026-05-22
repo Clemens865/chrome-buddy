@@ -11,6 +11,7 @@
 
 import { isUndriveable, describeUndriveable } from './restricted';
 import type { ActResult, BrowserAction, ControlEngine } from './types';
+import { actViaCdp } from './cdp';
 
 function hasTabs(): boolean {
   return typeof chrome !== 'undefined' && typeof chrome.tabs !== 'undefined';
@@ -18,10 +19,6 @@ function hasTabs(): boolean {
 
 function hasScripting(): boolean {
   return typeof chrome !== 'undefined' && typeof chrome.scripting !== 'undefined';
-}
-
-function hasDebugger(): boolean {
-  return typeof chrome !== 'undefined' && typeof chrome.debugger !== 'undefined';
 }
 
 /** Per-call options for Browser Control. */
@@ -241,42 +238,9 @@ async function actViaScripting(
   }
 }
 
-// --- CDP (trusted input) engine — STUB -------------------------------------
-
-/**
- * TODO(FR-BC-2/3): Implement trusted-input control via chrome.debugger / CDP.
- *
- * Plan:
- *   1. chrome.debugger.attach({ tabId }, '1.3') — surfaces the un-hideable
- *      "extension is debugging this browser" banner; caller must warn first.
- *   2. Resolve the target's box model (DOM.getBoxModel) for click coords, or
- *      use Input.dispatchKeyEvent for trusted keystrokes (Input.insertText /
- *      Input.dispatchMouseEvent) so hardened sites accept the events.
- *   3. chrome.debugger.detach when done to drop the banner.
- *
- * Until implemented we report 'error' rather than silently falling back, so the
- * agent's reflect step can decide (retry on scripting, or escalate to vision).
- */
-async function actViaCdp(
-  tabId: number,
-  action: BrowserAction,
-): Promise<ActResult> {
-  void tabId;
-  void action;
-  if (!hasDebugger()) {
-    return {
-      ok: false,
-      reason: 'chrome-unavailable',
-      message: 'chrome.debugger (CDP) unavailable',
-    };
-  }
-  return {
-    ok: false,
-    reason: 'error',
-    message:
-      'CDP trusted-input path not yet implemented (FR-BC-2/3). Use the scripting engine, or escalate to the vision tier.',
-  };
-}
+// --- CDP (trusted input) engine (FR-BC-2/3) --------------------------------
+// Implemented in ./cdp (chrome.debugger). Used only when the caller requests
+// engine:'cdp' — e.g. a hardened site rejected synthetic events.
 
 /** Type guard for an undriveable ActResult. */
 export function isActUndriveable(
