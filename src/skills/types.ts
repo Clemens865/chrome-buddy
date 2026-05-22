@@ -10,6 +10,8 @@ export interface Skill {
   prompt: string;
   /** Optional whitelist of tools the agent may use for this skill. */
   allowedTools?: string[];
+  /** Variable inputs detected in the prompt ({{name}}), for parameterization. */
+  inputs?: string[];
   createdAt: number;
 }
 

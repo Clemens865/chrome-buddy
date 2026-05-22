@@ -25,7 +25,7 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 35 | CAPTCHA/login pause-and-handoff | FR-HITL-8 | ✅ | (this push) | screenshot 44; e2e human-gate |
 | 36 | Agent resumability across SW restart | FR-AGENT-8, NFR-REL-3 | ✅ | (this push) | screenshot 49; e2e resume |
 | 37 | Browser vision (screenshot → "see") | FR-BC-4/5, FR-LLM-9, FR-AGENT-13 | ✅ | (this push) | screenshot 50; e2e vision |
-| 38 | Skills editor + import consent | FR-SKILL-4,5,6,9,10 | ⬜ | — | — |
+| 38 | Skills editor + import consent | FR-SKILL-4,5,6,9,10 | ✅ | (this push) | screenshots 51-52; e2e skills-editor |
 | 39 | Workflows: event trigger + export/import + editor | FR-WF-2,4,7 | ⬜ | — | — |
 | 40 | Model registry: Test + editor + add provider | FR-MR-8,10,12,13 | ⬜ | — | — |
 | 41 | Signed remote registry update | FR-MR-5,6, NFR-SEC-5 | ⬜ | — | — |
@@ -35,6 +35,12 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #38 — Skills editor + import consent (FR-SKILL-4,5,6,9,10) ✅
+- **Was:** skills were create-on-promote (one-click) only — no editor, inputs, or import review.
+- **Now:** `src/skills/edit.ts` (pure): `detectSkillInputs` ({{var}} detection, FR-SKILL-5), `fillSkillPrompt`, `makeSkill` (normalize + re-detect inputs), `reviewImport` (per-skill requested tools + unknown-tool flagging, FR-SKILL-9/10). SkillsView gains "+ New skill" / per-skill **Edit** → a linear editor (name, description, Chat/Agent mode, prompt, allowedTools) that shows detected input chips live (FR-SKILL-4/6). Import now opens a **consent review** screen listing each skill's requested tools (unknown ones flagged amber) before persisting — no silent enable.
+- **Proof:** 5 edit unit tests (162 total); e2e skills-editor: create "Pricing check" with `{{competitors}}` → input chip + list shows "inputs: competitors"; import a bundle requesting `frobnicate` → consent screen flags it unknown → confirm imports. Screenshots 51-52.
+- **Note:** our skills are prompt-based (single prompt), so FR-SKILL-6's "step-list" maps to the prompt + fields; promote-from-History stays one-click (then editable here), satisfying FR-SKILL-4's editability post-promotion.
 
 ### #37 — Browser vision: the agent can SEE via screenshots (FR-BC-4/5, FR-LLM-9, FR-AGENT-13) ✅
 - **Reframed** (per user): a Chrome extension can't do OS-level Computer Use, but it does full *browser* use. Open tabs / navigate / fill forms / click / type / read context were already built + verified; the missing piece was **sight**.

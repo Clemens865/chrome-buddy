@@ -394,6 +394,8 @@ html, body {
 .resume-card-txt .ic { width: 14px; height: 14px; flex: 0 0 14px; color: var(--accent); }
 .resume-card-txt strong { font-weight: 600; }
 .resume-card-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.skill-inputs { margin-top: 6px; font-size: 12px; color: var(--panel-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.skill-input-chip { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 5px; padding: 1px 6px; }
 .onb { height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--panel-bg); }
 .onb-card { max-width: 360px; width: 100%; text-align: center; }
 .onb-mark { display: inline-flex; padding: 12px; border-radius: 14px; background: var(--panel-elev); margin-bottom: 14px; }

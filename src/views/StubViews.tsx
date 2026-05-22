@@ -5,6 +5,7 @@ import { hexAlpha } from '../ui/theme';
 import { fetchRuns, clearHistory } from '../memory/request';
 import { fetchSkills, persistSkill, removeSkill } from '../skills/request';
 import { skillFromRun, parseSkillBundle, toSkillBundle } from '../skills/skillData';
+import { detectSkillInputs, makeSkill, reviewImport, type ImportReview } from '../skills/edit';
 import { fetchWorkflows, persistWorkflow, removeWorkflow } from '../workflows/request';
 import { parseWorkflowSteps, makeWorkflow, WORKFLOW_BUILDER_SYSTEM } from '../workflows/build';
 import { DUE_WORKFLOWS_KEY } from '../workflows/schedule';
@@ -32,6 +33,8 @@ function triggerFromMinutes(minutes: number): WorkflowTrigger {
 
 export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void }) {
   const [skills, setSkills] = useState<Skill[] | null>(null);
+  const [editing, setEditing] = useState<Skill | 'new' | null>(null);
+  const [importReview, setImportReview] = useState<ImportReview[] | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = () => fetchSkills().then(setSkills);
@@ -41,6 +44,12 @@ export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void 
 
   const onDelete = async (id: string) => {
     await removeSkill(id);
+    void refresh();
+  };
+
+  const onSave = async (s: Skill) => {
+    await persistSkill(s);
+    setEditing(null);
     void refresh();
   };
 
@@ -54,17 +63,66 @@ export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void 
     URL.revokeObjectURL(url);
   };
 
+  // FR-SKILL-9/10: review before enabling imported skills (no silent persist).
   const onImportFile = async (file: File) => {
     const parsed = parseSkillBundle(await file.text());
-    for (const s of parsed) await persistSkill(s);
+    if (parsed.length) setImportReview(reviewImport(parsed));
+  };
+  const confirmImport = async () => {
+    for (const r of importReview ?? []) await persistSkill(r.skill);
+    setImportReview(null);
     void refresh();
   };
+
+  if (editing) {
+    return (
+      <SkillEditor
+        initial={editing === 'new' ? null : editing}
+        onSave={(s) => void onSave(s)}
+        onCancel={() => setEditing(null)}
+      />
+    );
+  }
+
+  if (importReview) {
+    return (
+      <div className="stub">
+        <div className="settings-section-h">Import skills — review</div>
+        <div className="empty-state-desc" style={{ marginBottom: 10 }}>
+          These skills request the following tools. Unknown tools won&apos;t be available.
+        </div>
+        <div className="stub-list">
+          {importReview.map((r) => (
+            <div key={r.skill.id} className="stub-row" style={{ alignItems: 'flex-start' }}>
+              <span className="stub-row-ic" style={{ color: '#6366F1', background: hexAlpha('#6366F1', 0.12) }}>{Ic.skill}</span>
+              <div className="stub-row-body">
+                <div className="stub-row-title">{r.skill.name}</div>
+                <div className="stub-row-sub">
+                  Tools: {r.tools.length ? r.tools.join(', ') : 'none'}
+                  {r.unknownTools.length > 0 && (
+                    <span style={{ color: '#B45309' }}> · unknown: {r.unknownTools.join(', ')}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 10 }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImportReview(null)}>Cancel</button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => void confirmImport()}>
+            Import {importReview.length} skill{importReview.length === 1 ? '' : 's'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const empty = skills !== null && skills.length === 0;
 
   return (
     <div className="stub">
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing('new')}>+ New skill</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>Import</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onExport} disabled={empty}>Export</button>
         <input
@@ -84,7 +142,7 @@ export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void 
         <div className="empty-state">
           <span className="ic" style={{ width: 30, height: 30 }}>{Ic.skill}</span>
           <div className="empty-state-title">No skills yet</div>
-          <div className="empty-state-desc">Saved, re-runnable actions. Save a run from History as a skill, or import a bundle.</div>
+          <div className="empty-state-desc">Saved, re-runnable actions. Create one, save a run from History, or import a bundle.</div>
         </div>
       ) : (
         <div className="stub-list">
@@ -93,14 +151,75 @@ export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void 
               <span className="stub-row-ic" style={{ color: '#6366F1', background: hexAlpha('#6366F1', 0.12) }}>{Ic.skill}</span>
               <div className="stub-row-body">
                 <div className="stub-row-title">{s.name}</div>
-                <div className="stub-row-sub">{s.kind === 'agent' ? 'Agent' : 'Chat'} · {s.prompt.slice(0, 60)}</div>
+                <div className="stub-row-sub">
+                  {s.kind === 'agent' ? 'Agent' : 'Chat'}
+                  {s.inputs && s.inputs.length > 0 ? ` · inputs: ${s.inputs.join(', ')}` : ` · ${s.prompt.slice(0, 48)}`}
+                </div>
               </div>
               <button type="button" className="btn btn-primary btn-sm" onClick={() => onRunSkill(s)}>Run</button>
+              <button type="button" className="btn btn-ghost btn-sm" aria-label="Edit skill" onClick={() => setEditing(s)}>Edit</button>
               <button type="button" className="btn btn-ghost btn-sm" aria-label="Delete skill" onClick={() => void onDelete(s.id)}>✕</button>
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Linear skill editor (FR-SKILL-4/5/6): name, description, mode, prompt with
+// auto-detected {{inputs}}, and an allowedTools whitelist.
+function SkillEditor({ initial, onSave, onCancel }: { initial: Skill | null; onSave: (s: Skill) => void; onCancel: () => void }) {
+  const [name, setName] = useState(initial?.name ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
+  const [kind, setKind] = useState<'chat' | 'agent'>(initial?.kind ?? 'agent');
+  const [prompt, setPrompt] = useState(initial?.prompt ?? '');
+  const [tools, setTools] = useState((initial?.allowedTools ?? []).join(', '));
+  const inputs = detectSkillInputs(prompt);
+
+  const save = () =>
+    onSave(
+      makeSkill({
+        id: initial?.id,
+        name,
+        description,
+        kind,
+        prompt,
+        allowedTools: tools.split(',').map((t) => t.trim()).filter(Boolean),
+        createdAt: initial?.createdAt,
+      }),
+    );
+
+  return (
+    <div className="stub">
+      <div className="settings-section-h">{initial ? 'Edit skill' : 'New skill'}</div>
+      <div className="settings-row" style={{ display: 'block' }}>
+        <input className="settings-input" placeholder="Skill name" value={name} onChange={(e) => setName(e.target.value)} aria-label="Skill name" />
+        <input className="settings-input" style={{ marginTop: 6 }} placeholder="Short description" value={description} onChange={(e) => setDescription(e.target.value)} aria-label="Skill description" />
+        <div className="seg seg-sm" role="group" aria-label="Skill mode" style={{ marginTop: 6 }}>
+          <button type="button" className={'seg-btn' + (kind === 'chat' ? ' is-on' : '')} aria-pressed={kind === 'chat'} onClick={() => setKind('chat')}>Chat</button>
+          <button type="button" className={'seg-btn' + (kind === 'agent' ? ' is-on' : '')} aria-pressed={kind === 'agent'} onClick={() => setKind('agent')}>Agent</button>
+        </div>
+        <textarea
+          className="settings-input"
+          style={{ marginTop: 6, resize: 'none' }}
+          rows={4}
+          placeholder="Prompt / steps. Use {{variables}} for inputs (e.g. Compare {{competitors}})."
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          aria-label="Skill prompt"
+        />
+        {inputs.length > 0 && (
+          <div className="skill-inputs" aria-label="Detected inputs">
+            Inputs: {inputs.map((i) => <span key={i} className="skill-input-chip">{i}</span>)}
+          </div>
+        )}
+        <input className="settings-input" style={{ marginTop: 6 }} placeholder="Allowed tools (comma-separated, optional)" value={tools} onChange={(e) => setTools(e.target.value)} aria-label="Allowed tools" />
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 8 }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
+          <button type="button" className="btn btn-primary btn-sm" disabled={!name.trim() || !prompt.trim()} onClick={save}>Save</button>
+        </div>
+      </div>
     </div>
   );
 }
