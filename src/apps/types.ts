@@ -20,8 +20,12 @@ export interface AppConfig {
   tier?: 1 | 2;
   /** Tier-1: prompt template with {{inputId}} placeholders. */
   promptTemplate?: string;
-  /** Tier-2: JS function body `(inputs) => ...` run in the sandbox. */
+  /** Tier-2: JS function body `(inputs, bridge) => ...` run in the sandbox. */
   code?: string;
+  /** Tier-2: host capabilities the code may call via the bridge (e.g. 'gemini'). */
+  permissions?: string[];
+  /** Tier-2: the user reviewed the code + capabilities and approved a first run. */
+  reviewed?: boolean;
   createdAt: number;
 }
 

@@ -23,6 +23,8 @@ test('Tier-2 code app runs in the sandbox', async ({ context, extensionId }) => 
         inputs: [{ id: 'text', label: 'Text', type: 'textarea' }],
         tier: 2,
         code: 'return "words: " + inputs.text.trim().split(/\\s+/).filter(Boolean).length;',
+        permissions: [],
+        reviewed: true,
         createdAt: Date.now(),
       },
     });
@@ -57,6 +59,10 @@ test('live: generate a Tier-2 code app and run it', async ({ context, extensionI
   await expect(panel.getByText('Your generated apps')).toBeVisible({ timeout: 45_000 });
   const card = panel.locator('.app-card-wrap', { has: panel.locator('.app-card-del') }).first();
   await card.locator('.app-card').click();
+
+  // FR-T2-5: review the generated code before the first run.
+  await expect(panel.getByText(/Review/)).toBeVisible();
+  await panel.getByRole('button', { name: 'Approve & enable' }).click();
 
   const fields = panel.locator('.apps .settings-input');
   const n = await fields.count();

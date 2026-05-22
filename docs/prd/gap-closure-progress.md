@@ -29,12 +29,18 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 39 | Workflows: event trigger + export/import + editor | FR-WF-2,4,7 | ✅ | (this push) | screenshot 53; e2e workflow-editor |
 | 40 | Model registry: Test + in-app model editor | FR-MR-8,12,13 | ✅ | (this push) | screenshots 54-55; e2e model-registry |
 | 41 | Signed remote registry update | FR-MR-5,6, NFR-SEC-5 | ✅ | (this push) | crypto unit tests (SW; no UI) |
-| 42 | Tier-2 capability bridge + code-review gate | FR-T2-3,4,5 | ⬜ | — | — |
+| 42 | Tier-2 capability bridge + code-review gate | FR-T2-3,4,5 | ✅ | (this push) | screenshots 56-57; e2e tier2-bridge |
 | 43 | Gemini Nano on-device path | FR-LLM-8, NFR-PRIV-2 | ⬜ | — | — |
 | 44 | Debugger: permission + Console Inspector + CDP trusted-input | FR-BC-2/3 | ✅ | (this push) | screenshots 45-46; e2e cdp + console |
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #42 — Tier-2 capability bridge + code-review gate (FR-T2-3,4,5) ✅
+- **Was:** the Tier-2 sandbox ran pure compute only — no way to call host ops, no per-app permissions, no review.
+- **Now:** (FR-T2-3) a narrow postMessage **capability bridge** — sandboxed code can `await bridge.gemini(prompt)`; the sandbox builds a bridge method only for each granted capability and round-trips to the host. (FR-T2-4) the **host authorizes** each bridge op against the app's declared `permissions` (e.g. `['gemini']`) — denied otherwise. (FR-T2-5) a **code-review gate**: a Tier-2 app shows its code + requested capabilities and requires Approve before its first run (`reviewed` flag). `runUserCode` is now async (AsyncFunction) so code can await the bridge; the host timeout refreshes per bridge round-trip so an LLM-calling app isn't killed.
+- **Proof:** run.test bridge test (5 sandbox tests, 175 total); e2e tier2-bridge: review gate shows code+caps → Approve (56); code calling `bridge.gemini` WITHOUT the permission is denied; live app WITH `['gemini']` returns model output (57). Existing sandbox spec updated for the review gate.
+- **Note:** the bridge currently exposes `gemini.generate`; gated `fetch` + app-scoped storage are straightforward additions on the same framework (declared as capabilities + an onBridge case).
 
 ### #41 — Signed remote registry update (FR-MR-5,6, NFR-SEC-5) ✅
 - **Now:** `src/llm/remoteRegistry.ts` — a published registry is accepted ONLY if its **Ed25519 signature verifies** (`crypto.subtle`, against a bundled public key) AND it passes shape + schema-major validation. Verified payloads are cached as "last-good"; bad/unsigned/incompatible payloads are rejected and the last-good (or bundled) is retained (FR-MR-6). `effectiveRegistry` now layers **user > remote > bundled** (FR-MR-5). The SW polls on startup + a daily `chrome.alarms` (`registry-poll`), refreshing the effective registry.

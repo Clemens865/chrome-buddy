@@ -210,17 +210,36 @@ function GeneratedApp({ app, onBack }: { app: AppConfig; onBack: () => void }) {
   const [output, setOutput] = useState<string | null>(null);
   const [noKey, setNoKey] = useState(false);
   const [activeModel] = useActiveModel();
+  // FR-T2-5: a Tier-2 code app needs human review of its code + capabilities
+  // before its first run.
+  const [reviewed, setReviewed] = useState(app.tier !== 2 || !app.code || !!app.reviewed);
 
   const canRun = useMemo(() => app.inputs.every((i) => (values[i.id] ?? '').trim()), [app.inputs, values]);
+
+  // Host bridge (FR-T2-3/4): authorize each op against the app's permissions.
+  const onBridge = async (op: string, args: unknown) => {
+    if (op === 'gemini' && (app.permissions ?? []).includes('gemini')) {
+      const r = await runPlainChat(String(args ?? ''), { model: activeModel });
+      return r.outcome === 'no-key'
+        ? { ok: false, error: 'No API key set.' }
+        : { ok: true, result: r.text ?? '' };
+    }
+    return { ok: false, error: `Capability "${op}" is not permitted for this app.` };
+  };
 
   const run = async () => {
     setBusy(true);
     setNoKey(false);
     setOutput(null);
     try {
-      // Tier-2: run generated code in the opaque-origin sandbox (no key needed).
+      // Tier-2: run generated code in the opaque-origin sandbox, exposing only
+      // the app's declared capabilities via the bridge.
       if (app.tier === 2 && app.code) {
-        const res = await runInSandbox(app.code, values);
+        const res = await runInSandbox(app.code, values, {
+          capabilities: app.permissions ?? [],
+          onBridge,
+          timeoutMs: (app.permissions ?? []).length > 0 ? 30_000 : 4_000,
+        });
         setOutput(
           res.ok
             ? typeof res.result === 'string'
@@ -239,6 +258,38 @@ function GeneratedApp({ app, onBack }: { app: AppConfig; onBack: () => void }) {
       setBusy(false);
     }
   };
+
+  const approveReview = async () => {
+    await persistApp({ ...app, reviewed: true });
+    setReviewed(true);
+  };
+
+  if (!reviewed) {
+    return (
+      <div className="apps">
+        <div className="app-hd">
+          <button type="button" className="app-hd-back" onClick={onBack} aria-label="Back to apps"><span className="ic">{Ic.collapse}</span></button>
+          <span className="app-hd-ic" style={{ color: GEN_COLOR, background: hexAlpha(GEN_COLOR, 0.12) }}>{Ic.sparkle}</span>
+          <div className="app-hd-text">
+            <div className="app-hd-name">Review “{app.name}”</div>
+            <div className="app-hd-sub">Generated code — review before the first run</div>
+          </div>
+        </div>
+        <div style={{ padding: '4px 2px' }}>
+          <div className="settings-section-h">Requested capabilities</div>
+          <div className="empty-state-desc" style={{ marginBottom: 8 }}>
+            {(app.permissions ?? []).length ? (app.permissions ?? []).join(', ') : 'none (pure compute — no network, no DOM)'}
+          </div>
+          <div className="settings-section-h">Code (runs sandboxed)</div>
+          <pre className="t2-code">{app.code}</pre>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 10 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onBack}>Cancel</button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => void approveReview()}>Approve &amp; enable</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="apps">

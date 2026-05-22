@@ -60,16 +60,18 @@ export function parseAppConfig(jsonText: string): AppConfig | null {
   };
 }
 
-export const CODE_APP_BUILDER_SYSTEM = `You design a small SANDBOXED CODE app: a form bound to a pure JavaScript transform.
+export const CODE_APP_BUILDER_SYSTEM = `You design a small SANDBOXED CODE app: a form bound to a JavaScript transform.
 Return ONLY JSON of the shape:
 {"name": string, "description": string,
  "inputs": [{"id": string, "label": string, "type": "text"|"textarea", "placeholder"?: string}],
+ "permissions": string[],
  "code": string}
 Rules:
 - 1-4 inputs. "id" is a short lowercase identifier (a-z0-9_), unique.
-- "code" is the BODY of a function (inputs) => ... It MUST end with a \`return\` of the output (a string or JSON-serialisable value).
+- "code" is the BODY of an async function (inputs, bridge) => ... It MUST end with a \`return\` of the output (a string or JSON-serialisable value).
 - Read values via the \`inputs\` object, keyed by input id (values are strings).
-- PURE JavaScript only: no network, no fetch, no DOM, no imports, no async. Standard JS (String, Number, Math, JSON, Array, RegExp) only.
+- Default to PURE JavaScript (String, Number, Math, JSON, Array, RegExp). No DOM, no imports, no direct fetch.
+- To call the LLM, set "permissions": ["gemini"] and use \`await bridge.gemini(promptString)\` which returns the model's text. If you don't need it, use "permissions": [].
 No prose, no markdown fences — just the JSON object.`;
 
 /** Parse the code-app generator's JSON into a Tier-2 AppConfig, or null. */
@@ -86,6 +88,11 @@ export function parseCodeApp(jsonText: string): AppConfig | null {
   const code = typeof o.code === 'string' ? o.code.trim() : '';
   const inputs = cleanInputs(o.inputs);
   if (!name || !code || inputs.length === 0) return null;
+  // Only known capabilities are honored (the host authorizes each anyway).
+  const KNOWN_CAPS = ['gemini'];
+  const permissions = Array.isArray(o.permissions)
+    ? (o.permissions as unknown[]).map(String).filter((p) => KNOWN_CAPS.includes(p))
+    : [];
   return {
     id: idOf(),
     name,
@@ -93,6 +100,8 @@ export function parseCodeApp(jsonText: string): AppConfig | null {
     inputs,
     tier: 2,
     code,
+    permissions,
+    reviewed: false,
     createdAt: Date.now(),
   };
 }

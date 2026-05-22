@@ -1,30 +1,59 @@
 // Entry script for the opaque-origin sandboxed iframe (manifest `sandbox` key).
-// It waits for SANDBOX_RUN messages from the host, runs the generated code with
-// zero ambient authority, and posts the result back. The host (panel) is the
-// only thing that can talk to it, over this narrow postMessage protocol.
-import { runUserCode } from './run';
+// It runs generated code with zero ambient authority. The only way out is a
+// narrow postMessage capability bridge (FR-T2-3): when code calls bridge.<op>(),
+// we ask the host to perform it (the host authorizes against the app's declared
+// permissions, FR-T2-4) and resolve with the result.
+import { runUserCode, type SandboxBridge } from './run';
 
 interface RunMessage {
   type: 'SANDBOX_RUN';
   id: string;
   code: string;
   inputs?: Record<string, unknown>;
+  /** Host ops this app is allowed to call (becomes the bridge surface). */
+  capabilities?: string[];
 }
 
-window.addEventListener('message', (ev: MessageEvent) => {
-  const data = ev.data as RunMessage | undefined;
-  if (!data || data.type !== 'SANDBOX_RUN') return;
+let bridgeSeq = 0;
+const pendingBridge = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 
-  const res = runUserCode(data.code, data.inputs ?? {});
-  // Ensure the payload survives structured clone (functions/DOM etc. won't).
-  let result = res.result;
-  try {
-    structuredClone(result);
-  } catch {
-    result = String(result);
+window.addEventListener('message', (ev: MessageEvent) => {
+  const data = ev.data as { type?: string } | undefined;
+  if (!data) return;
+
+  if (data.type === 'SANDBOX_BRIDGE_RESULT') {
+    const d = data as { id: string; ok: boolean; result?: unknown; error?: string };
+    const p = pendingBridge.get(d.id);
+    if (p) {
+      pendingBridge.delete(d.id);
+      d.ok ? p.resolve(d.result) : p.reject(new Error(d.error ?? 'bridge error'));
+    }
+    return;
   }
-  window.parent.postMessage({ type: 'SANDBOX_RESULT', id: data.id, ok: res.ok, result, error: res.error }, '*');
+
+  if (data.type !== 'SANDBOX_RUN') return;
+  const run = data as unknown as RunMessage;
+
+  // Build a bridge with one async method per granted capability.
+  const bridge: SandboxBridge = {};
+  for (const op of run.capabilities ?? []) {
+    bridge[op] = (args?: unknown) =>
+      new Promise((resolve, reject) => {
+        const id = `b${bridgeSeq++}`;
+        pendingBridge.set(id, { resolve, reject });
+        window.parent.postMessage({ type: 'SANDBOX_BRIDGE', id, runId: run.id, op, args }, '*');
+      });
+  }
+
+  void runUserCode(run.code, run.inputs ?? {}, bridge).then((res) => {
+    let result = res.result;
+    try {
+      structuredClone(result);
+    } catch {
+      result = String(result);
+    }
+    window.parent.postMessage({ type: 'SANDBOX_RESULT', id: run.id, ok: res.ok, result, error: res.error }, '*');
+  });
 });
 
-// Tell the host we're alive.
 window.parent.postMessage({ type: 'SANDBOX_READY' }, '*');
