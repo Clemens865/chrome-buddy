@@ -35,6 +35,9 @@ test('live: build + run a simple 2-step workflow', async ({ context, extensionId
 });
 
 test('live: build + run an advanced workflow (web search -> briefing)', async ({ context, extensionId }) => {
+  // Heaviest live path: NL build + grounded web search + summarize. Give it room
+  // beyond the 90s default so cumulative model latency doesn't trip the test cap.
+  test.setTimeout(180_000);
   const panel = await context.newPage();
   await panel.setViewportSize({ width: 440, height: 980 });
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);

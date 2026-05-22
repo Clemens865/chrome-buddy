@@ -24,9 +24,14 @@ export const test = base.extend<{ context: BrowserContext; extensionId: string }
     let [sw] = context.serviceWorkers();
     if (!sw) sw = await context.waitForEvent('serviceworker');
     const extensionId = sw.url().split('/')[2];
-    // Skip the first-run onboarding by default so feature specs land on the panel.
-    // (The onboarding spec sets this back to false to exercise the walkthrough.)
-    await sw.evaluate(() => chrome.storage.local.set({ onboardingDone: true }));
+    // Defaults that keep feature specs unblocked (each gate has its own spec):
+    //  - onboardingDone: skip the first-run walkthrough (onboarding.spec opts in).
+    //  - askBeforePlan: off, so agent specs don't stall at the plan gate
+    //    (plan-gate.spec opts back in). Both are persisted UI prefs, not product
+    //    defaults — the shipped defaults remain onboarding-on / plan-gate-on.
+    await sw.evaluate(() =>
+      chrome.storage.local.set({ onboardingDone: true, askBeforePlan: false }),
+    );
     await use(extensionId);
   },
 });

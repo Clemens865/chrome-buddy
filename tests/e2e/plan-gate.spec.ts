@@ -6,6 +6,10 @@ import path from 'node:path';
 const SHOTS = path.join(process.cwd(), 'screenshots');
 
 test('live: plan gate cancels before any execution', async ({ context, extensionId }) => {
+  // Opt into the plan gate (the fixture turns it off by default).
+  const [sw] = context.serviceWorkers();
+  await sw.evaluate(() => chrome.storage.local.set({ askBeforePlan: true }));
+
   const panel = await context.newPage();
   await panel.setViewportSize({ width: 440, height: 980 });
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
@@ -28,6 +32,10 @@ test('live: plan gate cancels before any execution', async ({ context, extension
 test('live: approving the plan runs it', async ({ context, extensionId }) => {
   const site = await context.newPage();
   await site.goto('https://news.ycombinator.com/', { waitUntil: 'domcontentloaded' });
+
+  // Opt into the plan gate (the fixture turns it off by default).
+  const [sw] = context.serviceWorkers();
+  await sw.evaluate(() => chrome.storage.local.set({ askBeforePlan: true }));
 
   const panel = await context.newPage();
   await panel.setViewportSize({ width: 440, height: 980 });
