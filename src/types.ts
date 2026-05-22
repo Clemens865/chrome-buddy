@@ -66,6 +66,8 @@ export interface ToolResultMeta {
   visionUsed?: boolean;
   /** Free-form notes surfaced to the UI (e.g. "merged cells expanded"). */
   notes?: string[];
+  /** Set when the page is gated by a CAPTCHA/login wall (FR-HITL-8). */
+  humanGate?: 'captcha' | 'login';
 }
 
 export interface ToolError {

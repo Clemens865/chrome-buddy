@@ -380,6 +380,10 @@ html, body {
 .ask-user-choices { display: flex; flex-wrap: wrap; gap: 6px; }
 .ask-user-form { display: flex; gap: 8px; align-items: center; }
 .ask-user-form .settings-input { flex: 1; }
+.human-gate { margin: 0 12px 8px; padding: 10px 12px; border: 1px solid #F59E0B; border-radius: 10px; background: color-mix(in srgb, #F59E0B 10%, var(--panel-elev)); }
+.human-gate-q { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--panel-fg); margin-bottom: 8px; }
+.human-gate-q .ic { width: 16px; height: 16px; flex: 0 0 16px; color: #B45309; margin-top: 1px; }
+.human-gate-actions { display: flex; justify-content: flex-end; }
 .onb { height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--panel-bg); }
 .onb-card { max-width: 360px; width: 100%; text-align: center; }
 .onb-mark { display: inline-flex; padding: 12px; border-radius: 14px; background: var(--panel-elev); margin-bottom: 14px; }

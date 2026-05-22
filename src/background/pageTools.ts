@@ -25,6 +25,7 @@ import {
   isActUndriveable,
 } from '../page';
 import type { BrowserAction } from '../page';
+import { detectHumanGate } from '../page/humanGate';
 
 /** Page-read/act tool names this executor knows how to run in the SW. */
 const PAGE_TOOLS = new Set([
@@ -118,7 +119,9 @@ export async function executePageTool(
         if (isUndriveableSignal(page)) {
           return err('undriveable', page.message);
         }
-        return ok(page, { provenance: [page.url] });
+        // FR-HITL-8: flag CAPTCHA/login walls so the runtime can hand off.
+        const humanGate = detectHumanGate(page) ?? undefined;
+        return ok(page, { provenance: [page.url], humanGate });
       }
 
       // --- screenshot (captureVisibleTab) ----------------------------------

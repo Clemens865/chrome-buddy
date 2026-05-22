@@ -105,6 +105,18 @@ export function reduceTranscript(items: TranscriptItem[], event: AgentEvent): Tr
     case 'error':
       return [...items, { kind: 'error', id: `err_${event.runId}_${items.length}`, text: event.message }];
 
+    case 'human_gate':
+      // The handoff prompt is rendered by ChatView from the onHumanGate resolver;
+      // leave a subtle trace in the transcript for context.
+      return [
+        ...items,
+        {
+          kind: 'error',
+          id: `gate_${event.runId}_${items.length}`,
+          text: `Paused for human ${event.kind === 'captcha' ? 'verification' : 'sign-in'}.`,
+        },
+      ];
+
     default: {
       const exhaustive: never = event;
       void exhaustive;

@@ -22,7 +22,7 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 32 | Plan approve/edit/let-run gate | FR-AGENT-3 | ✅ | (this push) | screenshots 40-41; e2e plan-gate |
 | 33 | `ask_user` tool wired | FR-TOOLS-11 | ✅ | (this push) | screenshots 42-43; e2e ask-user |
 | 34 | Prompt-injection guards | NFR-SEC-6 | ✅ | (this push) | runtime + guards unit tests (internal; gate = screenshots 27-28) |
-| 35 | CAPTCHA/login pause-and-handoff | FR-HITL-8 | ⬜ | — | — |
+| 35 | CAPTCHA/login pause-and-handoff | FR-HITL-8 | ✅ | (this push) | screenshot 44; e2e human-gate |
 | 36 | Agent resumability across SW restart | FR-AGENT-8, NFR-REL-3 | ⬜ | — | — |
 | 37 | Computer Use vision fallback | FR-BC-5, FR-LLM-9, FR-AGENT-13 | ⬜ | — | — |
 | 38 | Skills editor + import consent | FR-SKILL-4,5,6,9,10 | ⬜ | — | — |
@@ -34,6 +34,11 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #35 — CAPTCHA/login pause-and-handoff (FR-HITL-8) ✅
+- **Was:** the agent had no detection for verification/login walls.
+- **Now:** `src/page/humanGate.ts` (conservative detector) flags CAPTCHA/bot-check and login/2FA walls; the SW attaches `meta.humanGate` to page reads; the runtime, on a gated read, emits a `human_gate` event, awaits `onHumanGate`, and returns needs-retry so it re-reads after the human solves it — it never tries to bypass. The panel shows an amber "solve it in the tab, then Resume" card.
+- **Proof:** 3 detector unit tests (incl. negatives so a plain "Sign in" link doesn't trip it); live e2e: example.com DOM seeded with challenge text → agent reads → pauses with the Resume handoff (no bypass). Screenshot 44. 147 unit tests total.
 
 ### #34 — Prompt-injection guards (NFR-SEC-6) ✅
 - **Structural guarantee (already true):** the executor never receives raw page text (only step intents + verdicts), `synthesizeAnswer` runs with **no tools**, and every consequential tool passes the HITL gate — so injected page text cannot trigger an unconfirmed action.

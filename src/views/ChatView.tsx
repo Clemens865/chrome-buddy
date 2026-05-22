@@ -97,6 +97,7 @@ export function ChatView({
   const [askBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
   const [planReview, setPlanReview] = useState<{ plan: PlanStep[]; resolve: (d: PlanDecision) => void } | null>(null);
   const [askUser, setAskUser] = useState<{ question: string; choices?: string[]; resolve: (a: string) => void } | null>(null);
+  const [humanGate, setHumanGate] = useState<{ kind: 'captcha' | 'login'; resolve: () => void } | null>(null);
   const [pastRuns, setPastRuns] = useState<RunRecord[]>([]);
 
   useEffect(() => {
@@ -144,6 +145,19 @@ export function ChatView({
   const answerAsk = useCallback((answer: string) => {
     setAskUser((cur) => {
       cur?.resolve(answer);
+      return null;
+    });
+  }, []);
+
+  // Human handoff (FR-HITL-8): pause on a CAPTCHA/login wall; resume on click.
+  const onHumanGate = useCallback(
+    (req: { kind: 'captcha' | 'login' }) =>
+      new Promise<void>((resolve) => setHumanGate({ kind: req.kind, resolve })),
+    [],
+  );
+  const resumeGate = useCallback(() => {
+    setHumanGate((cur) => {
+      cur?.resolve();
       return null;
     });
   }, []);
@@ -216,6 +230,7 @@ export function ChatView({
             onConfirm,
             onPlanReview: askBeforePlan ? onPlanReview : undefined,
             onAskUser,
+            onHumanGate,
             model: activeModel,
             costBudget: perRunCap,
             stepBudget,
@@ -246,7 +261,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser],
+    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -298,6 +313,7 @@ export function ChatView({
               onConfirm: makeOnConfirm(),
               onPlanReview: askBeforePlan ? onPlanReview : undefined,
               onAskUser,
+              onHumanGate,
               model: activeModel,
               costBudget: perRunCap,
               stepBudget,
@@ -315,7 +331,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser],
+    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate],
   );
 
   // Running a skill (from the Skills view) submits its task in the skill's mode.
@@ -349,6 +365,27 @@ export function ChatView({
           </>
         )}
       </div>
+      {humanGate && (
+        <div className="human-gate" role="group" aria-label="Human action needed">
+          <div className="human-gate-q">
+            <span className="ic">{Ic.warn}</span>
+            {humanGate.kind === 'captcha'
+              ? 'A CAPTCHA / verification challenge is blocking this page. Solve it in the tab, then Resume.'
+              : 'A sign-in or 2-factor wall is blocking this page. Sign in in the tab, then Resume.'}
+          </div>
+          <div className="human-gate-actions">
+            <button
+              type="button"
+              className="composer-send"
+              style={{ width: 'auto', padding: '0 12px', borderRadius: 8 }}
+              aria-label="Resume"
+              onClick={resumeGate}
+            >
+              Resume
+            </button>
+          </div>
+        </div>
+      )}
       {askUser && <AskUserCard question={askUser.question} choices={askUser.choices} onAnswer={answerAsk} />}
       {planReview && (
         <div className="plan-review" role="group" aria-label="Review plan">

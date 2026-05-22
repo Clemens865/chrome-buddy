@@ -102,6 +102,8 @@ export interface RunAgentTaskOptions {
   onPlanReview?: PlanApprover;
   /** Resolver for the ask_user tool (FR-TOOLS-11). */
   onAskUser?: AskUserHandler;
+  /** Human handoff for CAPTCHA/login walls (FR-HITL-8). */
+  onHumanGate?: (req: { kind: 'captcha' | 'login' }) => Promise<void>;
   /** Registry model id; defaults to the registry default (gemini-3.5-flash). */
   model?: string;
   /** Cancellation signal for the whole run. */
@@ -335,6 +337,7 @@ export async function runAgentTask(
     approve,
     onEvent: options.onEvent,
     planApprove: options.onPlanReview,
+    onHumanGate: options.onHumanGate,
   });
 
   const state = await runtime.run(prompt, {

@@ -125,6 +125,7 @@ export type AgentEvent =
       /** True when the action was denied at the HITL gate. */
       denied?: boolean;
     }
+  | { type: 'human_gate'; runId: string; step: number; kind: 'captcha' | 'login' }
   | { type: 'partial'; runId: string; text: string }
   | {
       type: 'done';

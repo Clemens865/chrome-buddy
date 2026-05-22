@@ -62,6 +62,8 @@ export interface RuntimeDeps {
   computerUse?: ComputerUseHook;
   /** Plan-approval gate (FR-AGENT-3). When omitted, the plan auto-runs. */
   planApprove?: PlanApprover;
+  /** Human handoff for CAPTCHA/login walls (FR-HITL-8). When omitted, no pause. */
+  onHumanGate?: (req: { kind: 'captcha' | 'login' }) => Promise<void>;
   /** Target tab threaded into tool contexts. */
   tabId?: number;
   /** Run id factory (overridable for deterministic tests). */
@@ -83,6 +85,7 @@ export class AgentRuntime {
   private readonly emit: EventSink;
   private readonly computerUse: ComputerUseHook;
   private readonly planApprove?: PlanApprover;
+  private readonly onHumanGate?: (req: { kind: 'captcha' | 'login' }) => Promise<void>;
   private readonly tabId?: number;
   private readonly newRunId: () => string;
 
@@ -93,6 +96,7 @@ export class AgentRuntime {
     this.emit = deps.onEvent ?? (() => {});
     this.computerUse = deps.computerUse ?? computerUseStub;
     this.planApprove = deps.planApprove;
+    this.onHumanGate = deps.onHumanGate;
     this.tabId = deps.tabId;
     this.newRunId = deps.newRunId ?? (() => `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   }
@@ -396,6 +400,15 @@ export class AgentRuntime {
       const verdict = this.validate(step, result);
       this.recordAction(state, step.index, call, result, verdict, false);
       this.emit({ type: 'step_result', runId, step: step.index, verdict, result });
+
+      // FR-HITL-8: a CAPTCHA/login wall — pause and hand control to the human
+      // (never bypass). After they Resume, re-read the (now-solved) page.
+      const gateKind = result.ok ? result.meta?.humanGate : undefined;
+      if (gateKind && this.onHumanGate) {
+        this.emit({ type: 'human_gate', runId, step: step.index, kind: gateKind });
+        await this.onHumanGate({ kind: gateKind });
+        return 'needs-retry';
+      }
 
       if (verdict === 'failed') anyFailure = true;
       if (verdict === 'needs-retry') return 'needs-retry';
