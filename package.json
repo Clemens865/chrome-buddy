@@ -37,7 +37,8 @@
     "test:e2e:console": "playwright test console-inspector.spec.ts",
     "test:e2e:appsgrid": "playwright test apps-grid.spec.ts",
     "test:e2e:transcriber": "playwright test transcriber.spec.ts",
-    "test:e2e:resume": "playwright test resume.spec.ts"
+    "test:e2e:resume": "playwright test resume.spec.ts",
+    "test:e2e:vision": "playwright test vision.spec.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",

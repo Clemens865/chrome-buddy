@@ -5,7 +5,7 @@
   "description": "Universal agentic + LLM browser assistant — model-transparent, BYO-key, privacy-respecting.",
   "minimum_chrome_version": "116",
   "permissions": ["sidePanel", "storage", "tabs", "activeTab", "scripting", "alarms", "notifications", "downloads", "debugger"],
-  "host_permissions": ["http://*/*", "https://*/*"],
+  "host_permissions": ["http://*/*", "https://*/*", "<all_urls>"],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"

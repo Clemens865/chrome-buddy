@@ -16,7 +16,7 @@
 // The runtime owns no UI and no persistence: it emits AgentEvents and mutates a
 // JSON-serializable scratchpad the caller can checkpoint (FR-AGENT-8).
 
-import type { ChatMessage, NormalizedResponse, NormalizedToolCall, UsageStats } from '../llm';
+import type { ChatMessage, ContentPart, NormalizedResponse, NormalizedToolCall, UsageStats } from '../llm';
 import type { ToolRegistry } from '../tools';
 import type { ToolContext } from '../tools';
 import type { ToolResult } from '../types';
@@ -547,19 +547,30 @@ export class AgentRuntime {
       .map((a) => `## ${a.toolName}\n${evidenceText(a.result && a.result.ok ? a.result.data : undefined).slice(0, 6000)}`)
       .join('\n\n');
 
-    if (!evidence.trim()) return this.summarize(sp);
+    // Screenshots gathered this run are fed back as actual IMAGES so the model
+    // can SEE the page (FR-BC-4/5), not just read a base64 blob.
+    const shots = sp.actions
+      .filter((a) => a.result?.ok && (a.toolName === 'screenshot' || a.result.meta?.visionUsed))
+      .map((a) => (a.result && a.result.ok ? (a.result.data as { dataUrl?: string }).dataUrl : undefined))
+      .filter((u): u is string => typeof u === 'string' && u.startsWith('data:image'));
+
+    if (!evidence.trim() && shots.length === 0) return this.summarize(sp);
+
+    const userParts: ContentPart[] = [
+      { type: 'text', text: `Request: ${sp.task}\n\nTool results:\n${fenceUntrusted(evidence)}` },
+      ...shots.map((url) => ({ type: 'image', imageUrl: url }) as ContentPart),
+    ];
 
     const messages: ChatMessage[] = [
       {
         role: 'system',
         content:
           'You are Buddy, a browser assistant. The information below is the result of ' +
-          'tools you just ran for the user. If the request was a QUESTION, answer it ' +
-          'concisely from that information. If it was an ACTION (e.g. send a webhook, ' +
-          'navigate, click), confirm concisely what was done and the outcome (e.g. an ' +
-          `HTTP status). Do not say information is insufficient when an action succeeded. ${INJECTION_GUARD}`,
+          'tools you just ran for the user (including any screenshots — look at them). If the ' +
+          'request was a QUESTION, answer it concisely; if it was an ACTION, confirm what was ' +
+          `done and the outcome. Do not say information is insufficient when an action succeeded. ${INJECTION_GUARD}`,
       },
-      { role: 'user', content: `Request: ${sp.task}\n\nTool results:\n${fenceUntrusted(evidence)}` },
+      { role: 'user', content: shots.length > 0 ? userParts : `Request: ${sp.task}\n\nTool results:\n${fenceUntrusted(evidence)}` },
     ];
 
     try {

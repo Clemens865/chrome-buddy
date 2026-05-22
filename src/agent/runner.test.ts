@@ -2,7 +2,7 @@
 // A mock `send` stands in for chrome.runtime.sendMessage so no real SW is hit.
 
 import { describe, it, expect, vi } from 'vitest';
-import { runAgentTask, buildCallSkillTool, askUserToolHandler } from './runner';
+import { runAgentTask, buildCallSkillTool, askUserToolHandler, buildVisionFallback } from './runner';
 import type { AgentEvent } from './types';
 import type { Skill } from '../skills/types';
 
@@ -130,5 +130,41 @@ describe('askUserToolHandler', () => {
   it('errors when no resolver or no question', async () => {
     expect((await askUserToolHandler(undefined)({ question: 'x' })).ok).toBe(false);
     expect((await askUserToolHandler(async () => 'a')({})).ok).toBe(false);
+  });
+});
+
+describe('buildVisionFallback', () => {
+  it('captures the tab and sends the screenshot as an image to the model', async () => {
+    let llmMsg: { messages?: { role: string; content: unknown }[] } | undefined;
+    const send = vi.fn(async (m: unknown) => {
+      const t = (m as { type?: string }).type;
+      if (t === 'TOOL_EXEC') {
+        return { type: 'TOOL_EXEC', ok: true, result: { ok: true, data: { dataUrl: 'data:image/png;base64,AAAA' } } };
+      }
+      if (t === 'LLM_GENERATE') {
+        llmMsg = m as { messages: { role: string; content: unknown }[] };
+        return { type: 'LLM_GENERATE', ok: true, result: { text: 'I can see a login form.', toolCalls: [], finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, model: 'm', cost: { totalCost: 0.001 } } };
+      }
+      return undefined;
+    });
+
+    const hook = buildVisionFallback(send, 'gemini-2.5-flash');
+    const res = await hook({ runId: 'r', step: 1, intent: 'Find the login form' });
+
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect((res.data as { text: string }).text).toContain('login form');
+      expect(res.meta?.visionUsed).toBe(true);
+    }
+    // The LLM call carried an image content part (the screenshot).
+    const userMsg = llmMsg?.messages?.find((m) => m.role === 'user');
+    const parts = userMsg?.content as { type: string; imageUrl?: string }[];
+    expect(parts.some((p) => p.type === 'image' && p.imageUrl?.startsWith('data:image'))).toBe(true);
+  });
+
+  it('errors when the screenshot fails', async () => {
+    const send = vi.fn(async () => ({ type: 'TOOL_EXEC', ok: true, result: { ok: false, error: { code: 'undriveable', message: 'no' } } }));
+    const res = await buildVisionFallback(send, 'm')({ runId: 'r', step: 1, intent: 'x' });
+    expect(res.ok).toBe(false);
   });
 });

@@ -24,7 +24,7 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 34 | Prompt-injection guards | NFR-SEC-6 | ✅ | (this push) | runtime + guards unit tests (internal; gate = screenshots 27-28) |
 | 35 | CAPTCHA/login pause-and-handoff | FR-HITL-8 | ✅ | (this push) | screenshot 44; e2e human-gate |
 | 36 | Agent resumability across SW restart | FR-AGENT-8, NFR-REL-3 | ✅ | (this push) | screenshot 49; e2e resume |
-| 37 | Computer Use vision fallback | FR-BC-5, FR-LLM-9, FR-AGENT-13 | ⬜ | — | — |
+| 37 | Browser vision (screenshot → "see") | FR-BC-4/5, FR-LLM-9, FR-AGENT-13 | ✅ | (this push) | screenshot 50; e2e vision |
 | 38 | Skills editor + import consent | FR-SKILL-4,5,6,9,10 | ⬜ | — | — |
 | 39 | Workflows: event trigger + export/import + editor | FR-WF-2,4,7 | ⬜ | — | — |
 | 40 | Model registry: Test + editor + add provider | FR-MR-8,10,12,13 | ⬜ | — | — |
@@ -35,6 +35,13 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #37 — Browser vision: the agent can SEE via screenshots (FR-BC-4/5, FR-LLM-9, FR-AGENT-13) ✅
+- **Reframed** (per user): a Chrome extension can't do OS-level Computer Use, but it does full *browser* use. Open tabs / navigate / fill forms / click / type / read context were already built + verified; the missing piece was **sight**.
+- **Now:** (1) the vision-fallback hook is wired (`buildVisionFallback`) — when DOM read/extract yields nothing, capture the tab and let the vision model describe/answer from the image (replaces the old `computerUseStub`); (2) `synthesizeAnswer` feeds any screenshot results to the model as real **image** content parts (`ContentPart`), so "take a screenshot and tell me what you see" actually works.
+- **Latent bug fixed:** `captureVisibleTab` needs `<all_urls>` (or activeTab) — our `http/https` host perms didn't satisfy it, so screenshots silently failed (needs-retry). Added `<all_urls>`; screenshot now succeeds.
+- **Proof:** 2 runner unit tests (hook sends an image part, returns observation/visionUsed; errors when capture fails) — 157 unit tests; live e2e vision: agent screenshots example.com (succeeds) and answers "the big heading says Example Domain" with the image fed to the model. Screenshot 50.
+- **Note:** `<all_urls>` broadens host permissions (Web Store review), justified by sight + capture being core. Full coordinate-action CU loop (model returns click coords from the image) is a future layer — execution already works via DOM/CDP.
 
 ### #36 — Agent resumability across SW restart (FR-AGENT-8, NFR-REL-3) ✅
 - **Was:** the run scratchpad lived only in memory; a closed/reloaded panel lost an in-flight run.
