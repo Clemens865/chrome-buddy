@@ -20,6 +20,14 @@ import { findSimilarRun } from '../memory/recall';
 import type { RunRecord } from '../memory/types';
 import { loadCheckpoint, clearCheckpoint, type RunCheckpoint } from '../agent/checkpoint';
 import {
+  saveConversation,
+  listConversations,
+  getConversation,
+  deleteConversation,
+  deriveTitle,
+  type Conversation,
+} from '../chat/store';
+import {
   BUDGET_KEYS,
   BUDGET_DEFAULTS,
   getTodaySpend,
@@ -73,11 +81,19 @@ export function ChatView({
   onConsumePending,
   pendingWorkflow,
   onConsumeWorkflow,
+  newChatSignal = 0,
+  chatListOpen = false,
+  onCloseChatList,
 }: {
   pendingRun?: PendingRun | null;
   onConsumePending?: () => void;
   pendingWorkflow?: Workflow | null;
   onConsumeWorkflow?: () => void;
+  /** Bumped by the header "+" to start a new chat. */
+  newChatSignal?: number;
+  /** Whether the conversation-list slide-over is open (header list icon). */
+  chatListOpen?: boolean;
+  onCloseChatList?: () => void;
 } = {}) {
   const [input, setInput] = useState('');
   const [items, setItems] = useState<TranscriptItem[]>([]);
@@ -118,6 +134,79 @@ export function ChatView({
     void addSpend(amount).then(setSpentToday);
   }, []);
   const pendingRef = useRef<PendingConfirm | null>(null);
+
+  // --- Multi-session chat history -----------------------------------------
+  const [activeChatId, setActiveChatId] = usePersistedState<string>('activeChatId', '');
+  const [convs, setConvs] = useState<Conversation[] | null>(null);
+  const loadedIdRef = useRef<string>('');
+  const chatCreatedRef = useRef<number>(0);
+
+  // Restore the last conversation when its id hydrates (and we're still empty).
+  useEffect(() => {
+    if (!activeChatId || loadedIdRef.current === activeChatId || items.length > 0) return;
+    void getConversation(activeChatId).then((c) => {
+      if (c) {
+        loadedIdRef.current = c.id;
+        chatCreatedRef.current = c.createdAt;
+        setItems(c.items);
+      }
+    });
+  }, [activeChatId, items.length]);
+
+  // Persist the active conversation when a turn settles (creates an id lazily).
+  useEffect(() => {
+    if (busy || items.length === 0) return;
+    let id = activeChatId;
+    if (!id) {
+      id = `chat_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      chatCreatedRef.current = Date.now();
+      loadedIdRef.current = id;
+      setActiveChatId(id);
+    }
+    void saveConversation({
+      id,
+      title: deriveTitle(items),
+      items,
+      createdAt: chatCreatedRef.current || Date.now(),
+      updatedAt: Date.now(),
+    });
+  }, [busy, items]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startNewChat = useCallback(() => {
+    setItems([]);
+    setInput('');
+    setNoKey(false);
+    loadedIdRef.current = '';
+    chatCreatedRef.current = 0;
+    setActiveChatId('');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openConversation = useCallback((c: Conversation) => {
+    loadedIdRef.current = c.id;
+    chatCreatedRef.current = c.createdAt;
+    setItems(c.items);
+    setActiveChatId(c.id);
+    onCloseChatList?.();
+  }, [onCloseChatList]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const removeConversation = useCallback(
+    async (id: string) => {
+      await deleteConversation(id);
+      setConvs(await listConversations());
+      if (id === activeChatId) startNewChat();
+    },
+    [activeChatId, startNewChat],
+  );
+
+  // Header "+" → new chat.
+  useEffect(() => {
+    if (newChatSignal > 0) startNewChat();
+  }, [newChatSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load the conversation list when the slide-over opens.
+  useEffect(() => {
+    if (chatListOpen) void listConversations().then(setConvs);
+  }, [chatListOpen]);
 
   // Learned-flow recall: keep recent runs handy and suggest reusing a similar
   // past one as the user types. Reload when a run finishes (busy -> false).
@@ -398,6 +487,19 @@ export function ChatView({
   return (
     <div className="chat">
       {artifact && <ArtifactView artifact={artifact} onClose={() => setArtifact(null)} />}
+      {chatListOpen && (
+        <ConversationList
+          conversations={convs}
+          activeId={activeChatId}
+          onOpen={openConversation}
+          onNew={() => {
+            startNewChat();
+            onCloseChatList?.();
+          }}
+          onDelete={(id) => void removeConversation(id)}
+          onClose={() => onCloseChatList?.()}
+        />
+      )}
       <div className="chat-scroller">
         {isEmpty ? (
           <Greeting onPick={setInput} />
@@ -797,6 +899,67 @@ function AskUserCard({
       )}
     </div>
   );
+}
+
+// Slide-over conversation list (chat history): open / delete / new.
+function ConversationList({
+  conversations,
+  activeId,
+  onOpen,
+  onNew,
+  onDelete,
+  onClose,
+}: {
+  conversations: Conversation[] | null;
+  activeId: string;
+  onOpen: (c: Conversation) => void;
+  onNew: () => void;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  const snippet = (c: Conversation): string => {
+    const lastAgent = [...c.items].reverse().find((i) => i.kind === 'agent');
+    const t = lastAgent && lastAgent.kind === 'agent' ? lastAgent.text : '';
+    return t.replace(/\s+/g, ' ').slice(0, 60);
+  };
+  return (
+    <div className="chats-over" role="dialog" aria-label="Chats">
+      <div className="chats-over-hd">
+        <span className="chats-over-title">Chats</span>
+        <button type="button" className="composer-mic" aria-label="Close chats" onClick={onClose}>
+          <span className="ic">{Ic.x}</span>
+        </button>
+      </div>
+      <button type="button" className="chats-new" onClick={onNew}>
+        <span className="ic">{Ic.plus}</span> New chat
+      </button>
+      <div className="chats-list">
+        {conversations === null ? null : conversations.length === 0 ? (
+          <div className="empty-state-desc" style={{ padding: '12px' }}>No saved chats yet.</div>
+        ) : (
+          conversations.map((c) => (
+            <div key={c.id} className={'chats-row' + (c.id === activeId ? ' is-active' : '')}>
+              <button type="button" className="chats-row-main" onClick={() => onOpen(c)}>
+                <div className="chats-row-title">{c.title}</div>
+                <div className="chats-row-sub">{snippet(c) || `${c.items.length} message(s)`} · {chatTimeAgo(c.updatedAt)}</div>
+              </button>
+              <button type="button" className="chats-row-del" aria-label={`Delete ${c.title}`} onClick={() => onDelete(c.id)}>✕</button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function chatTimeAgo(ts: number): string {
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
 }
 
 function ChatComposer({

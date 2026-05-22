@@ -32,9 +32,17 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 42 | Tier-2 capability bridge + code-review gate | FR-T2-3,4,5 | ✅ | (this push) | screenshots 56-57; e2e tier2-bridge |
 | 43 | Gemini Nano on-device path | FR-LLM-8, NFR-PRIV-2 | ✅ | (this push) | screenshot 58; e2e nano |
 | 44 | Debugger: permission + Console Inspector + CDP trusted-input | FR-BC-2/3 | ✅ | (this push) | screenshots 45-46; e2e cdp + console |
+| — | Chat history: multi-session conversations + slide-over switcher | UX (post-gap) | ✅ | (this push) | screenshots 59-60; e2e chathistory |
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### Chat history — multi-session conversations (slide-over) ✅
+- **Was:** the chat held a single in-memory transcript; reopening the panel or starting fresh lost the prior conversation, and there was no way to keep or revisit past chats.
+- **Now:** conversations persist in a new IndexedDB `chats` store (db v7). The chat header's ☰ opens a full-panel **Chats** slide-over (title · last-reply snippet · relative time; tap a row to restore its transcript, ✕ to delete, "+ New chat" to start fresh); the header ＋ also starts a new chat. Conversations are **auto-saved lazily** — an empty chat never persists; an id is created on the first settled turn and the title is derived from the first user message. `activeChatId` persists so the last chat restores on reopen.
+- **Storage hygiene:** `trimItems` drops large/transient payloads before saving (tool result bodies like screenshot dataURLs, and confirm cards) while keeping the user/agent/error/plan turns, so history stays small.
+- **UI choice:** slide-over over the chat (not a rail item) — keeps the rail's "History" (past *agent runs*) distinct from *conversations*, and reuses the previously-unwired header ＋. Signals threaded PanelApp → BuddyPanel/PanelHeader (open list, new chat) and PanelApp → ChatView (`chatListOpen`, `newChatSignal`).
+- **Proof:** deterministic e2e (seed two conversations into the `chats` store → ☰ lists both newest-first → open one restores its transcript → ＋ clears to the greeting → delete drops the row); live e2e (a real "capital of France" turn auto-saves and appears in the list with its derived title). Screenshots 59-60. Typecheck + 179 unit tests + lint (no new errors) green; core chat specs (smoke/recall/cost/plan-gate/ask-user/model-picker) re-run green — no regression.
 
 ### #43 — Gemini Nano on-device path (FR-LLM-8, NFR-PRIV-2) ✅ — queue complete
 - **Now:** `src/llm/nano.ts` feature-detects Chrome's built-in `LanguageModel` (Prompt API) and runs short prompts on-device — `nanoPrompt` returns null on any miss so callers fall back to the cloud. `runPlainChat` tries Nano first when the user opts in AND the prompt is short + context-free (zero network egress, $0), else cloud. Settings → "Prefer on-device (Nano)" toggle. Runs in the panel (window) context, never the SW.

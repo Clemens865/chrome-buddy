@@ -4,7 +4,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 export const DB_NAME = 'chrome-buddy';
-const VERSION = 6;
+const VERSION = 7;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -33,6 +33,10 @@ export function getDB(): Promise<IDBPDatabase> {
         // a JSON-serialisable RunState keyed 'active'. Cleared when the run ends.
         if (!d.objectStoreNames.contains('runState')) {
           d.createObjectStore('runState');
+        }
+        // Chat conversations (multi-session chat history); sorted by updatedAt.
+        if (!d.objectStoreNames.contains('chats')) {
+          d.createObjectStore('chats', { keyPath: 'id' }).createIndex('updatedAt', 'updatedAt');
         }
       },
     });

@@ -38,6 +38,8 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
   const [pendingRun, setPendingRun] = useState<PendingRun | null>(null);
   const [pendingWorkflow, setPendingWorkflow] = useState<Workflow | null>(null);
   const [onboardingDone, setOnboardingDone] = usePersistedState<boolean>('onboardingDone', false);
+  const [chatListOpen, setChatListOpen] = useState(false);
+  const [newChatSignal, setNewChatSignal] = useState(0);
 
   // Running a skill jumps to Chat and executes its task in the skill's mode.
   const runSkill = (skill: Skill) => {
@@ -97,6 +99,9 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
         onConsumePending={() => setPendingRun(null)}
         pendingWorkflow={pendingWorkflow}
         onConsumeWorkflow={() => setPendingWorkflow(null)}
+        newChatSignal={newChatSignal}
+        chatListOpen={chatListOpen}
+        onCloseChatList={() => setChatListOpen(false)}
       />
     );
 
@@ -120,6 +125,8 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
         collapsible={collapsible}
         onToggleCollapsed={() => setOverlayCollapsed(!overlayCollapsed)}
         onClose={closeHandler}
+        onNewChat={() => setNewChatSignal((s) => s + 1)}
+        onOpenChatList={() => setChatListOpen(true)}
       >
         {content}
       </BuddyPanel>

@@ -32,6 +32,9 @@ interface BuddyPanelProps {
   collapsible: boolean;
   onToggleCollapsed: () => void;
   onClose?: () => void;
+  /** Chat-view header actions (only shown on the chat view). */
+  onNewChat?: () => void;
+  onOpenChatList?: () => void;
   children: ReactNode;
 }
 
@@ -67,7 +70,7 @@ function RailNav({ view, onSelect }: { view: View; onSelect: (v: View) => void }
   );
 }
 
-export function BuddyPanel({ view, onView, collapsed, collapsible, onToggleCollapsed, onClose, children }: BuddyPanelProps) {
+export function BuddyPanel({ view, onView, collapsed, collapsible, onToggleCollapsed, onClose, onNewChat, onOpenChatList, children }: BuddyPanelProps) {
   // While collapsed, selecting an item expands the panel and navigates.
   const selectFromCollapsed = (v: View) => {
     onToggleCollapsed();
@@ -103,14 +106,14 @@ export function BuddyPanel({ view, onView, collapsed, collapsible, onToggleColla
         <RailNav view={view} onSelect={onView} />
       </nav>
       <div className="panel-body">
-        <PanelHeader view={view} onClose={onClose} />
+        <PanelHeader view={view} onClose={onClose} onNewChat={onNewChat} onOpenChatList={onOpenChatList} />
         <div className="panel-content">{children}</div>
       </div>
     </aside>
   );
 }
 
-function PanelHeader({ view, onClose }: { view: View; onClose?: () => void }) {
+function PanelHeader({ view, onClose, onNewChat, onOpenChatList }: { view: View; onClose?: () => void; onNewChat?: () => void; onOpenChatList?: () => void }) {
   const t = TITLES[view] ?? TITLES.chat;
   const [activeModel] = useActiveModel();
   const [menu, setMenu] = useState(false);
@@ -128,7 +131,8 @@ function PanelHeader({ view, onClose }: { view: View; onClose?: () => void }) {
         )}
       </div>
       <div className="panel-hd-r">
-        {view === 'chat' && <IconBtn icon={Ic.plus} label="New chat" size={28} />}
+        {view === 'chat' && <IconBtn icon={Ic.list} label="Chats" size={28} onClick={onOpenChatList} />}
+        {view === 'chat' && <IconBtn icon={Ic.plus} label="New chat" size={28} onClick={onNewChat} />}
         <div className="hd-menu-wrap">
           <IconBtn icon={Ic.more} label="More" size={28} onClick={() => setMenu((m) => !m)} />
           {menu && (
