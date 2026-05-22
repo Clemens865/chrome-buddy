@@ -26,7 +26,7 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 | 36 | Agent resumability across SW restart | FR-AGENT-8, NFR-REL-3 | ✅ | (this push) | screenshot 49; e2e resume |
 | 37 | Browser vision (screenshot → "see") | FR-BC-4/5, FR-LLM-9, FR-AGENT-13 | ✅ | (this push) | screenshot 50; e2e vision |
 | 38 | Skills editor + import consent | FR-SKILL-4,5,6,9,10 | ✅ | (this push) | screenshots 51-52; e2e skills-editor |
-| 39 | Workflows: event trigger + export/import + editor | FR-WF-2,4,7 | ⬜ | — | — |
+| 39 | Workflows: event trigger + export/import + editor | FR-WF-2,4,7 | ✅ | (this push) | screenshot 53; e2e workflow-editor |
 | 40 | Model registry: Test + editor + add provider | FR-MR-8,10,12,13 | ⬜ | — | — |
 | 41 | Signed remote registry update | FR-MR-5,6, NFR-SEC-5 | ⬜ | — | — |
 | 42 | Tier-2 capability bridge + code-review gate | FR-T2-3,4,5 | ⬜ | — | — |
@@ -35,6 +35,12 @@ model picker · memory/history · learned-flow recall · STT/TTS · image gen ·
 
 ## Log
 _(newest first — one entry per landed item)_
+
+### #39 — Workflows: event trigger + export/import + editor (FR-WF-2,4,7) ✅
+- **Was:** workflows had NL-build + manual/schedule triggers only; no editor, no export/import, no event trigger.
+- **Now:** (FR-WF-4) added an **event** trigger `{type:'event', urlPattern}` — the SW's `tabs.onUpdated` marks a workflow due when a tab navigates to a matching URL (wildcard `*`), reusing the due-badge/notify path (never auto-runs). (FR-WF-2) a **linear WorkflowEditor**: reorder/remove/add steps, per-step Chat/Agent mode + prompt, and a trigger section (Manual / Schedule / On-URL). (FR-WF-7) **export/import** JSON bundles with a review screen (import resets triggers to manual, drops invalid entries).
+- **Proof:** build helpers `matchesEventTrigger` + `parseWorkflowBundle`/`toWorkflowBundle` round-trip (6 workflow unit tests; 165 total); e2e workflow-editor: edit a seeded workflow → set On-URL trigger → row shows "on URL visit"; import a bundle → review → confirm. Screenshot 53.
+- **Note:** recorder front-door (FR-WF-2c) remains a "Could", not built. Event-trigger firing is unit-covered (matcher) + wired in the SW; live tab-navigation firing isn't e2e'd.
 
 ### #38 — Skills editor + import consent (FR-SKILL-4,5,6,9,10) ✅
 - **Was:** skills were create-on-promote (one-click) only — no editor, inputs, or import review.

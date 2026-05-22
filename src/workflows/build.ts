@@ -1,10 +1,58 @@
 // Pure helpers for building workflows. The NL→steps generation calls the LLM
 // (in the view); here we keep the JSON parser pure + unit-testable.
-import type { Workflow, WorkflowStep } from './types';
+import type { Workflow, WorkflowBundle, WorkflowStep } from './types';
+import { WORKFLOW_SCHEMA_VERSION } from './types';
 
 let counter = 0;
-function newId(prefix: string): string {
+export function newWorkflowId(prefix = 'wf'): string {
   return `${prefix}_${Date.now()}_${(counter++).toString(36)}`;
+}
+function newId(prefix: string): string {
+  return newWorkflowId(prefix);
+}
+
+/** True when an event-trigger urlPattern (with * wildcards) matches a URL. */
+export function matchesEventTrigger(urlPattern: string, url: string): boolean {
+  const p = (urlPattern ?? '').trim();
+  if (!p || !url) return false;
+  const re = new RegExp(
+    '^' + p.split('*').map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$',
+    'i',
+  );
+  return re.test(url) || url.includes(p.replace(/\*/g, ''));
+}
+
+/** Export workflows as a portable, re-validatable bundle (FR-WF-7). */
+export function toWorkflowBundle(workflows: Workflow[]): WorkflowBundle {
+  return { schemaVersion: WORKFLOW_SCHEMA_VERSION, workflows };
+}
+
+/** Parse + validate an imported workflow bundle (FR-WF-7). Drops bad entries. */
+export function parseWorkflowBundle(json: string): Workflow[] {
+  let data: unknown;
+  try {
+    data = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const raw = (data as { workflows?: unknown }).workflows;
+  if (!Array.isArray(raw)) return [];
+  const out: Workflow[] = [];
+  for (const w of raw as Record<string, unknown>[]) {
+    if (!w || typeof w.name !== 'string' || !Array.isArray(w.steps)) continue;
+    const steps = (w.steps as Record<string, unknown>[])
+      .filter((s) => s && typeof s.prompt === 'string' && (s.prompt as string).trim())
+      .map((s) => ({ id: newId('step'), mode: s.mode === 'agent' ? ('agent' as const) : ('chat' as const), prompt: (s.prompt as string).trim() }));
+    if (steps.length === 0) continue;
+    out.push({
+      id: newId('wf'),
+      name: (w.name as string).slice(0, 80),
+      steps,
+      trigger: { type: 'manual' },
+      createdAt: Date.now(),
+    });
+  }
+  return out;
 }
 
 interface RawStep {

@@ -15,7 +15,11 @@ export interface WorkflowStep {
  */
 export type WorkflowTrigger =
   | { type: 'manual' }
-  | { type: 'schedule'; everyMinutes: number };
+  | { type: 'schedule'; everyMinutes: number }
+  /** `event` = mark the workflow due when a tab navigates to a matching URL
+   *  (urlPattern supports * wildcards). Like schedule, it reminds — never
+   *  auto-runs (agent steps can be consequential). */
+  | { type: 'event'; urlPattern: string };
 
 export interface Workflow {
   id: string;
@@ -23,4 +27,12 @@ export interface Workflow {
   steps: WorkflowStep[];
   trigger: WorkflowTrigger;
   createdAt: number;
+}
+
+export const WORKFLOW_SCHEMA_VERSION = 1;
+
+/** Portable export envelope (import/export as JSON). */
+export interface WorkflowBundle {
+  schemaVersion: number;
+  workflows: Workflow[];
 }

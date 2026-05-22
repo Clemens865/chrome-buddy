@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parseWorkflowSteps, makeWorkflow } from './build';
+import { parseWorkflowSteps, makeWorkflow, toWorkflowBundle, parseWorkflowBundle, matchesEventTrigger } from './build';
 import { saveWorkflow, listWorkflows, deleteWorkflow } from './store';
 
 afterEach(async () => {
@@ -18,6 +18,31 @@ describe('parseWorkflowSteps', () => {
   it('rejects junk and empty prompts', () => {
     expect(parseWorkflowSteps('nope')).toHaveLength(0);
     expect(parseWorkflowSteps('{"steps":[{"prompt":"  "}]}')).toHaveLength(0);
+  });
+});
+
+describe('matchesEventTrigger', () => {
+  it('matches with * wildcards', () => {
+    expect(matchesEventTrigger('https://example.com/*', 'https://example.com/pricing')).toBe(true);
+    expect(matchesEventTrigger('https://other.com/*', 'https://example.com/pricing')).toBe(false);
+  });
+  it('matches by substring without wildcards', () => {
+    expect(matchesEventTrigger('github.com', 'https://github.com/foo')).toBe(true);
+  });
+});
+
+describe('workflow bundle export/import (FR-WF-7)', () => {
+  it('round-trips a bundle, resetting trigger to manual and dropping bad entries', () => {
+    const wf = makeWorkflow('Round trip', parseWorkflowSteps('{"steps":[{"mode":"agent","prompt":"a"},{"prompt":"b"}]}'));
+    const json = JSON.stringify(toWorkflowBundle([wf]));
+    const back = parseWorkflowBundle(json);
+    expect(back).toHaveLength(1);
+    expect(back[0].name).toBe('Round trip');
+    expect(back[0].steps).toHaveLength(2);
+    expect(back[0].trigger).toEqual({ type: 'manual' });
+    // junk / no-steps entries are dropped
+    expect(parseWorkflowBundle('{"workflows":[{"name":"x"},{"steps":[]}]}')).toHaveLength(0);
+    expect(parseWorkflowBundle('nope')).toHaveLength(0);
   });
 });
 

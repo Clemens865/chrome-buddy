@@ -34,6 +34,7 @@ import {
   workflowIdFromAlarm,
   DUE_WORKFLOWS_KEY,
 } from '../workflows/schedule';
+import { matchesEventTrigger } from '../workflows/build';
 
 // NFR-SEC-1: keep session storage (where the API key lives) unreadable from
 // content scripts / page contexts. TRUSTED_CONTEXTS is the MV3 default, but we
@@ -377,24 +378,44 @@ async function reconcileWorkflowAlarms(): Promise<void> {
   }
 }
 
-// When a scheduled alarm fires, mark the workflow "due" and notify — we do NOT
-// auto-run (agent steps can be consequential; the run stays user-initiated).
+/**
+ * Mark a workflow "due" (schedule alarm fired, or an event trigger matched) and
+ * notify. We never auto-run — agent steps can be consequential, so the run stays
+ * user-initiated (the panel shows a Due badge + one-tap Run).
+ */
+async function markWorkflowDue(id: string, reason: string): Promise<void> {
+  const store = chrome.storage.local;
+  const cur = ((await store.get(DUE_WORKFLOWS_KEY))[DUE_WORKFLOWS_KEY] as string[]) ?? [];
+  if (!cur.includes(id)) await store.set({ [DUE_WORKFLOWS_KEY]: [...cur, id] });
+  const wf = (await listWorkflows()).find((w) => w.id === id);
+  if (wf && chrome.notifications?.create) {
+    chrome.notifications.create(`wf-due-${id}`, {
+      type: 'basic',
+      iconUrl: 'icon-128.png',
+      title: 'Chrome Buddy — workflow due',
+      message: `"${wf.name}" is due (${reason}). Open the panel to run it.`,
+    });
+  }
+}
+
+// Scheduled alarm fired → mark due.
 if (chrome.alarms?.onAlarm) {
   chrome.alarms.onAlarm.addListener((alarm) => {
     const id = workflowIdFromAlarm(alarm.name);
-    if (!id) return;
+    if (id) void markWorkflowDue(id, 'scheduled');
+  });
+}
+
+// Event trigger (FR-WF-4): a tab navigated to a URL matching a workflow's
+// urlPattern → mark it due.
+if (chrome.tabs?.onUpdated) {
+  chrome.tabs.onUpdated.addListener((_tabId, info, tab) => {
+    if (info.status !== 'complete' || !tab.url) return;
     void (async () => {
-      const store = chrome.storage.local;
-      const cur = ((await store.get(DUE_WORKFLOWS_KEY))[DUE_WORKFLOWS_KEY] as string[]) ?? [];
-      if (!cur.includes(id)) await store.set({ [DUE_WORKFLOWS_KEY]: [...cur, id] });
-      const wf = (await listWorkflows()).find((w) => w.id === id);
-      if (wf && chrome.notifications?.create) {
-        chrome.notifications.create(`wf-due-${id}`, {
-          type: 'basic',
-          iconUrl: 'icon-128.png',
-          title: 'Chrome Buddy — workflow due',
-          message: `"${wf.name}" is scheduled to run. Open the panel to run it.`,
-        });
+      for (const wf of await listWorkflows()) {
+        if (wf.trigger.type === 'event' && matchesEventTrigger(wf.trigger.urlPattern, tab.url!)) {
+          await markWorkflowDue(wf.id, 'page visited');
+        }
       }
     })();
   });

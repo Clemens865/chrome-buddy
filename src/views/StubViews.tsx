@@ -7,13 +7,13 @@ import { fetchSkills, persistSkill, removeSkill } from '../skills/request';
 import { skillFromRun, parseSkillBundle, toSkillBundle } from '../skills/skillData';
 import { detectSkillInputs, makeSkill, reviewImport, type ImportReview } from '../skills/edit';
 import { fetchWorkflows, persistWorkflow, removeWorkflow } from '../workflows/request';
-import { parseWorkflowSteps, makeWorkflow, WORKFLOW_BUILDER_SYSTEM } from '../workflows/build';
+import { parseWorkflowSteps, makeWorkflow, WORKFLOW_BUILDER_SYSTEM, toWorkflowBundle, parseWorkflowBundle, newWorkflowId } from '../workflows/build';
 import { DUE_WORKFLOWS_KEY } from '../workflows/schedule';
 import { generateViaBackground } from '../llm/instance';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import type { Skill } from '../skills/types';
-import type { Workflow, WorkflowTrigger } from '../workflows/types';
+import type { Workflow, WorkflowStep, WorkflowTrigger } from '../workflows/types';
 import type { RunRecord } from '../memory/types';
 
 // Schedule presets offered in the Workflows list (minutes; 0 = manual).
@@ -231,6 +231,9 @@ export function FlowsView({ onRunWorkflow }: { onRunWorkflow: (wf: Workflow) => 
   const [desc, setDesc] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [editing, setEditing] = useState<Workflow | null>(null);
+  const [importReview, setImportReview] = useState<Workflow[] | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = () => fetchWorkflows().then(setWorkflows);
   useEffect(() => {
@@ -285,14 +288,76 @@ export function FlowsView({ onRunWorkflow }: { onRunWorkflow: (wf: Workflow) => 
     onRunWorkflow(w);
   };
 
+  const onExport = () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(toWorkflowBundle(workflows ?? []), null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'chrome-buddy-workflows.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const onImportFile = async (file: File) => {
+    const parsed = parseWorkflowBundle(await file.text());
+    if (parsed.length) setImportReview(parsed);
+  };
+  const confirmImport = async () => {
+    for (const w of importReview ?? []) await persistWorkflow(w);
+    setImportReview(null);
+    void refresh();
+  };
+  const onSaveEdit = async (w: Workflow) => {
+    await persistWorkflow(w);
+    setEditing(null);
+    void refresh();
+  };
+
+  if (editing) {
+    return <WorkflowEditor initial={editing} onSave={(w) => void onSaveEdit(w)} onCancel={() => setEditing(null)} />;
+  }
+  if (importReview) {
+    return (
+      <div className="stub">
+        <div className="settings-section-h">Import workflows — review</div>
+        <div className="stub-list">
+          {importReview.map((w) => (
+            <div key={w.id} className="stub-row">
+              <span className="stub-row-ic" style={{ color: '#A78BFA', background: hexAlpha('#A78BFA', 0.12) }}>{Ic.flow}</span>
+              <div className="stub-row-body">
+                <div className="stub-row-title">{w.name}</div>
+                <div className="stub-row-sub">{w.steps.length} step{w.steps.length === 1 ? '' : 's'} · imported as manual</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 10 }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImportReview(null)}>Cancel</button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => void confirmImport()}>Import {importReview.length}</button>
+        </div>
+      </div>
+    );
+  }
+
   const empty = workflows !== null && workflows.length === 0 && !creating;
 
   return (
     <div className="stub">
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreating((c) => !c)}>
           {creating ? 'Cancel' : '+ New workflow'}
         </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>Import</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onExport} disabled={!workflows || workflows.length === 0}>Export</button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void onImportFile(f);
+            e.target.value = '';
+          }}
+        />
       </div>
 
       {creating && (
@@ -336,7 +401,8 @@ export function FlowsView({ onRunWorkflow }: { onRunWorkflow: (wf: Workflow) => 
                     {due.includes(w.id) && <span className="wf-due-badge">Due</span>}
                   </div>
                   <div className="stub-row-sub">
-                    {w.steps.length} step{w.steps.length === 1 ? '' : 's'} · {minutes > 0 ? schedLabel.toLowerCase() : 'manual'}
+                    {w.steps.length} step{w.steps.length === 1 ? '' : 's'} ·{' '}
+                    {w.trigger.type === 'event' ? 'on URL visit' : minutes > 0 ? schedLabel.toLowerCase() : 'manual'}
                   </div>
                 </div>
                 <select
@@ -351,12 +417,97 @@ export function FlowsView({ onRunWorkflow }: { onRunWorkflow: (wf: Workflow) => 
                   ))}
                 </select>
                 <button type="button" className="btn btn-primary btn-sm" onClick={() => runAndClear(w)}>Run</button>
+                <button type="button" className="btn btn-ghost btn-sm" aria-label="Edit workflow" onClick={() => setEditing(w)}>Edit</button>
                 <button type="button" className="btn btn-ghost btn-sm" aria-label="Delete workflow" onClick={() => void onDelete(w.id)}>✕</button>
               </div>
             );
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// Linear workflow editor (FR-WF-2): edit/reorder/remove steps + set the trigger
+// (manual / schedule / event-on-URL-visit, FR-WF-4).
+function WorkflowEditor({ initial, onSave, onCancel }: { initial: Workflow; onSave: (w: Workflow) => void; onCancel: () => void }) {
+  const [name, setName] = useState(initial.name);
+  const [steps, setSteps] = useState<WorkflowStep[]>(initial.steps);
+  const [trigType, setTrigType] = useState<WorkflowTrigger['type']>(initial.trigger.type);
+  const [minutes, setMinutes] = useState(initial.trigger.type === 'schedule' ? initial.trigger.everyMinutes : 60);
+  const [urlPattern, setUrlPattern] = useState(initial.trigger.type === 'event' ? initial.trigger.urlPattern : '');
+
+  const setStep = (i: number, patch: Partial<WorkflowStep>) =>
+    setSteps((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  const move = (i: number, dir: -1 | 1) =>
+    setSteps((prev) => {
+      const j = i + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  const remove = (i: number) => setSteps((prev) => prev.filter((_, idx) => idx !== i));
+  const add = () => setSteps((prev) => [...prev, { id: newWorkflowId('step'), mode: 'chat', prompt: '' }]);
+
+  const save = () => {
+    const trigger: WorkflowTrigger =
+      trigType === 'schedule'
+        ? { type: 'schedule', everyMinutes: minutes }
+        : trigType === 'event'
+          ? { type: 'event', urlPattern: urlPattern.trim() }
+          : { type: 'manual' };
+    onSave({ ...initial, name: name.trim() || 'Untitled workflow', steps: steps.filter((s) => s.prompt.trim()), trigger });
+  };
+
+  return (
+    <div className="stub">
+      <div className="settings-section-h">Edit workflow</div>
+      <div className="settings-row" style={{ display: 'block' }}>
+        <input className="settings-input" placeholder="Workflow name" value={name} onChange={(e) => setName(e.target.value)} aria-label="Workflow name" />
+
+        <div style={{ marginTop: 8 }}>
+          {steps.map((s, i) => (
+            <div key={s.id} className="wf-step">
+              <div className="wf-step-hd">
+                <span>Step {i + 1}</span>
+                <div className="seg seg-sm" role="group" aria-label={`Step ${i + 1} mode`}>
+                  <button type="button" className={'seg-btn' + (s.mode === 'chat' ? ' is-on' : '')} onClick={() => setStep(i, { mode: 'chat' })}>Chat</button>
+                  <button type="button" className={'seg-btn' + (s.mode === 'agent' ? ' is-on' : '')} onClick={() => setStep(i, { mode: 'agent' })}>Agent</button>
+                </div>
+                <span style={{ flex: 1 }} />
+                <button type="button" className="wf-step-btn" aria-label={`Move step ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
+                <button type="button" className="wf-step-btn" aria-label={`Move step ${i + 1} down`} disabled={i === steps.length - 1} onClick={() => move(i, 1)}>↓</button>
+                <button type="button" className="wf-step-btn" aria-label={`Remove step ${i + 1}`} onClick={() => remove(i)}>✕</button>
+              </div>
+              <textarea className="settings-input" style={{ resize: 'none' }} rows={2} placeholder="Step prompt" value={s.prompt} onChange={(e) => setStep(i, { prompt: e.target.value })} aria-label={`Step ${i + 1} prompt`} />
+            </div>
+          ))}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={add}>+ Add step</button>
+        </div>
+
+        <div className="settings-section-h" style={{ marginTop: 12 }}>Trigger</div>
+        <div className="seg seg-sm" role="group" aria-label="Trigger type">
+          {(['manual', 'schedule', 'event'] as const).map((t) => (
+            <button key={t} type="button" className={'seg-btn' + (trigType === t ? ' is-on' : '')} aria-pressed={trigType === t} onClick={() => setTrigType(t)}>
+              {t === 'manual' ? 'Manual' : t === 'schedule' ? 'Schedule' : 'On URL'}
+            </button>
+          ))}
+        </div>
+        {trigType === 'schedule' && (
+          <select className="settings-input" style={{ marginTop: 6, maxWidth: 160 }} aria-label="Schedule interval" value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
+            {SCHEDULE_OPTIONS.filter((o) => o.minutes > 0).map((o) => <option key={o.minutes} value={o.minutes}>{o.label}</option>)}
+          </select>
+        )}
+        {trigType === 'event' && (
+          <input className="settings-input" style={{ marginTop: 6 }} placeholder="URL pattern (e.g. https://example.com/*)" value={urlPattern} onChange={(e) => setUrlPattern(e.target.value)} aria-label="URL pattern" />
+        )}
+
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 10 }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
+          <button type="button" className="btn btn-primary btn-sm" disabled={!name.trim() || steps.filter((s) => s.prompt.trim()).length === 0} onClick={save}>Save</button>
+        </div>
+      </div>
     </div>
   );
 }
