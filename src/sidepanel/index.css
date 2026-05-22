@@ -331,15 +331,17 @@ html, body {
 .sum-hl { color: var(--accent); font-weight: 600; }
 .sum-foot { padding: 10px 12px; font-size: 11.5px; color: var(--panel-muted); line-height: 1.45; border-top: 1px dashed var(--panel-border-soft); }
 
-.hitl { border: 1px solid color-mix(in srgb, #F59E0B 30%, var(--panel-border)); background: color-mix(in srgb, #F59E0B 5%, var(--panel-bg)); border-radius: 12px; overflow: hidden; margin-left: 34px; box-shadow: var(--shadow-soft); }
-.hitl-hd { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: color-mix(in srgb, #F59E0B 8%, transparent); border-bottom: 1px solid color-mix(in srgb, #F59E0B 18%, var(--panel-border)); }
+/* Bounded flex column: header + actions stay pinned, only the body scrolls, so
+   a long payload can never push Approve/Cancel out of reach. */
+.hitl { border: 1px solid color-mix(in srgb, #F59E0B 30%, var(--panel-border)); background: color-mix(in srgb, #F59E0B 5%, var(--panel-bg)); border-radius: 12px; overflow: hidden; margin-left: 34px; box-shadow: var(--shadow-soft); display: flex; flex-direction: column; max-height: min(60vh, 460px); }
+.hitl-hd { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: color-mix(in srgb, #F59E0B 8%, transparent); border-bottom: 1px solid color-mix(in srgb, #F59E0B 18%, var(--panel-border)); }
 .hitl-ic { width: 22px; height: 22px; border-radius: 6px; background: rgba(245,158,11,.18); color: #B45309; display: inline-flex; align-items: center; justify-content: center; }
 .theme-graphite .hitl-ic { color: #FBBF24; }
 .hitl-ic .ic { width: 13px; height: 13px; }
 .hitl-title { font-size: 13px; font-weight: 600; letter-spacing: -0.005em; flex: 1; }
 .hitl-tag { font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: #B45309; padding: 2px 6px; border-radius: 4px; background: rgba(245,158,11,.15); }
 .theme-graphite .hitl-tag { color: #FBBF24; }
-.hitl-body { padding: 12px; }
+.hitl-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px; }
 .hitl-tool { display: flex; gap: 10px; align-items: flex-start; }
 .hitl-tool-ic { width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 26px; }
 .hitl-tool-ic .ic { width: 14px; height: 14px; }
@@ -350,8 +352,8 @@ html, body {
 .hitl-tool-args code { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11.5px; color: var(--panel-fg); background: var(--code); padding: 1px 6px; border-radius: 4px; }
 /* Long payloads (e.g. a file's contents) scroll inside the card so the
    Approve/Cancel buttons are never pushed off-screen. */
-.hitl-tool-args code { display: block; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-.hitl-actions { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--panel-border-soft); justify-content: flex-end; }
+.hitl-tool-args code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.hitl-actions { flex: 0 0 auto; display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--panel-border-soft); justify-content: flex-end; background: color-mix(in srgb, #F59E0B 5%, var(--panel-bg)); }
 .hitl-foot { padding: 0 12px 12px; font-size: 11.5px; color: var(--panel-muted); }
 .hitl-opt { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .hitl-opt code { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--panel-fg); background: var(--code); padding: 1px 5px; border-radius: 3px; }

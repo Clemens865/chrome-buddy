@@ -141,6 +141,7 @@ export function ChatView({
   // and tool traces stay in view). We "stick" to the bottom unless the user has
   // scrolled up to read history, so a long card's Approve button is reachable.
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
   const onScrollerScroll = useCallback(() => {
     const el = scrollerRef.current;
@@ -508,10 +509,14 @@ export function ChatView({
 
   const isEmpty = items.length === 0 && !noKey;
 
-  // Keep the view pinned to the latest content as items/cards stream in.
+  // Keep the view pinned to the latest content as items/cards stream in (so a
+  // confirm card's pinned Approve bar lands in view). Scrolling the end sentinel
+  // is more reliable than scrollTop math when a tall card is the last child.
   useLayoutEffect(() => {
+    if (!stickRef.current) return;
     const el = scrollerRef.current;
-    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
+    if (el) el.scrollTop = el.scrollHeight;
+    bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [items, noKey, busy]);
 
   return (
@@ -539,6 +544,7 @@ export function ChatView({
               <TranscriptRow key={it.id} item={it} onDecide={decide} onOpenArtifact={setArtifact} />
             ))}
             {noKey && <NoKeyNotice />}
+            <div ref={bottomRef} aria-hidden="true" />
           </>
         )}
       </div>

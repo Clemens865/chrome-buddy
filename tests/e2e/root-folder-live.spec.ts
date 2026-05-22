@@ -104,7 +104,9 @@ test('live: agent writes a markdown file to the root folder, then reads it back 
 test('live: AUTO mode routes a "save a file" request to the agent (write_file)', async ({ context, extensionId }) => {
   const panel = await context.newPage();
   await panel.addInitScript(FAKE_PICKER);
-  await panel.setViewportSize({ width: 440, height: 980 });
+  // Deliberately SHORT panel: a long write_file payload must not push the
+  // Approve button out of reach (the reported bug). Pinned actions guarantee it.
+  await panel.setViewportSize({ width: 440, height: 600 });
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
 
   await panel.evaluate(async () => {
@@ -131,7 +133,7 @@ test('live: AUTO mode routes a "save a file" request to the agent (write_file)',
   // The transcript auto-scrolls and the long contents preview is capped, so the
   // Approve button is in view without the user having to scroll (the reported bug).
   const approve = panel.getByRole('button', { name: 'Approve action' });
-  await expect(approve).toBeInViewport();
+  await expect(approve).toBeInViewport({ ratio: 1 });
   await panel.screenshot({ path: path.join(SHOTS, '65-auto-vienna-hitl.png') });
   await approve.click();
   await expect(panel.locator('.msg-agent .msg-body').last()).not.toHaveText('', { timeout: 45_000 });
