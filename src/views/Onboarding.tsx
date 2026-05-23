@@ -68,6 +68,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               }}
             />
             {error && <div className="onb-error">{error}</div>}
+            {/* Unrestricted API keys stop working on 2026-06-19 — nudge users
+                to scope their key when creating it. */}
+            <p className="onb-note onb-note-warn" role="note">
+              Tip: when creating the key, restrict it to{' '}
+              <code>generativelanguage.googleapis.com</code>. Google is disabling
+              unrestricted keys soon.
+            </p>
           </>
         )}
 
