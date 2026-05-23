@@ -60,6 +60,10 @@ export interface UsageStats {
   outputTokens: number;
   /** Cached input tokens, when the provider reports them (cheaper tier). */
   cachedInputTokens?: number;
+  /** Gemini "thinking" tokens — billed at the OUTPUT rate (thinking.md L645-678).
+   *  Included in `outputTokens` total; surfaced separately so the UI/ledger can
+   *  break it out. Other providers leave this undefined. */
+  thoughtsTokens?: number;
   totalTokens: number;
 }
 

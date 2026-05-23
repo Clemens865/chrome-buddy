@@ -636,6 +636,12 @@ export class AgentRuntime {
     state.usage.inputTokens += res.usage.inputTokens;
     state.usage.outputTokens += res.usage.outputTokens;
     state.usage.totalTokens += res.usage.totalTokens;
+    if (res.usage.cachedInputTokens) {
+      state.usage.cachedInputTokens = (state.usage.cachedInputTokens ?? 0) + res.usage.cachedInputTokens;
+    }
+    if (res.usage.thoughtsTokens) {
+      state.usage.thoughtsTokens = (state.usage.thoughtsTokens ?? 0) + res.usage.thoughtsTokens;
+    }
   }
 
   private cancelled(options: RunOptions): boolean {

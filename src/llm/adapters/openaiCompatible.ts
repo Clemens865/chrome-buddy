@@ -43,6 +43,8 @@ interface WireUsage {
   completion_tokens?: number;
   total_tokens?: number;
   prompt_tokens_details?: { cached_tokens?: number };
+  // Gemini surfaces thinking tokens through OpenAI's reasoning-tokens shape.
+  completion_tokens_details?: { reasoning_tokens?: number };
 }
 
 interface WireChoice {
@@ -279,16 +281,18 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   }
 }
 
-function mapUsage(usage: WireUsage | undefined): UsageStats {
+export function mapUsage(usage: WireUsage | undefined): UsageStats {
   const input = usage?.prompt_tokens ?? 0;
   const output = usage?.completion_tokens ?? 0;
   const cached = usage?.prompt_tokens_details?.cached_tokens;
+  const thoughts = usage?.completion_tokens_details?.reasoning_tokens;
   const stats: UsageStats = {
     inputTokens: input,
     outputTokens: output,
     totalTokens: usage?.total_tokens ?? input + output,
   };
   if (cached !== undefined) stats.cachedInputTokens = cached;
+  if (thoughts !== undefined) stats.thoughtsTokens = thoughts;
   return stats;
 }
 
