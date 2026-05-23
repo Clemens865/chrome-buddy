@@ -11,6 +11,7 @@
 // for native features; see adapters/geminiNative.ts).
 
 import { pickAdapter, resolveDefaultModel, resolveModel } from './router';
+import { retryFetch } from './retry';
 import type { CostEstimate } from './router';
 import { estimateCost } from './router';
 import type {
@@ -100,7 +101,9 @@ export class LlmClient {
   }
 
   private async send(wire: WireRequest, signal: AbortSignal | undefined): Promise<Response> {
-    const res = await fetch(wire.url, {
+    // retryFetch handles 429/503/504 + transient network errors with backoff +
+    // jitter and honors Retry-After (troubleshooting.md L20-29).
+    const res = await retryFetch(wire.url, {
       method: wire.method,
       headers: wire.headers,
       body: wire.body,

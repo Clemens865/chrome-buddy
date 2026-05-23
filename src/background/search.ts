@@ -6,6 +6,7 @@ import { ok, err, type ToolResult } from '../types';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { safetySettingsForNative } from '../llm/safety';
 import { BUDDY_UA } from '../llm/ua';
+import { retryFetch } from '../llm/retry';
 
 const SEARCH_MODEL = 'gemini-2.5-flash';
 const PROVIDER = 'google-gemini';
@@ -33,7 +34,7 @@ export async function executeWebSearch(
 
   let resp: Response;
   try {
-    resp = await fetch(url, {
+    resp = await retryFetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

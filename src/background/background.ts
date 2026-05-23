@@ -25,6 +25,7 @@ import { LlmClient } from '../llm/client';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { safetySettingsForNative } from '../llm/safety';
 import { BUDDY_UA } from '../llm/ua';
+import { retryFetch } from '../llm/retry';
 import { executePageTool, capturePageContext } from './pageTools';
 import { executeWebhook } from './webhook';
 import { executeWebSearch } from './search';
@@ -101,7 +102,7 @@ async function generateImageNative(
 
   let resp: Response;
   try {
-    resp = await fetch(url, {
+    resp = await retryFetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -162,7 +163,7 @@ async function transcribeAudioNative(
 
   let resp: Response;
   try {
-    resp = await fetch(url, {
+    resp = await retryFetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
