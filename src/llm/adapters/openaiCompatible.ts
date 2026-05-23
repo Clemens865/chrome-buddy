@@ -22,6 +22,7 @@ import type {
   UsageStats,
   WireRequest,
 } from '../types';
+import { BUDDY_UA } from '../ua';
 
 // ---- Wire shapes (only the fields we read/write; parsed defensively) -------
 
@@ -133,7 +134,11 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
   buildRequest(req: GenerateRequest, apiKey: string | undefined): WireRequest {
     const { provider, model, messages, tools, params, stream } = req;
 
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      // x-goog-api-client identifies our extension to Google (partner-integration.md L132-177).
+      'x-goog-api-client': BUDDY_UA,
+    };
     if (apiKey) {
       const auth = provider.auth;
       if (auth.method === 'bearer') {
@@ -180,6 +185,11 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       body.tool_choice = 'auto';
     }
 
+    // NOTE: safety settings travel on the NATIVE generateContent endpoint
+    // (used by search/image/audio in the SW, see safety.ts). The Gemini
+    // OpenAI-compat shim rejects extra_body.google.safety_settings, so the
+    // chat path stays without explicit safety until the geminiNative adapter
+    // is wired (docs/gemini/action-items.md F2 + F3).
     applyParamMap(body, model.paramMap);
 
     let url = `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`;

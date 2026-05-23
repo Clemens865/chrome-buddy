@@ -23,6 +23,8 @@ import { USER_REGISTRY_KEY } from '../llm/userRegistry';
 import { updateRemoteRegistry } from '../llm/remoteRegistry';
 import { LlmClient } from '../llm/client';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
+import { safetySettingsForNative } from '../llm/safety';
+import { BUDDY_UA } from '../llm/ua';
 import { executePageTool, capturePageContext } from './pageTools';
 import { executeWebhook } from './webhook';
 import { executeWebSearch } from './search';
@@ -101,8 +103,16 @@ async function generateImageNative(
   try {
     resp = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig }),
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': key,
+        'x-goog-api-client': BUDDY_UA,
+      },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts }],
+        generationConfig,
+        safetySettings: safetySettingsForNative(),
+      }),
     });
   } catch (err) {
     return { type: 'ERROR', ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -154,8 +164,15 @@ async function transcribeAudioNative(
   try {
     resp = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({ contents: [{ role: 'user', parts }] }),
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': key,
+        'x-goog-api-client': BUDDY_UA,
+      },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts }],
+        safetySettings: safetySettingsForNative(),
+      }),
     });
   } catch (err) {
     return { type: 'ERROR', ok: false, error: err instanceof Error ? err.message : String(err) };

@@ -4,6 +4,8 @@
 // endpoint directly, like image generation.
 import { ok, err, type ToolResult } from '../types';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
+import { safetySettingsForNative } from '../llm/safety';
+import { BUDDY_UA } from '../llm/ua';
 
 const SEARCH_MODEL = 'gemini-2.5-flash';
 const PROVIDER = 'google-gemini';
@@ -33,10 +35,15 @@ export async function executeWebSearch(
   try {
     resp = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': key,
+        'x-goog-api-client': BUDDY_UA,
+      },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: query }] }],
         tools: [{ google_search: {} }],
+        safetySettings: safetySettingsForNative(),
       }),
     });
   } catch (e) {

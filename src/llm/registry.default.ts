@@ -70,6 +70,10 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
     },
 
     // ── Gemini 3 (newer; 3.5-flash stable, others preview) ───────────────────
+    // NOTE: Gemini 3 models require the default temperature (1.0). Setting
+    // lower values causes looping/degradation in reasoning tasks
+    // (troubleshooting.md L76; text-generation.md L468-469). Leave defaultParams
+    // empty so the API uses its own default.
     'gemini-3.5-flash': {
       id: 'gemini-3.5-flash',
       provider: GEMINI,
@@ -78,7 +82,6 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       maxOutputTokens: 65_536,
       pricing: { inputPerMTok: 1.5, outputPerMTok: 9.0, cachedInputPerMTok: 0.15 },
       capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
-      defaultParams: { temperature: 0.7 },
       tier: 'standard',
       enabled: true,
     },
@@ -90,7 +93,6 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       maxOutputTokens: 65_536,
       pricing: { inputPerMTok: 2.0, outputPerMTok: 12.0 },
       capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
-      defaultParams: { temperature: 0.7 },
       tier: 'pro',
       enabled: true,
     },
@@ -102,7 +104,6 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       maxOutputTokens: 65_536,
       pricing: { inputPerMTok: 0.5, outputPerMTok: 3.0 },
       capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
-      defaultParams: { temperature: 0.7 },
       tier: 'standard',
       enabled: true,
     },
@@ -114,7 +115,6 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       maxOutputTokens: 65_536,
       pricing: { inputPerMTok: 0.25, outputPerMTok: 1.5 },
       capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
-      defaultParams: { temperature: 0.7 },
       tier: 'lite',
       enabled: true,
     },
