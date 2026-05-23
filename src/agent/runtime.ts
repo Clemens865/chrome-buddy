@@ -81,7 +81,12 @@ const ZERO_USAGE: UsageStats = { inputTokens: 0, outputTokens: 0, totalTokens: 0
 // Gemini tends to *announce* an action ("I'll now read the file") instead of
 // emitting the tool call. The Executor must ACT: if the step needs a tool, call
 // it now. Only return plain text (no tool call) for a genuinely tool-free step.
-const EXECUTOR_GUIDANCE =
+//
+// IMPORTANT: keep this string a top-level constant — it's the byte-stable
+// system-prompt prefix that lets Gemini's implicit cache hit (caching.md
+// L12-32, ~90% off cached input on Flash). Per-turn nudges (e.g. re-prompt
+// on empty) MUST live in the user message, not here.
+export const EXECUTOR_GUIDANCE =
   'You are the Executor of a browser agent. Carry out the CURRENT step by ISSUING ' +
   'the required tool call(s) now — do not merely describe, plan, or announce what ' +
   'you are about to do. If the step involves reading/listing/writing a file, ' +
@@ -426,13 +431,17 @@ export class AgentRuntime {
       }));
 
     const messages: ChatMessage[] = [
+      // System prompt is BYTE-STABLE across all executor turns so the
+      // [system + tools] prefix can hit Gemini's implicit cache (~90% off
+      // input). The "re-prompt" nudge lives in the user message, not the
+      // system, to preserve that stability. (caching.md L12-32.)
+      { role: 'system', content: EXECUTOR_GUIDANCE },
       {
-        role: 'system',
+        role: 'user',
         content: forceTool
-          ? `${EXECUTOR_GUIDANCE} The previous attempt returned no tool call — you MUST issue the tool call now.`
-          : EXECUTOR_GUIDANCE,
+          ? `${this.buildStepContext(step, state.scratchpad)}\n\nThe previous attempt returned no tool call — you MUST issue the tool call now.`
+          : this.buildStepContext(step, state.scratchpad),
       },
-      { role: 'user', content: this.buildStepContext(step, state.scratchpad) },
     ];
 
     const res = await this.llm.generate({

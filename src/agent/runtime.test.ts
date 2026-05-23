@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ToolRegistry } from '../tools';
 import { ok } from '../types';
 import type { NormalizedResponse, NormalizedToolCall } from '../llm';
-import { AgentRuntime, stepNeedsTool } from './runtime';
+import { AgentRuntime, stepNeedsTool, EXECUTOR_GUIDANCE } from './runtime';
 import type { RuntimeLlm } from './runtime';
 import type { ApprovalResolver } from './hitl';
 import type { AgentEvent } from './types';
@@ -405,6 +405,52 @@ describe('AgentRuntime', () => {
     expect(state.outcome).toBe('completed');
     expect(events.some((e) => e.type === 'tool_call' && e.call.name === 'read_dom')).toBe(true);
     expect(state.finalAnswer).toContain('Acme');
+  });
+});
+
+describe('Executor cache discipline', () => {
+  it('keeps the executor system prompt byte-stable across calls (no per-turn mutation)', async () => {
+    // Cache hits depend on the [system + tools] prefix being identical across
+    // every executor turn. If we ever re-introduce a per-turn nudge into the
+    // system message, this test should fail loudly.
+    const registry = makeRegistry();
+    const seen: string[] = [];
+    const llm: RuntimeLlm = {
+      generate: vi.fn(async (req) => {
+        const sys = req.messages.find((m: { role?: string }) => m.role === 'system');
+        if (sys && typeof sys.content === 'string') seen.push(sys.content);
+        // First call = plan, then two tool calls then synthesis.
+        return resp({ text: JSON.stringify({ steps: [{ intent: 'Read the page' }] }) });
+      }),
+    };
+    // Replace the planner-only call with a fuller scripted queue.
+    const queue: Gen[] = [
+      resp({ text: JSON.stringify({ steps: [{ intent: 'Read the page' }] }) }),
+      resp({ text: 'prose-only, no tool' }), // forces re-prompt for an actionable step
+      resp({ toolCalls: [call('read_dom')] }), // re-prompt succeeds
+      resp({ text: 'Done.' }), // synthesis
+    ];
+    let i = 0;
+    (llm as { generate: typeof llm.generate }).generate = vi.fn(async (req) => {
+      const sys = req.messages.find((m: { role?: string }) => m.role === 'system');
+      if (sys && typeof sys.content === 'string') seen.push(sys.content);
+      const r = queue[Math.min(i, queue.length - 1)];
+      i += 1;
+      return r;
+    });
+    const runtime = new AgentRuntime({
+      llm,
+      registry,
+      approve: async () => ({ approved: true }),
+      onEvent: () => {},
+      newRunId: () => 'r',
+    });
+    await runtime.run('read the page', { stepBudget: 30, costBudget: 1 });
+    // Executor turns (skip the planner's own system) must all use EXECUTOR_GUIDANCE.
+    const executorSystems = seen.filter((s) => s === EXECUTOR_GUIDANCE);
+    expect(executorSystems.length).toBeGreaterThanOrEqual(2);
+    // No executor turn should carry a "re-prompt" nudge in the system message.
+    expect(seen.some((s) => s.includes('previous attempt'))).toBe(false);
   });
 });
 

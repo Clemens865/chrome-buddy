@@ -30,3 +30,33 @@ test('first-run onboarding shows, explains storage, and dismisses to the panel',
   // Now the panel is usable.
   await expect(panel.getByPlaceholder('Message Buddy…')).toBeVisible();
 });
+
+test('onboarding (no-key branch) shows the API-key restriction nudge (F5)', async ({ context, extensionId }) => {
+  const [sw] = context.serviceWorkers();
+  await sw.evaluate(() => chrome.storage.local.set({ onboardingDone: false }));
+
+  const panel = await context.newPage();
+  // The build has VITE_GEMINI_API_KEY baked in (live tests need it). Force the
+  // panel to think no key is set so the input + the 2026-06-19 restriction
+  // nudge actually render.
+  await panel.addInitScript(() => {
+    const orig = chrome.runtime.sendMessage.bind(chrome.runtime);
+    // @ts-expect-error overload juggle (callback or promise form, both honored)
+    chrome.runtime.sendMessage = (msg: { type?: string } | unknown, cb?: (r: unknown) => void) => {
+      if (msg && typeof msg === 'object' && (msg as { type?: string }).type === 'KEY_STATUS') {
+        const r = { type: 'KEY_STATUS', ok: true, hasKey: false };
+        if (typeof cb === 'function') cb(r);
+        return Promise.resolve(r);
+      }
+      return orig(msg as never, cb as never);
+    };
+  });
+  await panel.setViewportSize({ width: 440, height: 980 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  await expect(panel.getByText('Welcome to Chrome Buddy')).toBeVisible();
+  await expect(panel.getByPlaceholder('Paste your Gemini API key')).toBeVisible();
+  await expect(panel.getByText(/restrict it to/i)).toBeVisible();
+  await expect(panel.locator('.onb-note-warn code')).toContainText('generativelanguage.googleapis.com');
+  await panel.screenshot({ path: path.join(SHOTS, '69-onboarding-key-nudge.png') });
+});
