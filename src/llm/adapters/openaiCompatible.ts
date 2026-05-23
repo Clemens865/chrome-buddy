@@ -30,6 +30,9 @@ interface WireToolCall {
   id?: string;
   index?: number;
   function?: { name?: string; arguments?: string };
+  // Gemini 3 surfaces the (opaque, mandatory-echo) thought signature here on
+  // the OpenAI-compat shim. openai.md L1097-1123, thought-signatures.md L562-578.
+  extra_content?: { google?: { thought_signature?: string } };
 }
 
 interface WireMessage {
@@ -104,14 +107,31 @@ function toWireContent(content: string | ContentPart[]): unknown {
 function toWireMessage(msg: ChatMessage): Record<string, unknown> {
   const out: Record<string, unknown> = { role: msg.role };
   out.content = toWireContent(msg.content);
-  if (msg.name) out.name = msg.name;
-  if (msg.toolCallId) out.tool_call_id = msg.toolCallId;
+  // F4: every tool-role message MUST carry both `name` and `tool_call_id` so
+  // Gemini 3 can pair the response to the originating call
+  // (function-calling.md L209-212). If the caller omits name, mirror toolCallId
+  // as a last-resort identifier so the request doesn't 400.
+  if (msg.toolCallId) {
+    out.tool_call_id = msg.toolCallId;
+    out.name = msg.name ?? msg.toolCallId;
+  } else if (msg.name) {
+    out.name = msg.name;
+  }
   if (msg.toolCalls && msg.toolCalls.length > 0) {
-    out.tool_calls = msg.toolCalls.map((tc) => ({
-      id: tc.id,
-      type: 'function',
-      function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
-    }));
+    out.tool_calls = msg.toolCalls.map((tc) => {
+      const wire: Record<string, unknown> = {
+        id: tc.id,
+        type: 'function',
+        function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
+      };
+      // F3: echo the thought signature back on the same tool-call object when
+      // sending the assistant's prior turn as history (thought-signatures.md
+      // L18-22, L60-72 — mandatory on Gemini 3).
+      if (tc.thoughtSignature) {
+        wire.extra_content = { google: { thought_signature: tc.thoughtSignature } };
+      }
+      return wire;
+    });
   }
   return out;
 }
@@ -243,6 +263,9 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         // by parsing only when complete. Here we pass the fragment object.
         partial.arguments = parseArgs(wireCall.function.arguments);
       }
+      // F3: thought_signature may arrive on any chunk; preserve when seen.
+      const sig = wireCall.extra_content?.google?.thought_signature;
+      if (typeof sig === 'string' && sig.length > 0) partial.thoughtSignature = sig;
       delta.toolCallDelta = partial;
     }
 
@@ -273,11 +296,17 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     const message = data.choices?.[0]?.message;
     const wireCalls = message?.tool_calls;
     if (!Array.isArray(wireCalls)) return [];
-    return wireCalls.map((tc, i) => ({
-      id: tc.id ?? `call_${i}`,
-      name: tc.function?.name ?? '',
-      arguments: parseArgs(tc.function?.arguments),
-    }));
+    return wireCalls.map((tc, i) => {
+      const out: NormalizedToolCall = {
+        id: tc.id ?? `call_${i}`,
+        name: tc.function?.name ?? '',
+        arguments: parseArgs(tc.function?.arguments),
+      };
+      // F3: preserve Gemini 3 thought_signature (mandatory echo on next turn).
+      const sig = tc.extra_content?.google?.thought_signature;
+      if (typeof sig === 'string' && sig.length > 0) out.thoughtSignature = sig;
+      return out;
+    });
   }
 }
 

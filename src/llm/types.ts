@@ -52,6 +52,11 @@ export interface NormalizedToolCall {
   name: string;
   /** Parsed arguments. Adapters JSON-parse the wire string defensively. */
   arguments: Record<string, unknown>;
+  /** Gemini 3 thought signature — MANDATORY to echo back on the next request
+   *  when sending the prior assistant turn as history (thought-signatures.md
+   *  L18-22, L60-72). Opaque string; preserve byte-for-byte. Undefined for
+   *  non-Gemini providers and for Gemini 2.5. */
+  thoughtSignature?: string;
 }
 
 /** Token accounting for one generation, used by the cost meter (FR-LLM-10). */

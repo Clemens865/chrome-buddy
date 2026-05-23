@@ -45,10 +45,14 @@ Legend: 🔴 MUST FIX · 🟠 HIGH-VALUE · 🟡 OPTIMIZATION · 🟢 NICE-TO-HA
 
 ## 🟠 HIGH-VALUE ADDITIONS
 
-### H1. Bump default model to `gemini-3.5-flash`
-- **Why:** GA since 2026-05-19. `whats-new-gemini-3.5.md` L6-25, `models.md` L12-14. Bigger context, better reasoning, automatic thought preservation across turns. `gemini-2.5-flash` shuts down 2026-10-16.
+### H1. Bump default model to `gemini-3.5-flash` — DEFERRED
+- **Status:** Attempted in commit-pending PR; F3 + F4 landed but the H1 flip itself was reverted after live e2e regressed (ask-user.spec, root-folder-live AUTO both failed on 3.5 Flash). Suspect: 3.5 Flash's `medium` thinking default interacting with our synthesis step or the OAI-compat shim's behavior under tool use. Needs a focused diagnostic pass.
+- **Why we want it:** `whats-new-gemini-3.5.md` L6-25, `models.md` L12-14. `gemini-2.5-flash` shuts down 2026-10-16.
 - **Where:** `src/llm/registry.default.ts:20` (`defaultModel`), `src/background/search.ts:8`, `src/background/background.ts:189` (`TRANSCRIBE_MODEL`).
-- **Sequence:** Do F1, F2, F3, F4 first (or you'll get 400s). Keep `gemini-2.5-flash` selectable as a "cheap/legacy" option until shutdown.
+- **Next steps before retrying:**
+  1. Live-capture the actual 3.5-flash response for a failing flow (likely empty `.msg-agent:not(.msg-subtle)` after a multi-step run).
+  2. Try `thinkingLevel: 'low'` for synthesis (H2) to see if it fixes the empty-answer pattern.
+  3. Consider wiring the geminiNative adapter so we route around the OAI-compat shim entirely for Gemini 3.x models.
 
 ### H2. `thinking_level` enum + a "Think harder" toggle
 - **Why:** `thinking.md` L374-382: Gemini 3 uses `thinkingLevel` ∈ `minimal|low|medium|high`. `medium` is the new default for `gemini-3.5-flash`. `thinkingBudget` (integer, 2.5-only) and `thinkingLevel` (3.x-only) **don't mix**.
