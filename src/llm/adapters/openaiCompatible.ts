@@ -23,6 +23,7 @@ import type {
   WireRequest,
 } from '../types';
 import { BUDDY_UA } from '../ua';
+import { thinkingConfigFor } from '../thinking';
 
 // ---- Wire shapes (only the fields we read/write; parsed defensively) -------
 
@@ -212,6 +213,22 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     // OpenAI-compat shim rejects extra_body.google.safety_settings, so the
     // chat path stays without explicit safety until the geminiNative adapter
     // is wired (docs/gemini/action-items.md F2 + F3).
+
+    // H2 — thinking_config via extra_body.google. Only when the caller asks
+    // for a level (so we don't change behavior for any call site that hasn't
+    // been opted in). The mapping (level vs budget) depends on the model id.
+    // thinking.md L374-382.
+    if (params?.thinking) {
+      const cfg = thinkingConfigFor(model.id, params.thinking);
+      if (cfg) {
+        const eb = (body.extra_body ?? {}) as Record<string, unknown>;
+        const google = (eb.google ?? {}) as Record<string, unknown>;
+        google.thinking_config = cfg;
+        eb.google = google;
+        body.extra_body = eb;
+      }
+    }
+
     applyParamMap(body, model.paramMap);
 
     let url = `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`;

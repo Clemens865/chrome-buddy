@@ -94,6 +94,46 @@ describe('OpenAICompatibleAdapter — Gemini 3 thought-signature round-trip (F3)
   });
 });
 
+describe('OpenAICompatibleAdapter — thinking-level plumbing (H2)', () => {
+  const adapter = new OpenAICompatibleAdapter();
+
+  it('attaches extra_body.google.thinking_config (thinking_level) for Gemini 3 ids', () => {
+    const req: GenerateRequest = {
+      provider: TEST_MODEL.provider as unknown as GenerateRequest['provider'],
+      model: TEST_MODEL, // id: 'gemini-3.5-flash'
+      messages: [{ role: 'user', content: 'hi' }],
+      params: { thinking: 'low' },
+    };
+    const wire = adapter.buildRequest(req, 'k');
+    const body = JSON.parse(wire.body as string) as { extra_body?: { google?: { thinking_config?: Record<string, unknown> } } };
+    expect(body.extra_body?.google?.thinking_config).toEqual({ thinking_level: 'low' });
+  });
+
+  it('attaches thinking_budget for Gemini 2.5 ids (level → int)', () => {
+    const model25 = { ...TEST_MODEL, id: 'gemini-2.5-flash' } as unknown as ModelConfig;
+    const req: GenerateRequest = {
+      provider: TEST_MODEL.provider as unknown as GenerateRequest['provider'],
+      model: model25,
+      messages: [{ role: 'user', content: 'hi' }],
+      params: { thinking: 'minimal' },
+    };
+    const wire = adapter.buildRequest(req, 'k');
+    const body = JSON.parse(wire.body as string) as { extra_body?: { google?: { thinking_config?: Record<string, unknown> } } };
+    expect(body.extra_body?.google?.thinking_config).toEqual({ thinking_budget: 0 });
+  });
+
+  it('omits extra_body entirely when no thinking level is set', () => {
+    const req: GenerateRequest = {
+      provider: TEST_MODEL.provider as unknown as GenerateRequest['provider'],
+      model: TEST_MODEL,
+      messages: [{ role: 'user', content: 'hi' }],
+    };
+    const wire = adapter.buildRequest(req, 'k');
+    const body = JSON.parse(wire.body as string) as { extra_body?: unknown };
+    expect(body.extra_body).toBeUndefined();
+  });
+});
+
 describe('OpenAICompatibleAdapter — id+name pairing on tool messages (F4)', () => {
   const adapter = new OpenAICompatibleAdapter();
   it('tool-role messages carry BOTH tool_call_id and name', () => {

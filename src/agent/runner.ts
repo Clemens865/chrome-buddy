@@ -129,6 +129,8 @@ export interface RunAgentTaskOptions {
   costBudget?: number;
   /** Recent chat turns (oldest→newest) for planner reference resolution. */
   history?: string;
+  /** "Think harder" — synthesis at `thinking: 'high'`. (H2.) */
+  thinkHarder?: boolean;
 }
 
 /** Terminal result of a run, plus a clean no-key signal for the UI. */
@@ -407,6 +409,7 @@ export async function runAgentTask(
     costBudget: options.costBudget ?? DEFAULT_COST_BUDGET,
     signal: options.signal,
     history: options.history,
+    thinkHarder: options.thinkHarder,
     resume: options.resume,
   });
 
@@ -465,6 +468,8 @@ export async function runPlainChat(
     type: 'LLM_GENERATE',
     model: options.model ?? PLAIN_CHAT_MODEL,
     messages,
+    // H2: minimal thinking for fastest TTFB on the cheap chat path.
+    params: { thinking: 'minimal' },
     // No tools attached — that's the whole point of the cheap path.
   };
   const res = (await send(msg)) as LlmGenerateResponse | ErrorResponse | undefined;

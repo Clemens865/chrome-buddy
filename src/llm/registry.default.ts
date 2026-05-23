@@ -17,13 +17,13 @@ const GEMINI = 'google-gemini';
 
 export const DEFAULT_REGISTRY: ModelRegistry = {
   schemaVersion: '1.1',
-  // H1 — Migration path: 2.5 Flash shuts down 2026-10-16; 3.5 Flash is GA.
-  // A direct flip regressed multi-step agent flows (ask-user + AUTO file-write
-  // round-trip both failed on 3.5 Flash even with F3/F4 in place — likely
-  // synthesis-step interaction with 3.5's `medium` thinking default that needs
-  // tuning). Keeping 2.5 Flash as the default for now; users can pick 3.5 Flash
-  // via Settings → Model.
-  defaultModel: 'gemini-2.5-flash',
+  // H1 — Default to Gemini 3.5 Flash (GA 2026-05-19; 2.5 Flash shuts down
+  // 2026-10-16). The flip was deferred earlier because synthesis-step
+  // interaction with 3.5's default `medium` thinking regressed multi-step
+  // agent flows. H2 (thinking_level plumbing) now sets per-call-site levels
+  // (planner=low, executor=medium, replan=low, synthesis=low) so this flip
+  // is being retried. Users can still pick 2.5 via Settings → Model.
+  defaultModel: 'gemini-3.5-flash',
   providers: {
     'google-gemini': {
       id: 'google-gemini',

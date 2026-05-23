@@ -80,6 +80,9 @@ export interface RunOptions {
   /** Recent chat turns (oldest→newest) so the planner can resolve references
    *  like "this file" and avoid re-asking what was already established. */
   history?: string;
+  /** When true, the synthesis step runs at `thinking: 'high'` for deeper
+   *  reasoning over the gathered evidence (H2 / "Think harder" toggle). */
+  thinkHarder?: boolean;
   /** Resume a previous run from its checkpointed state (FR-AGENT-8): the saved
    *  plan is reused and already-completed steps are skipped. */
   resume?: RunState;

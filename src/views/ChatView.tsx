@@ -114,6 +114,9 @@ export function ChatView({
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [mode, setMode] = usePersistedState<ChatMode>('chatMode', 'auto');
   const [attachPage, setAttachPage] = usePersistedState<boolean>('attachPage', true);
+  // H2 — per-turn "Think harder" toggle: synthesis runs at thinking:'high'.
+  // Not persisted; resets to off after each submit so the user opts in per turn.
+  const [thinkHarder, setThinkHarder] = useState(false);
   const [profiles] = usePersistedState<Profiles>('userProfiles', EMPTY_PROFILES);
   const [activeProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile] = usePersistedState<boolean>('attachProfile', false);
@@ -357,6 +360,7 @@ export function ChatView({
             costBudget: perRunCap,
             stepBudget,
             history: recentHistory(itemsRef.current),
+            thinkHarder,
           });
           if (result.outcome === 'no-key') setNoKey(true);
           else if (result.state) {
@@ -382,6 +386,8 @@ export function ChatView({
       } finally {
         pendingRef.current = null;
         setBusy(false);
+        // H2: reset the per-turn "Think harder" toggle.
+        setThinkHarder(false);
       }
     },
     [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano],
@@ -647,6 +653,8 @@ export function ChatView({
         onMode={setMode}
         attachPage={attachPage}
         onAttachPage={() => setAttachPage(!attachPage)}
+        thinkHarder={thinkHarder}
+        onThinkHarder={() => setThinkHarder((v) => !v)}
         sessionCost={sessionCost}
       />
     </div>
@@ -1021,6 +1029,8 @@ function ChatComposer({
   onMode,
   attachPage,
   onAttachPage,
+  thinkHarder,
+  onThinkHarder,
   sessionCost,
 }: {
   input: string;
@@ -1031,6 +1041,8 @@ function ChatComposer({
   onMode: (m: ChatMode) => void;
   attachPage: boolean;
   onAttachPage: () => void;
+  thinkHarder: boolean;
+  onThinkHarder: () => void;
   sessionCost: number;
 }) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1122,6 +1134,20 @@ function ChatComposer({
                 : `≈ $${sessionCost < 0.01 ? sessionCost.toFixed(4) : sessionCost.toFixed(2)}`}
             </span>
           )}
+          <button
+            type="button"
+            className={'ctx-chip' + (thinkHarder ? ' is-on' : '')}
+            onClick={onThinkHarder}
+            aria-pressed={thinkHarder}
+            title={
+              thinkHarder
+                ? 'Synthesis will run at thinking:high for this turn'
+                : 'Toggle deeper reasoning for the next turn'
+            }
+          >
+            <span className="ctx-chip-ic">{Ic.sparkle}</span>
+            Think harder
+          </button>
           <button
             type="button"
             className={'ctx-chip' + (attachPage ? ' is-on' : '')}

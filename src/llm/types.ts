@@ -191,8 +191,12 @@ export interface GenerationParams {
   jsonMode?: boolean;
   /** JSON Schema constraining structured output (FR-LLM-5). */
   responseSchema?: Record<string, unknown>;
-  /** Thinking effort/budget hint; adapters that support it map it (FR-LLM-6). */
-  thinking?: 'off' | 'low' | 'medium' | 'high';
+  /** Thinking effort. Gemini 3 maps to `thinking_config.thinking_level`
+   *  (minimal|low|medium|high); Gemini 2.5 maps to `thinking_config.thinking_budget`
+   *  (an integer derived from this level). Other providers ignore.
+   *  See /Users/clemenshoenig/Documents/Software-Projects/Google_Geminin_documentation/thinking.md
+   *  L374-382. */
+  thinking?: 'minimal' | 'low' | 'medium' | 'high';
   /** Force a stop on these sequences. */
   stop?: string[];
 }

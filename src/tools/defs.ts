@@ -335,7 +335,11 @@ export const writeFileTool: ToolDefinition = {
 export const askUserTool: ToolDefinition = {
   name: 'ask_user',
   description:
-    'Pause the run and surface a question or choice in the panel; resume on the answer.',
+    'ONLY for asking the USER a question to obtain INPUT you do not already have ' +
+    '(e.g. a missing parameter, an ambiguous choice). DO NOT use this tool to ' +
+    'deliver, announce, or report a final answer back to the user — for that, ' +
+    'return plain text with no tool call and the synthesis step will format the ' +
+    'reply. Calling ask_user with a statement instead of a question is incorrect.',
   paramsSchema: objectSchema(
     {
       question: { type: 'string', description: 'The question to ask.' },

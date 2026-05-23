@@ -31,6 +31,19 @@ test('first-run onboarding shows, explains storage, and dismisses to the panel',
   await expect(panel.getByPlaceholder('Message Buddy…')).toBeVisible();
 });
 
+test('composer shows the H2 "Think harder" toggle that activates on click', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 980 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  const chip = panel.getByRole('button', { name: 'Think harder' });
+  await expect(chip).toBeVisible();
+  await expect(chip).toHaveAttribute('aria-pressed', 'false');
+  await chip.click();
+  await expect(chip).toHaveAttribute('aria-pressed', 'true');
+  await panel.screenshot({ path: path.join(SHOTS, '70-think-harder-toggle.png') });
+});
+
 test('onboarding (no-key branch) shows the API-key restriction nudge (F5)', async ({ context, extensionId }) => {
   const [sw] = context.serviceWorkers();
   await sw.evaluate(() => chrome.storage.local.set({ onboardingDone: false }));
