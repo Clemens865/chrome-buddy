@@ -46,7 +46,11 @@ export interface RuntimeLlm {
     model?: string;
     messages: ChatMessage[];
     tools?: { name: string; description: string; parameters: Record<string, unknown> }[];
-    params?: { jsonMode?: boolean; responseSchema?: Record<string, unknown>; thinking?: 'minimal' | 'low' | 'medium' | 'high' };
+    params?: {
+      jsonMode?: boolean;
+      responseSchema?: Record<string, unknown>;
+      thinking?: 'minimal' | 'low' | 'medium' | 'high';
+    };
     signal?: AbortSignal;
   }): Promise<NormalizedResponse & { cost: { totalCost: number } }>;
 }
@@ -76,6 +80,25 @@ export interface RuntimeDeps {
 const DEFAULT_MAX_RETRIES = 2;
 // Max ReAct continuation rounds after the upfront plan (each may add steps).
 const MAX_REPLAN_ROUNDS = 3;
+
+/** H3 — Strict JSON Schema for planner / replan output. The OAI-compat adapter
+ *  promotes this to `response_format: {type:'json_schema', strict:true}` so the
+ *  model is bytewise-guaranteed to return a valid PlannerOutput — no parse
+ *  retries, no key-order surprises. structured-output.md L100-242. */
+const PLAN_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    steps: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { intent: { type: 'string' } },
+        required: ['intent'],
+      },
+    },
+  },
+  required: ['steps'],
+};
 const ZERO_USAGE: UsageStats = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
 // Gemini tends to *announce* an action ("I'll now read the file") instead of
@@ -284,7 +307,8 @@ export class AgentRuntime {
       model: options.model,
       messages,
       // H2: planner emits short JSON; minimal-to-low thinking is plenty.
-      params: { jsonMode: true, thinking: 'low' },
+      // H3: strict response_schema → no parse retries.
+      params: { jsonMode: true, thinking: 'low', responseSchema: PLAN_SCHEMA },
       signal: options.signal,
     });
     this.account(state, res);
@@ -341,7 +365,8 @@ export class AgentRuntime {
       model: options.model,
       messages,
       // H2: replan emits the same compact JSON shape as the planner; low thinking.
-      params: { jsonMode: true, thinking: 'low' },
+      // H3: same strict schema as the initial plan.
+      params: { jsonMode: true, thinking: 'low', responseSchema: PLAN_SCHEMA },
       signal: options.signal,
     });
     this.account(state, res);
