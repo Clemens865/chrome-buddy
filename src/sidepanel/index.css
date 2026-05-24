@@ -578,6 +578,22 @@ html, body {
 .stub-empty-desc { font-size: 12.5px; color: var(--panel-muted); margin-top: 4px; line-height: 1.45; text-wrap: pretty; }
 .stub-list { display: flex; flex-direction: column; border: 1px solid var(--panel-border); border-radius: 12px; background: var(--panel-bg); overflow: hidden; }
 .stub-row { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--panel-border-soft); }
+.stub-row-wrap { border-bottom: 1px solid var(--panel-border-soft); }
+.stub-row-wrap:last-child { border-bottom: 0; }
+.stub-row-wrap > .stub-row { border-bottom: 0; }
+.stub-row-clickable { cursor: pointer; }
+.stub-row-wrap.is-open { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.run-detail { padding: 4px 14px 14px 56px; font-size: 12.5px; line-height: 1.5; color: var(--panel-fg); }
+.run-detail-meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--panel-muted); margin-bottom: 10px; }
+.run-detail-section { margin-bottom: 10px; }
+.run-detail-h { font-size: 11px; font-weight: 600; color: var(--panel-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+.run-detail-body { white-space: pre-wrap; word-break: break-word; }
+.run-detail-answer { background: var(--panel-elev); padding: 8px 10px; border-radius: 6px; }
+.run-detail-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.run-detail-chip { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; padding: 2px 7px; border-radius: 4px; background: var(--panel-elev); color: var(--panel-fg); }
+.run-detail-sources { margin: 0; padding-left: 18px; }
+.run-detail-sources a { color: var(--accent); text-decoration: none; word-break: break-all; }
+.run-detail-sources a:hover { text-decoration: underline; }
 .stub-row:last-child { border-bottom: 0; }
 .stub-row:hover { background: var(--panel-elev); }
 .stub-row-ic { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 30px; }

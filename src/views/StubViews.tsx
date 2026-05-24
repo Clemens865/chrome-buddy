@@ -530,6 +530,9 @@ function fmtDuration(ms: number): string {
 
 export function HistoryView() {
   const [runs, setRuns] = useState<RunRecord[] | null>(null);
+  // Polish: click a row to expand its details inline (task, answer,
+  // tools, sources, model, duration). Click again or another row to toggle.
+  const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -571,26 +574,91 @@ export function HistoryView() {
             r.kind === 'agent'
               ? `${timeAgo(r.startedAt)} · ${r.toolCount} tool${r.toolCount === 1 ? '' : 's'} · ${r.outcome}`
               : `${timeAgo(r.startedAt)} · chat`;
+          const isOpen = openId === r.id;
           return (
-            <div key={r.id} className="stub-row">
-              <span className="stub-row-ic" style={{ color, background: hexAlpha(color, 0.12) }}>{icon}</span>
-              <div className="stub-row-body">
-                <div className="stub-row-title">{r.task}</div>
-                <div className="stub-row-sub">{sub}</div>
-              </div>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                title="Save as skill"
-                onClick={() => void persistSkill(skillFromRun(r))}
+            <div key={r.id} className={'stub-row-wrap' + (isOpen ? ' is-open' : '')}>
+              <div
+                className="stub-row stub-row-clickable"
+                onClick={() => setOpenId(isOpen ? null : r.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setOpenId(isOpen ? null : r.id);
+                  }
+                }}
+                aria-expanded={isOpen}
               >
-                + Skill
-              </button>
-              <span className="stub-row-meta">{fmtDuration(r.durationMs)}</span>
+                <span className="stub-row-ic" style={{ color, background: hexAlpha(color, 0.12) }}>{icon}</span>
+                <div className="stub-row-body">
+                  <div className="stub-row-title">{r.task}</div>
+                  <div className="stub-row-sub">{sub}</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  title="Save as skill"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void persistSkill(skillFromRun(r));
+                  }}
+                >
+                  + Skill
+                </button>
+                <span className="stub-row-meta">{fmtDuration(r.durationMs)}</span>
+              </div>
+              {isOpen && <RunDetail run={r} />}
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function RunDetail({ run }: { run: RunRecord }) {
+  return (
+    <div className="run-detail">
+      <div className="run-detail-meta">
+        <span>{new Date(run.startedAt).toLocaleString()}</span>
+        <span>·</span>
+        <span>{run.model}</span>
+        <span>·</span>
+        <span>{run.outcome}</span>
+      </div>
+      <div className="run-detail-section">
+        <div className="run-detail-h">Task</div>
+        <div className="run-detail-body">{run.task}</div>
+      </div>
+      {run.answer && (
+        <div className="run-detail-section">
+          <div className="run-detail-h">Answer</div>
+          <div className="run-detail-body run-detail-answer">{run.answer}</div>
+        </div>
+      )}
+      {run.tools.length > 0 && (
+        <div className="run-detail-section">
+          <div className="run-detail-h">Tools ({run.tools.length})</div>
+          <div className="run-detail-chips">
+            {run.tools.map((t, i) => (
+              <span key={`${t}-${i}`} className="run-detail-chip">{t}</span>
+            ))}
+          </div>
+        </div>
+      )}
+      {run.provenance.length > 0 && (
+        <div className="run-detail-section">
+          <div className="run-detail-h">Sources</div>
+          <ol className="run-detail-sources">
+            {run.provenance.map((u, i) => (
+              <li key={`${u}-${i}`}>
+                <a href={u} target="_blank" rel="noreferrer">{u}</a>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
     </div>
   );
 }
