@@ -45,7 +45,8 @@
     "test:e2e:tier2bridge": "playwright test tier2-bridge.spec.ts",
     "test:e2e:nano": "playwright test nano.spec.ts",
     "test:e2e:chathistory": "playwright test chat-history.spec.ts",
-    "test:e2e:rootlive": "playwright test root-folder-live.spec.ts"
+    "test:e2e:rootlive": "playwright test root-folder-live.spec.ts",
+    "test:e2e:search": "playwright test search-citations.spec.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",

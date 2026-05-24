@@ -13,7 +13,10 @@ const PROVIDER = 'google-gemini';
 
 interface GroundedResult {
   text: string;
+  /** Citations: title + URL for each grounding chunk used. */
   sources: { title: string; url: string }[];
+  /** The actual search queries the model ran (for trust + transparency). */
+  queries: string[];
 }
 
 export async function executeWebSearch(
@@ -58,7 +61,10 @@ export async function executeWebSearch(
   const data = (await resp.json()) as {
     candidates?: {
       content?: { parts?: { text?: string }[] };
-      groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] };
+      groundingMetadata?: {
+        groundingChunks?: { web?: { uri?: string; title?: string } }[];
+        webSearchQueries?: string[];
+      };
     }[];
   };
   const cand = data.candidates?.[0];
@@ -66,7 +72,8 @@ export async function executeWebSearch(
   const sources = (cand?.groundingMetadata?.groundingChunks ?? [])
     .map((c) => ({ title: c.web?.title ?? '', url: c.web?.uri ?? '' }))
     .filter((s) => s.url);
+  const queries = cand?.groundingMetadata?.webSearchQueries ?? [];
 
-  const result: GroundedResult = { text, sources };
+  const result: GroundedResult = { text, sources, queries };
   return ok(result, { provenance: sources.map((s) => s.url) });
 }

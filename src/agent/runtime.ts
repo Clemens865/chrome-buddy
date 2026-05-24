@@ -725,10 +725,41 @@ export class AgentRuntime {
       this.account(state, res);
       const text = res.text?.trim();
       if (!text) return this.summarize(sp);
-      return sp.provenance.length > 0 ? `${text}\n\nSources: ${sp.provenance.join(', ')}` : text;
+      return `${text}${this.citationsFooter(sp)}`;
     } catch {
       return this.summarize(sp);
     }
+  }
+
+  /** H5 — Build a numbered Markdown citations footer from search_web actions
+   *  (rich titles + URLs + the actual queries Buddy ran), falling back to the
+   *  bare provenance URL list when no search_web evidence is present. */
+  private citationsFooter(sp: Scratchpad): string {
+    // Pull chunks + queries from any search_web result in this run.
+    const chunks: { title: string; url: string }[] = [];
+    const queries: string[] = [];
+    const seen = new Set<string>();
+    for (const a of sp.actions) {
+      if (a.toolName !== 'search_web' || !a.result?.ok) continue;
+      const d = a.result.data as { sources?: { title: string; url: string }[]; queries?: string[] } | undefined;
+      for (const s of d?.sources ?? []) {
+        if (!s.url || seen.has(s.url)) continue;
+        seen.add(s.url);
+        chunks.push(s);
+      }
+      for (const q of d?.queries ?? []) if (q && !queries.includes(q)) queries.push(q);
+    }
+    if (chunks.length === 0 && sp.provenance.length === 0) return '';
+    const lines: string[] = ['\n'];
+    if (queries.length > 0) lines.push(`*Searched: ${queries.map((q) => `\`${q}\``).join(', ')}*\n`);
+    lines.push('**Sources**');
+    if (chunks.length > 0) {
+      chunks.forEach((c, i) => lines.push(`${i + 1}. [${c.title || c.url}](${c.url})`));
+    } else {
+      // No rich title info — fall back to a bare numbered URL list.
+      sp.provenance.forEach((u, i) => lines.push(`${i + 1}. <${u}>`));
+    }
+    return '\n' + lines.join('\n');
   }
 
   private summarize(sp: Scratchpad): string {
