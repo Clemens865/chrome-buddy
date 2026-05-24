@@ -18,7 +18,8 @@ import {
   type BuddyMessage,
   type BuddyResponse,
 } from '../key/messages';
-import { getLlmClient, resolveProviderId, readSessionApiKey, refreshEffectiveRegistry } from '../llm/instance';
+import { getLlmClient, resolveProviderId, readSessionApiKey, refreshEffectiveRegistry, currentRegistry } from '../llm/instance';
+import { estimateCost } from '../llm/router';
 import { USER_REGISTRY_KEY } from '../llm/userRegistry';
 import { updateRemoteRegistry } from '../llm/remoteRegistry';
 import { LlmClient } from '../llm/client';
@@ -499,6 +500,69 @@ if (chrome.tabs?.onUpdated) {
 // Keep alarms in sync with stored workflows on SW start/install.
 chrome.runtime.onStartup?.addListener(() => void reconcileWorkflowAlarms());
 chrome.runtime.onInstalled.addListener(() => void reconcileWorkflowAlarms());
+
+// H4 — Streaming chat replies. The panel opens a Port named 'chat-stream',
+// posts {type:'START', request} once, and receives a sequence of
+// {type:'DELTA', text} chunks ending in {type:'DONE', text, cost}. Keeps
+// the SW's key-custody guarantee — the key never leaves the SW.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'chat-stream') return;
+  let aborter: AbortController | undefined;
+  port.onDisconnect.addListener(() => aborter?.abort());
+  port.onMessage.addListener((msg) => {
+    if (msg && typeof msg === 'object' && (msg as { type?: string }).type === 'ABORT') {
+      aborter?.abort();
+      return;
+    }
+    if (!msg || (msg as { type?: string }).type !== 'START') return;
+    void (async () => {
+      try {
+        const req = (msg as { request: Record<string, unknown> }).request;
+        const modelId = typeof req.model === 'string' ? req.model : undefined;
+        const providerId = resolveProviderId(modelId);
+        if (!providerId) {
+          port.postMessage({ type: 'ERROR', error: 'Unknown or disabled model.' });
+          return;
+        }
+        const key = await getStoredKey(providerId);
+        if (!key) {
+          port.postMessage({ type: 'ERROR', error: `No API key set for provider '${providerId}'.`, noKey: true });
+          return;
+        }
+        aborter = new AbortController();
+        const client = getLlmClient(providerId);
+        const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0, thoughtsTokens: 0 };
+        let text = '';
+        for await (const delta of client.stream({
+          model: modelId,
+          messages: req.messages as never,
+          tools: req.tools as never,
+          params: req.params as never,
+          signal: aborter.signal,
+        })) {
+          if (delta.textDelta) {
+            text += delta.textDelta;
+            port.postMessage({ type: 'DELTA', text: delta.textDelta });
+          }
+          if (delta.usage) {
+            usage.inputTokens = delta.usage.inputTokens ?? usage.inputTokens;
+            usage.outputTokens = delta.usage.outputTokens ?? usage.outputTokens;
+            usage.totalTokens = delta.usage.totalTokens ?? usage.totalTokens;
+            if (delta.usage.cachedInputTokens) usage.cachedInputTokens = delta.usage.cachedInputTokens;
+            if (delta.usage.thoughtsTokens) usage.thoughtsTokens = delta.usage.thoughtsTokens;
+          }
+        }
+        // Cost calc using the resolved model's pricing.
+        const reg = currentRegistry();
+        const model = modelId ? reg.models[modelId] : reg.models[reg.defaultModel ?? ''];
+        const cost = model ? estimateCost(usage, model).totalCost : 0;
+        port.postMessage({ type: 'DONE', text, cost, usage });
+      } catch (e) {
+        port.postMessage({ type: 'ERROR', error: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+  });
+});
 
 // Register the message listener. We respond asynchronously, so we keep the
 // channel open by returning `true` and resolving via sendResponse.

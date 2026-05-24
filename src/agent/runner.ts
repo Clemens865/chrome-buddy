@@ -483,7 +483,16 @@ export interface PlainChatResult {
  */
 export async function runPlainChat(
   prompt: string,
-  options: { model?: string; context?: string; send?: (m: unknown) => Promise<unknown>; preferNano?: boolean } = {},
+  options: {
+    model?: string;
+    context?: string;
+    send?: (m: unknown) => Promise<unknown>;
+    preferNano?: boolean;
+    /** When provided, the reply streams via a Port and onDelta fires with the
+     *  ACCUMULATED text after each chunk (so callers can replace their bubble
+     *  text directly). Falls back to one-shot generate when omitted. */
+    onDelta?: (text: string) => void;
+  } = {},
 ): Promise<PlainChatResult> {
   const send = options.send ?? defaultSend;
 
@@ -505,14 +514,41 @@ export async function runPlainChat(
   }
   messages.push({ role: 'user', content: prompt });
 
-  const msg: LlmGenerateMessage = {
-    type: 'LLM_GENERATE',
+  const request = {
     model: options.model ?? PLAIN_CHAT_MODEL,
     messages,
     // H2: minimal thinking for fastest TTFB on the cheap chat path.
-    params: { thinking: 'minimal' },
-    // No tools attached — that's the whole point of the cheap path.
+    params: { thinking: 'minimal' as const },
   };
+
+  // H4 — streaming chat reply via Port. The user sees text as it generates;
+  // TTFB drops from full-response latency to first-chunk latency.
+  if (options.onDelta && typeof chrome !== 'undefined' && chrome.runtime?.connect) {
+    return new Promise<PlainChatResult>((resolve, reject) => {
+      const port = chrome.runtime.connect({ name: 'chat-stream' });
+      let accum = '';
+      let cost = 0;
+      port.onMessage.addListener((msg: { type?: string; text?: string; cost?: number; error?: string; noKey?: boolean }) => {
+        if (msg?.type === 'DELTA' && typeof msg.text === 'string') {
+          accum += msg.text;
+          options.onDelta!(accum);
+        } else if (msg?.type === 'DONE') {
+          cost = msg.cost ?? 0;
+          try { port.disconnect(); } catch { /* already gone */ }
+          resolve({ outcome: 'ok', text: accum || msg.text || '', cost });
+        } else if (msg?.type === 'ERROR') {
+          try { port.disconnect(); } catch { /* already gone */ }
+          if (msg.noKey) resolve({ outcome: 'no-key' });
+          else reject(new Error(msg.error ?? 'Stream failed.'));
+        }
+      });
+      port.onDisconnect.addListener(() => resolve({ outcome: 'ok', text: accum, cost }));
+      port.postMessage({ type: 'START', request });
+    });
+  }
+
+  // Non-streaming fallback (still used by skills/workflows that don't pass onDelta).
+  const msg: LlmGenerateMessage = { type: 'LLM_GENERATE', ...request };
   const res = (await send(msg)) as LlmGenerateResponse | ErrorResponse | undefined;
   if (!res) throw new Error('No response from background for LLM_GENERATE.');
   if (res.type === 'ERROR' || res.ok !== true) {

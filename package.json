@@ -50,7 +50,8 @@
     "test:e2e:fetchurl": "playwright test fetch-url.spec.ts",
     "test:e2e:notes": "playwright test notes.spec.ts",
     "test:e2e:vision": "playwright test vision-mode.spec.ts",
-    "test:e2e:history": "playwright test history-detail.spec.ts"
+    "test:e2e:history": "playwright test history-detail.spec.ts",
+    "test:e2e:stream": "playwright test chat-stream.spec.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",

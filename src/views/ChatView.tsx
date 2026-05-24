@@ -419,14 +419,41 @@ export function ChatView({
           const useProfile = attachProfile && hasProfile(active);
           const page = attachPage ? await requestPageContext() : null;
           const context = buildContextBlock(page, useProfile ? active : null, activeProfile);
-          const r = await runPlainChat(prompt, { context, model: activeModel, preferNano });
-          if (r.outcome === 'no-key') setNoKey(true);
-          else if (r.text) {
+          // H4 — stream the reply into a growing bubble. The placeholder agent
+          // item is pushed first; each onDelta replaces its text. Falls back to
+          // one-shot when chrome.runtime.connect is missing (e.g. unit tests).
+          const placeholderId = `a_${seqRef.current++}`;
+          setItems((prev) => [...prev, agentItem(placeholderId, '')]);
+          const r = await runPlainChat(prompt, {
+            context,
+            model: activeModel,
+            preferNano,
+            onDelta: (text) => {
+              setItems((prev) =>
+                prev.map((it) =>
+                  it.kind === 'agent' && it.id === placeholderId ? { ...it, text } : it,
+                ),
+              );
+            },
+          });
+          if (r.outcome === 'no-key') {
+            setNoKey(true);
+            // Remove the empty placeholder.
+            setItems((prev) => prev.filter((it) => !(it.kind === 'agent' && it.id === placeholderId)));
+          } else if (r.text) {
             recordCost(r.cost ?? 0);
-            setItems((prev) => [...prev, agentItem(`a_${seqRef.current++}`, r.text!)]);
+            // Final state of the bubble (in case onDelta missed the last frame).
+            setItems((prev) =>
+              prev.map((it) =>
+                it.kind === 'agent' && it.id === placeholderId ? { ...it, text: r.text! } : it,
+              ),
+            );
             void persistRun(
               buildRunRecord({ kind: 'chat', task: prompt, answer: r.text, model: activeModel, startedAt }),
             );
+          } else {
+            // No content + no no-key — drop the empty placeholder.
+            setItems((prev) => prev.filter((it) => !(it.kind === 'agent' && it.id === placeholderId)));
           }
         } else {
           const result = await runAgentTask(prompt, {
