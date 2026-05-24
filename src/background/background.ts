@@ -29,6 +29,7 @@ import { retryFetch } from '../llm/retry';
 import { executePageTool, capturePageContext } from './pageTools';
 import { executeWebhook } from './webhook';
 import { executeWebSearch } from './search';
+import { executeFetchUrl } from './urlContext';
 import { executeFileWrite } from './fileWrite';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
@@ -284,6 +285,9 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         }
         if (message.tool === 'search_web') {
           return { type: 'TOOL_EXEC', ok: true, result: await executeWebSearch(message.args, getStoredKey) };
+        }
+        if (message.tool === 'fetch_url') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeFetchUrl(message.args, getStoredKey) };
         }
         // write_file is consequential — only reaches here after HITL approval.
         if (message.tool === 'write_file') {

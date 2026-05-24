@@ -50,7 +50,16 @@ import type {
 const PAGE_TOOLS = new Set(['read_dom', 'extract', 'screenshot', 'navigate', 'click', 'type', 'scroll']);
 
 /** Tools the agent may use: page tools + search_web + file + ask_user + consequential (HITL-gated). */
-const AGENT_TOOLS = new Set([...PAGE_TOOLS, 'search_web', 'send_webhook', 'write_file', 'read_file', 'list_files', 'ask_user']);
+const AGENT_TOOLS = new Set([
+  ...PAGE_TOOLS,
+  'search_web',
+  'fetch_url',
+  'send_webhook',
+  'write_file',
+  'read_file',
+  'list_files',
+  'ask_user',
+]);
 
 /** Resolver the agent awaits when it calls ask_user (FR-TOOLS-11). */
 export type AskUserHandler = (req: { question: string; choices?: string[] }) => Promise<string>;

@@ -271,6 +271,30 @@ export const sendWebhookTool: ToolDefinition = {
   handler: notWired('send_webhook'),
 };
 
+// --- fetch_url (H6 — Gemini urlContext built-in) ---------------------------
+export const fetchUrlTool: ToolDefinition = {
+  name: 'fetch_url',
+  description:
+    'Read the contents of a PUBLIC http(s) URL (html, json, xml, csv, text, ' +
+    'image, or pdf) and return what it says. Use this for "summarize this URL" / ' +
+    '"extract X from this page" without leaving the side panel. Does NOT work ' +
+    'with paywalled pages, YouTube, Google Docs, or localhost.',
+  paramsSchema: objectSchema(
+    {
+      url: { type: 'string', description: 'The public http(s) URL to read.' },
+      instruction: {
+        type: 'string',
+        description:
+          'Optional: what to extract or how to summarize (e.g. "list the headline + author"). ' +
+          'Omit for a general summary of the page.',
+      },
+    },
+    ['url'],
+  ),
+  consequential: false,
+  handler: notWired('fetch_url'),
+};
+
 // --- list_files (FR-TOOLS-10) ----------------------------------------------
 export const listFilesTool: ToolDefinition = {
   name: 'list_files',
@@ -368,6 +392,7 @@ export const stubToolDefs: ToolDefinition[] = [
   searchWebTool,
   callSkillTool,
   sendWebhookTool,
+  fetchUrlTool,
   listFilesTool,
   readFileTool,
   writeFileTool,
