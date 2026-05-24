@@ -47,6 +47,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   const [activeProfile, setActiveProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile, setAttachProfile] = usePersistedState<boolean>('attachProfile', false);
   const [askBeforePlan, setAskBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
+  const [visionConfirmAll, setVisionConfirmAll] = usePersistedState<boolean>('visionConfirmAll', false);
   const [preferNano, setPreferNano] = usePersistedState<boolean>('preferNano', false);
   const current: UserProfile = profiles[activeProfile] ?? {};
   const updateProfile = (patch: Partial<UserProfile>) =>
@@ -199,6 +200,12 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
         <SettingsRow t="Require confirmation for" s="Consequential actions (send · purchase · delete)"><Pill tone="ok">Always on</Pill></SettingsRow>
         <SettingsRow t="Review plans before running" s="Approve the agent's plan before it acts">
           <Toggle on={askBeforePlan} onChange={setAskBeforePlan} />
+        </SettingsRow>
+        <SettingsRow
+          t="Confirm every Vision-mode action"
+          s="Off (default): only confirm when the model flags an action (per ToS). On: gate every click/type."
+        >
+          <Toggle on={visionConfirmAll} onChange={setVisionConfirmAll} />
         </SettingsRow>
       </div>
 

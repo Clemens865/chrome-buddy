@@ -115,6 +115,9 @@ export function ChatView({
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [mode, setMode] = usePersistedState<ChatMode>('chatMode', 'auto');
   const [attachPage, setAttachPage] = usePersistedState<boolean>('attachPage', true);
+  // H7 P3 — "Confirm every Vision action" toggle. Default OFF: only
+  // safety_decision = require_confirmation actions gate (per docs).
+  const [visionConfirmAll] = usePersistedState<boolean>('visionConfirmAll', false);
   // H2 — per-turn "Think harder" toggle: synthesis runs at thinking:'high'.
   // Not persisted; resets to off after each submit so the user opts in per turn.
   const [thinkHarder, setThinkHarder] = useState(false);
@@ -339,6 +342,7 @@ export function ChatView({
           let lastNarration = '';
           const result = await runVisionTask({
             task: prompt,
+            confirmAll: visionConfirmAll,
             onConfirm: async ({ call, summary }) =>
               new Promise<ApprovalDecision>((resolve) => {
                 pendingRef.current = { step: 0, callId: summary, tool: call.name, resolve };
@@ -914,17 +918,29 @@ function ConfirmCard({
   onDecide: (step: number, callId: string, approved: boolean) => void;
 }) {
   const resolved = item.resolution !== undefined;
-  const entries = Object.entries(item.call.arguments);
+  const allEntries = Object.entries(item.call.arguments);
+  // Pull out the safety_decision (if any) for a dedicated explainer block;
+  // remaining entries render below as usual. Computer-use.md L584-618.
+  const sd = (item.call.arguments as { safety_decision?: { decision?: string; explanation?: string } })
+    .safety_decision;
+  const entries = allEntries.filter(([k]) => k !== 'safety_decision');
   return (
     <div className="hitl" role="group" aria-label="Confirmation required">
       <div className="hitl-hd">
         <span className="hitl-ic">
           <span className="ic">{Ic.warn}</span>
         </span>
-        <span className="hitl-title">Confirm this action</span>
-        <span className="hitl-tag">{resolved ? item.resolution : 'review'}</span>
+        <span className="hitl-title">
+          {sd?.decision === 'require_confirmation' ? 'Safety check — confirm to continue' : 'Confirm this action'}
+        </span>
+        <span className="hitl-tag">{resolved ? item.resolution : sd?.decision === 'require_confirmation' ? 'safety' : 'review'}</span>
       </div>
       <div className="hitl-body">
+        {sd?.explanation && (
+          <div className="hitl-safety">
+            <span className="hitl-safety-label">Why:</span> {sd.explanation}
+          </div>
+        )}
         <div className="hitl-tool">
           <span className="hitl-tool-ic">
             <span className="ic">{Ic.sparkle}</span>

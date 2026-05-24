@@ -30,12 +30,32 @@ const MAX_TURNS = 24;
 
 export interface VisionLoopOptions {
   task: string;
-  /** Resolves when the user accepts/denies a safety_decision = require_confirmation. */
+  /** Resolves when the user accepts/denies a confirmation gate (either a model
+   *  safety_decision = require_confirmation OR confirmAll = true). */
   onConfirm: (req: { call: { name: string; args: Record<string, unknown> }; summary: string }) => Promise<ApprovalDecision>;
   /** Live progress callback — useful for streaming each step to the chat UI. */
   onEvent?: (e: VisionEvent) => void;
   /** Cancellation. */
   signal?: AbortSignal;
+  /** When true, gate EVERY action through HITL (not just safety_decision).
+   *  Default is the docs' recommendation: only on require_confirmation. */
+  confirmAll?: boolean;
+}
+
+/** Pure: does this action need a HITL gate before execution?
+ *  - The model can mark an action as `safety_decision.decision = 'require_confirmation'`
+ *    (per ToS we MUST honor that and never bypass — computer-use.md L615-618).
+ *  - The user may opt to confirm every action via the Settings toggle. */
+export function requiresConfirmation(
+  args: Record<string, unknown>,
+  confirmAll: boolean,
+): { gated: boolean; explanation?: string } {
+  const sd = (args as { safety_decision?: { decision?: string; explanation?: string } }).safety_decision;
+  if (sd?.decision === 'require_confirmation') {
+    return { gated: true, explanation: sd.explanation };
+  }
+  if (confirmAll) return { gated: true };
+  return { gated: false };
 }
 
 export type VisionEvent =
@@ -56,7 +76,7 @@ export interface VisionLoopResult {
 }
 
 export async function runVisionTask(opts: VisionLoopOptions): Promise<VisionLoopResult> {
-  const { task, onConfirm, onEvent, signal } = opts;
+  const { task, onConfirm, onEvent, signal, confirmAll = false } = opts;
 
   const usage: UsageStats = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   const model = DEFAULT_REGISTRY.models[VISION_MODEL_ID];
@@ -139,18 +159,23 @@ export async function runVisionTask(opts: VisionLoopOptions): Promise<VisionLoop
     for (const call of functionCalls) {
       if (signal?.aborted) return finalize('cancelled', lastText, turn);
 
-      const safety = (call.args as { safety_decision?: { decision?: string; explanation?: string } }).safety_decision;
+      const gate = requiresConfirmation(call.args, confirmAll);
       const extra: Record<string, unknown> = {};
-      if (safety?.decision === 'require_confirmation') {
+      if (gate.gated) {
         const summary = `${call.name}(${JSON.stringify(call.args).slice(0, 200)})${
-          safety.explanation ? `\n\nWhy: ${safety.explanation}` : ''
+          gate.explanation ? `\n\nWhy: ${gate.explanation}` : ''
         }`;
         const decision = await onConfirm({ call, summary });
         if (!decision.approved) {
           onEvent?.({ kind: 'denied' });
           return finalize('denied', lastText || 'Cancelled at safety gate.', turn + 1);
         }
-        extra.safety_acknowledgement = 'true';
+        // Per docs: when the model required confirmation, we MUST include
+        // safety_acknowledgement="true" in the FunctionResponse after the user
+        // confirms. confirmAll-only gates don't need the ack field.
+        if (gate.explanation !== undefined || (call.args as { safety_decision?: unknown }).safety_decision) {
+          extra.safety_acknowledgement = 'true';
+        }
       }
 
       onEvent?.({ kind: 'action', call });
