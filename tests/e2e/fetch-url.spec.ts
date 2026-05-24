@@ -22,15 +22,11 @@ test('live: agent uses fetch_url to read a public URL and answers from it', asyn
   // The fetch_url tool call appears in the transcript.
   await expect(panel.locator('.tc-mini-name', { hasText: 'fetch_url' }).first()).toBeVisible({ timeout: 45_000 });
 
-  // Wait until the tool call settles (any verdict appears in tc-meta) — covers
-  // succeeded, failed, denied. Generous timeout because the model may retry.
-  await expect(panel.locator('.tc-meta').first()).toBeVisible({ timeout: 120_000 });
-  // Give synthesis a moment.
-  await panel.waitForTimeout(3000);
+  // Wait for an actual content heading or paragraph from example.com to
+  // appear anywhere on the panel (rendered via the AgentBody Markdown). This
+  // is the real signal that synthesis completed.
+  await expect(panel.getByRole('heading', { name: /example domain/i }).first()).toBeVisible({ timeout: 120_000 });
+  // Give the citation footer a moment to render below the text.
+  await panel.waitForTimeout(1500);
   await panel.screenshot({ path: path.join(SHOTS, '72-fetch-url.png') });
-  // The reply somewhere mentions content from example.com (page heading,
-  // paragraph copy, or the cited URL).
-  await expect(panel.getByText(/example domain|illustrative|documentation examples|iana\.org/i).first()).toBeVisible({
-    timeout: 10_000,
-  });
 });
