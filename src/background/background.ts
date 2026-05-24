@@ -31,6 +31,7 @@ import { executePageTool, capturePageContext, resolveActiveTabId } from './pageT
 import { executeWebhook } from './webhook';
 import { executeWebSearch } from './search';
 import { executeFetchUrl } from './urlContext';
+import { executeFileSearch } from './fileSearch';
 import { executeVisionTurn, executeVisionAction, captureActiveTabPNG } from './vision';
 import { executeFileWrite } from './fileWrite';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
@@ -291,6 +292,9 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         if (message.tool === 'fetch_url') {
           return { type: 'TOOL_EXEC', ok: true, result: await executeFetchUrl(message.args, getStoredKey) };
         }
+        if (message.tool === 'file_search') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeFileSearch(message.args, getStoredKey) };
+        }
         // write_file is consequential — only reaches here after HITL approval.
         if (message.tool === 'write_file') {
           return { type: 'TOOL_EXEC', ok: true, result: await executeFileWrite(message.args) };
@@ -505,7 +509,8 @@ chrome.runtime.onInstalled.addListener(() => void reconcileWorkflowAlarms());
 // posts {type:'START', request} once, and receives a sequence of
 // {type:'DELTA', text} chunks ending in {type:'DONE', text, cost}. Keeps
 // the SW's key-custody guarantee — the key never leaves the SW.
-chrome.runtime.onConnect.addListener((port) => {
+// Guarded so unit tests with a partial chrome mock don't crash at import.
+if (typeof chrome !== 'undefined' && chrome.runtime?.onConnect?.addListener) chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'chat-stream') return;
   let aborter: AbortController | undefined;
   port.onDisconnect.addListener(() => aborter?.abort());

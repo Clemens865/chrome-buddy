@@ -319,6 +319,32 @@ export const noteListTool: ToolDefinition = {
   handler: notWired('note_list'),
 };
 
+// --- file_search (H8 — Gemini fileSearch built-in RAG) ---------------------
+export const fileSearchTool: ToolDefinition = {
+  name: 'file_search',
+  description:
+    'Answer a question by retrieving from the user-configured Gemini File ' +
+    'Search store(s) — a server-side vector RAG over uploaded documents. ' +
+    'Use when the user asks about content in THEIR own corpora (research ' +
+    'notes, saved PDFs, indexed pages), not when they ask about a single ' +
+    'specific URL (use fetch_url) or the open web (use search_web).',
+  paramsSchema: objectSchema(
+    {
+      query: { type: 'string', description: 'Question to ask the corpus.' },
+      stores: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Optional: list of fileSearchStores/<id> names to query. Omit to use the ' +
+          "user's configured default set (Settings → File Search Stores).",
+      },
+    },
+    ['query'],
+  ),
+  consequential: false,
+  handler: notWired('file_search'),
+};
+
 // --- fetch_url (H6 — Gemini urlContext built-in) ---------------------------
 export const fetchUrlTool: ToolDefinition = {
   name: 'fetch_url',
@@ -441,6 +467,7 @@ export const stubToolDefs: ToolDefinition[] = [
   callSkillTool,
   sendWebhookTool,
   fetchUrlTool,
+  fileSearchTool,
   noteSaveTool,
   noteGetTool,
   noteListTool,

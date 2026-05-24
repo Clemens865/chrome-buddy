@@ -48,6 +48,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   const [attachProfile, setAttachProfile] = usePersistedState<boolean>('attachProfile', false);
   const [askBeforePlan, setAskBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
   const [visionConfirmAll, setVisionConfirmAll] = usePersistedState<boolean>('visionConfirmAll', false);
+  const [fileSearchStores, setFileSearchStores] = usePersistedState<string[]>('fileSearchStores', []);
   const [preferNano, setPreferNano] = usePersistedState<boolean>('preferNano', false);
   const current: UserProfile = profiles[activeProfile] ?? {};
   const updateProfile = (patch: Partial<UserProfile>) =>
@@ -207,6 +208,24 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
         >
           <Toggle on={visionConfirmAll} onChange={setVisionConfirmAll} />
         </SettingsRow>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-section-h">File Search Stores</div>
+        <div className="settings-row settings-row-block">
+          <div className="settings-row-l">
+            <div>
+              <div className="settings-row-t">Active stores</div>
+              <div className="settings-row-s">
+                <code>fileSearchStores/&lt;id&gt;</code> names the file_search tool queries. Create +
+                upload via the Gemini API for now — in-app upload UI is coming.
+              </div>
+            </div>
+          </div>
+          <div style={{ width: '100%', marginTop: 10 }}>
+            <FileSearchStoresEditor value={fileSearchStores} onChange={setFileSearchStores} />
+          </div>
+        </div>
       </div>
 
       <div className="settings-section">
@@ -487,6 +506,63 @@ function ApiKeyControl() {
         </button>
       </div>
       {msg ? <Pill tone={msg.tone === 'ok' ? 'ok' : undefined}>{msg.text}</Pill> : null}
+    </div>
+  );
+}
+
+/** H8 — paste + remove fileSearchStores/<id> names. Bare ids are auto-prefixed. */
+function FileSearchStoresEditor({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const add = () => {
+    const raw = draft.trim();
+    if (!raw) return;
+    const id = /^fileSearchStores\//i.test(raw) ? raw : `fileSearchStores/${raw.replace(/^\/+/, '')}`;
+    if (value.includes(id)) {
+      setDraft('');
+      return;
+    }
+    onChange([...value, id]);
+    setDraft('');
+  };
+  const remove = (id: string) => onChange(value.filter((s) => s !== id));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+      {value.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {value.map((s) => (
+            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <code style={{ fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s}</code>
+              <button type="button" className="btn btn-ghost btn-sm" aria-label={`Remove ${s}`} onClick={() => remove(s)}>
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input
+          className="settings-input"
+          style={{ flex: 1 }}
+          placeholder="fileSearchStores/<id> or just <id>"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              add();
+            }
+          }}
+        />
+        <button type="button" className="btn btn-ghost btn-sm" disabled={!draft.trim()} onClick={add}>
+          Add
+        </button>
+      </div>
     </div>
   );
 }

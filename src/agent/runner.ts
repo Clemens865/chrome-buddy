@@ -55,6 +55,7 @@ const AGENT_TOOLS = new Set([
   ...PAGE_TOOLS,
   'search_web',
   'fetch_url',
+  'file_search',
   'send_webhook',
   'write_file',
   'read_file',
