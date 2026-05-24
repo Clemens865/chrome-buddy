@@ -4,7 +4,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 export const DB_NAME = 'chrome-buddy';
-const VERSION = 7;
+const VERSION = 8;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -37,6 +37,11 @@ export function getDB(): Promise<IDBPDatabase> {
         // Chat conversations (multi-session chat history); sorted by updatedAt.
         if (!d.objectStoreNames.contains('chats')) {
           d.createObjectStore('chats', { keyPath: 'id' }).createIndex('updatedAt', 'updatedAt');
+        }
+        // Agent-savable notes (user-readable scratchpad / quick-capture store).
+        // Routing layer 1 default sink — see docs/gemini/action-items.md.
+        if (!d.objectStoreNames.contains('notes')) {
+          d.createObjectStore('notes', { keyPath: 'key' }).createIndex('updatedAt', 'updatedAt');
         }
       },
     });

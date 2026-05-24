@@ -271,6 +271,54 @@ export const sendWebhookTool: ToolDefinition = {
   handler: notWired('send_webhook'),
 };
 
+// --- notes (private IndexedDB scratchpad — first sink in the save router) --
+export const noteSaveTool: ToolDefinition = {
+  name: 'note_save',
+  description:
+    "Save a short note (markdown or plain text) to the user's PRIVATE in-extension " +
+    "notebook for quick recall later. Use when the user asks to 'remember', " +
+    "'save as a note', 'jot down', or capture a fact/snippet without naming a file " +
+    "or destination. NOT for files (use write_file when the user names a path or " +
+    'an extension like .md/.csv/.pdf), and NOT for external destinations.',
+  paramsSchema: objectSchema(
+    {
+      key: {
+        type: 'string',
+        description:
+          'A short, user-meaningful slug to recall this note by (e.g. "staging-url", ' +
+          '"2026-05-25-meeting"). Lowercase letters, digits, dot/dash/underscore.',
+      },
+      content: { type: 'string', description: 'Note body — markdown or plain text.' },
+    },
+    ['key', 'content'],
+  ),
+  consequential: false,
+  handler: notWired('note_save'),
+};
+
+export const noteGetTool: ToolDefinition = {
+  name: 'note_get',
+  description:
+    "Load a previously-saved note by its key. Use to recall something the user " +
+    "asked you to remember earlier. Use note_list first if you don't know the key.",
+  paramsSchema: objectSchema(
+    { key: { type: 'string', description: 'The note key to look up.' } },
+    ['key'],
+  ),
+  consequential: false,
+  handler: notWired('note_get'),
+};
+
+export const noteListTool: ToolDefinition = {
+  name: 'note_list',
+  description:
+    "List all saved note keys + short snippets, newest first. Use when the user " +
+    "asks 'what did I save?' or you need to find a note whose key you don't know.",
+  paramsSchema: objectSchema({}, []),
+  consequential: false,
+  handler: notWired('note_list'),
+};
+
 // --- fetch_url (H6 — Gemini urlContext built-in) ---------------------------
 export const fetchUrlTool: ToolDefinition = {
   name: 'fetch_url',
@@ -393,6 +441,9 @@ export const stubToolDefs: ToolDefinition[] = [
   callSkillTool,
   sendWebhookTool,
   fetchUrlTool,
+  noteSaveTool,
+  noteGetTool,
+  noteListTool,
   listFilesTool,
   readFileTool,
   writeFileTool,

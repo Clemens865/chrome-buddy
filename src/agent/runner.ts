@@ -30,6 +30,7 @@ import { callSkillTool } from '../tools/defs';
 import type { ToolDefinition } from '../tools/types';
 import { ok, err, type ToolResult } from '../types';
 import { getRootHandle, readFromRoot, writeToRoot, listRoot } from '../fs/root';
+import { saveNote, getNote, listNotes, snippet } from '../notes/store';
 import { saveCheckpoint, clearCheckpoint } from './checkpoint';
 import { nanoPrompt } from '../llm/nano';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
@@ -58,6 +59,9 @@ const AGENT_TOOLS = new Set([
   'write_file',
   'read_file',
   'list_files',
+  'note_save',
+  'note_get',
+  'note_list',
   'ask_user',
 ]);
 
@@ -87,6 +91,32 @@ function fileToolHandler(name: string, send: (m: unknown) => Promise<unknown>) {
       }
       // No root folder chosen — fall back to a Downloads save (SW).
       return execPageTool(send, 'write_file', args);
+    } catch (e) {
+      return err('runtime-error', e instanceof Error ? e.message : String(e));
+    }
+  };
+}
+
+/** note_save / note_get / note_list run UI-side because they read/write
+ *  IndexedDB, which the agent loop owns. Private, non-consequential. */
+function noteToolHandler(name: string) {
+  return async (args: Record<string, unknown>): Promise<ToolResult> => {
+    try {
+      if (name === 'note_list') {
+        const all = await listNotes();
+        const items = all.map((n) => ({ key: n.key, snippet: snippet(n.content), updatedAt: n.updatedAt }));
+        return ok({ count: items.length, notes: items });
+      }
+      const key = typeof args.key === 'string' ? args.key : '';
+      if (name === 'note_get') {
+        const note = await getNote(key);
+        if (!note) return err('not-found', `No note saved under key "${key}".`);
+        return ok({ key: note.key, content: note.content, updatedAt: note.updatedAt });
+      }
+      // note_save
+      const content = typeof args.content === 'string' ? args.content : '';
+      const saved = await saveNote(key, content);
+      return ok({ key: saved.key, bytes: content.length, target: 'notes' });
     } catch (e) {
       return err('runtime-error', e instanceof Error ? e.message : String(e));
     }
@@ -319,6 +349,8 @@ function wireRegistry(
       let handler;
       if (def.name === 'read_file' || def.name === 'write_file' || def.name === 'list_files') {
         handler = fileToolHandler(def.name, send);
+      } else if (def.name === 'note_save' || def.name === 'note_get' || def.name === 'note_list') {
+        handler = noteToolHandler(def.name);
       } else if (def.name === 'ask_user') {
         handler = askUserToolHandler(onAskUser);
       } else {
