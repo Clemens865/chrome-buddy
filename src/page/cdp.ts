@@ -77,6 +77,64 @@ async function ensureAttached(tabId: number): Promise<void> {
   warned = true; // first attach: the Chrome banner is now showing
 }
 
+// --- coordinate-based actions for Vision Mode (Computer Use) --------------
+// Computer Use returns 0–999 normalized coords; we denormalize to CSS px in
+// the caller (we need the tab viewport size) and dispatch trusted input here.
+
+export async function cdpClickAtCoord(tabId: number, cssX: number, cssY: number): Promise<void> {
+  await ensureAttached(tabId);
+  const base = { x: cssX, y: cssY, button: 'left' as const, clickCount: 1 };
+  await send(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed', ...base });
+  await send(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', ...base });
+}
+
+export async function cdpTypeAtCoord(
+  tabId: number,
+  cssX: number,
+  cssY: number,
+  text: string,
+  opts: { pressEnter?: boolean; clearBeforeTyping?: boolean } = {},
+): Promise<void> {
+  await ensureAttached(tabId);
+  await cdpClickAtCoord(tabId, cssX, cssY); // focus the input
+  if (opts.clearBeforeTyping !== false) {
+    // Ctrl/Cmd+A then Delete — clears most text inputs.
+    const a = { key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65 };
+    await send(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', modifiers: 4, ...a });
+    await send(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp', modifiers: 4, ...a });
+    const del = { key: 'Delete', code: 'Delete', windowsVirtualKeyCode: 46 };
+    await send(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', ...del });
+    await send(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp', ...del });
+  }
+  await send(tabId, 'Input.insertText', { text });
+  if (opts.pressEnter !== false) {
+    const enter = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 };
+    await send(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', ...enter });
+    await send(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp', ...enter });
+  }
+}
+
+export async function cdpScrollAtCoord(
+  tabId: number,
+  cssX: number,
+  cssY: number,
+  deltaX: number,
+  deltaY: number,
+): Promise<void> {
+  await ensureAttached(tabId);
+  await send(tabId, 'Input.dispatchMouseEvent', { type: 'mouseWheel', x: cssX, y: cssY, deltaX, deltaY });
+}
+
+/** Read the target tab's CSS viewport size — needed to denormalize 0–999 coords. */
+export async function cdpViewport(tabId: number): Promise<{ width: number; height: number }> {
+  await ensureAttached(tabId);
+  const v = await evalJson<{ w: number; h: number }>(
+    tabId,
+    `({ w: window.innerWidth, h: window.innerHeight })`,
+  );
+  return { width: v?.w ?? 1280, height: v?.h ?? 800 };
+}
+
 /** Detach the CDP session (drops the banner). Safe to call when not attached. */
 export async function cdpDetach(): Promise<void> {
   const c = api();

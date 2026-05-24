@@ -17,6 +17,7 @@ import { requestPageContext } from '../page/request';
 import { persistRun, fetchRuns } from '../memory/request';
 import { buildRunRecord } from '../memory/buildRecord';
 import { findSimilarRun } from '../memory/recall';
+import { runVisionTask } from '../agent/visionLoop';
 import { ensureRootPermission } from '../fs/root';
 import type { RunRecord } from '../memory/types';
 import { loadCheckpoint, clearCheckpoint, type RunCheckpoint } from '../agent/checkpoint';
@@ -331,9 +332,62 @@ export function ChatView({
         });
 
       try {
+        // VISION mode (Computer Use): Buddy SEES the active tab and drives it
+        // click-by-click via the gemini-2.5-computer-use-preview model.
+        // Bypasses the planner/executor — its own loop.
+        if (effectiveMode === 'vision') {
+          const result = await runVisionTask({
+            task: prompt,
+            onConfirm: async ({ call, summary }) =>
+              new Promise<ApprovalDecision>((resolve) => {
+                pendingRef.current = { step: 0, callId: summary, tool: call.name, resolve };
+                // Render a confirm card by emitting a confirmation_required-ish item.
+                setItems((prev) => [
+                  ...prev,
+                  {
+                    kind: 'confirm',
+                    id: `vis_${seqRef.current++}`,
+                    step: 0,
+                    call: { id: `vc_${seqRef.current++}`, name: call.name, arguments: call.args },
+                    summary,
+                  },
+                ]);
+              }),
+            onEvent: (ev) => {
+              if (ev.kind === 'narration') {
+                setItems((prev) => [...prev, agentItem(`vn_${seqRef.current++}`, ev.text)]);
+              } else if (ev.kind === 'action') {
+                setItems((prev) => [
+                  ...prev,
+                  {
+                    kind: 'tool',
+                    id: `vt_${seqRef.current++}`,
+                    step: 0,
+                    call: { id: `vc_${seqRef.current++}`, name: ev.call.name, arguments: ev.call.args },
+                    status: 'running',
+                  },
+                ]);
+              } else if (ev.kind === 'action-result') {
+                setItems((prev) => {
+                  const idx = [...prev].reverse().findIndex((it) => it.kind === 'tool' && it.status === 'running');
+                  if (idx < 0) return prev;
+                  const realIdx = prev.length - 1 - idx;
+                  const item = prev[realIdx];
+                  if (item.kind !== 'tool') return prev;
+                  return [
+                    ...prev.slice(0, realIdx),
+                    { ...item, status: 'done', verdict: ev.ok ? 'succeeded' : 'failed' },
+                    ...prev.slice(realIdx + 1),
+                  ];
+                });
+              }
+            },
+          });
+          setItems((prev) => [...prev, agentItem(`vd_${seqRef.current++}`, result.finalAnswer)]);
+        }
         // Auto-route (or honor the forced mode): simple Q&A → cheap tool-less
         // chat; page/action intent → the full agentic loop.
-        if (resolveIntent(effectiveMode, prompt) === 'chat') {
+        else if (resolveIntent(effectiveMode, prompt) === 'chat') {
           // Attach the page content (so chat sees the page without an agentic
           // read_dom round-trip) and/or the user profile, per the toggles.
           const active = profiles[activeProfile];
@@ -912,6 +966,7 @@ const MODES: { v: ChatMode; l: string; title: string }[] = [
   { v: 'auto', l: 'Auto', title: 'Auto: answer simple questions cheaply, use the agent for page tasks' },
   { v: 'ask', l: 'Ask', title: 'Ask: plain chat only — no tools, cheapest' },
   { v: 'agent', l: 'Agent', title: 'Agent: always plan and use tools' },
+  { v: 'vision', l: 'Vision', title: "Vision: Buddy SEES the active tab and drives it click-by-click (Gemini Computer Use). Slower + costlier — use for visual tasks our DOM agent can't handle." },
 ];
 
 // Inline prompt for the ask_user tool: choice buttons or a free-text answer.

@@ -1,0 +1,157 @@
+// Vision Mode driver (panel-side).
+//
+// Computer Use is a "see the page → act → see again" loop:
+//
+//   capture screenshot → VISION_TURN (model) → for each functionCall:
+//     [optional HITL on safety_decision] → VISION_ACTION (CDP) → new screenshot
+//   → next VISION_TURN with functionResponse parts including the new screenshot
+//   → repeat until the model returns no functionCalls (task done)
+//
+// The full message history is held in the panel and posted to the SW each turn
+// (the model is stateless). See computer-use.md L37-50 + L191-244.
+
+import type {
+  VisionTurnMessage,
+  VisionActionMessage,
+  VisionCaptureMessage,
+  VisionTurnResponse,
+  VisionActionResponse,
+  VisionCaptureResponse,
+  ErrorResponse,
+} from '../key/messages';
+import type { ApprovalDecision } from './types';
+
+const MAX_TURNS = 24;
+
+export interface VisionLoopOptions {
+  task: string;
+  /** Resolves when the user accepts/denies a safety_decision = require_confirmation. */
+  onConfirm: (req: { call: { name: string; args: Record<string, unknown> }; summary: string }) => Promise<ApprovalDecision>;
+  /** Live progress callback — useful for streaming each step to the chat UI. */
+  onEvent?: (e: VisionEvent) => void;
+  /** Cancellation. */
+  signal?: AbortSignal;
+}
+
+export type VisionEvent =
+  | { kind: 'narration'; text: string }
+  | { kind: 'action'; call: { name: string; args: Record<string, unknown> } }
+  | { kind: 'action-result'; ok: boolean; url?: string; error?: string }
+  | { kind: 'denied' };
+
+export interface VisionLoopResult {
+  outcome: 'completed' | 'budget-exceeded' | 'cancelled' | 'denied' | 'failed';
+  finalAnswer: string;
+  /** Number of model turns the loop made. */
+  turns: number;
+}
+
+export async function runVisionTask(opts: VisionLoopOptions): Promise<VisionLoopResult> {
+  const { task, onConfirm, onEvent, signal } = opts;
+
+  // Capture initial state from the active tab.
+  const initCap = (await chrome.runtime.sendMessage({ type: 'VISION_CAPTURE' } as VisionCaptureMessage)) as
+    | VisionCaptureResponse
+    | ErrorResponse;
+  if (!initCap || (initCap.type === 'VISION_CAPTURE' && !initCap.ok) || initCap.type === 'ERROR') {
+    const why =
+      !initCap
+        ? 'No response from background SW.'
+        : initCap.type === 'ERROR'
+          ? initCap.error
+          : (initCap.error ?? 'unknown');
+    return { outcome: 'failed', finalAnswer: `Could not capture the active tab: ${why}`, turns: 0 };
+  }
+  const cap = initCap;
+  const tabId = cap.tabId as number;
+
+  // contents starts with the user's task + the initial screenshot.
+  const contents: VisionTurnMessage['contents'] = [
+    {
+      role: 'user',
+      parts: [
+        { text: `${task}\n\nCurrent URL: ${cap.url}\nCurrent title: ${cap.title}` },
+        { inlineData: { mimeType: 'image/png', data: cap.screenshot ?? '' } },
+      ],
+    },
+  ];
+
+  let lastText = '';
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    if (signal?.aborted) return { outcome: 'cancelled', finalAnswer: lastText || 'Cancelled.', turns: turn };
+
+    // 1) Ask the model what to do next.
+    const turnRes = (await chrome.runtime.sendMessage({ type: 'VISION_TURN', contents } as VisionTurnMessage)) as
+      | VisionTurnResponse
+      | ErrorResponse;
+    if (!turnRes || turnRes.type === 'ERROR') {
+      return {
+        outcome: 'failed',
+        finalAnswer: turnRes?.type === 'ERROR' ? turnRes.error : 'Vision turn failed.',
+        turns: turn,
+      };
+    }
+    const { text, functionCalls, modelTurn } = turnRes as VisionTurnResponse;
+    if (text) {
+      lastText = text;
+      onEvent?.({ kind: 'narration', text });
+    }
+    contents.push(modelTurn);
+
+    // 2) No function calls → the model is done.
+    if (functionCalls.length === 0) {
+      return { outcome: 'completed', finalAnswer: text || lastText || 'Done.', turns: turn + 1 };
+    }
+
+    // 3) Execute each function call; collect FunctionResponse parts (each
+    //    includes the post-action screenshot).
+    const responseParts: Record<string, unknown>[] = [];
+    for (const call of functionCalls) {
+      if (signal?.aborted) return { outcome: 'cancelled', finalAnswer: lastText, turns: turn };
+
+      const safety = (call.args as { safety_decision?: { decision?: string; explanation?: string } }).safety_decision;
+      const extra: Record<string, unknown> = {};
+      if (safety?.decision === 'require_confirmation') {
+        const summary = `${call.name}(${JSON.stringify(call.args).slice(0, 200)})${
+          safety.explanation ? `\n\nWhy: ${safety.explanation}` : ''
+        }`;
+        const decision = await onConfirm({ call, summary });
+        if (!decision.approved) {
+          onEvent?.({ kind: 'denied' });
+          return { outcome: 'denied', finalAnswer: lastText || 'Cancelled at safety gate.', turns: turn + 1 };
+        }
+        extra.safety_acknowledgement = 'true';
+      }
+
+      onEvent?.({ kind: 'action', call });
+      const actRes = (await chrome.runtime.sendMessage({
+        type: 'VISION_ACTION',
+        tabId,
+        call,
+      } as VisionActionMessage)) as VisionActionResponse | ErrorResponse;
+      const ok = actRes && actRes.type === 'VISION_ACTION' && actRes.ok;
+      onEvent?.({
+        kind: 'action-result',
+        ok: !!ok,
+        url: (actRes as VisionActionResponse)?.url,
+        error: ok ? undefined : (actRes as VisionActionResponse)?.error ?? (actRes as ErrorResponse)?.error,
+      });
+
+      const screenshot = ok ? (actRes as VisionActionResponse).screenshot ?? '' : '';
+      const url = ok ? (actRes as VisionActionResponse).url ?? '' : '';
+      responseParts.push({
+        functionResponse: {
+          name: call.name,
+          response: { url, ...extra, ...(ok ? {} : { error: (actRes as VisionActionResponse)?.error ?? 'action failed' }) },
+          parts: screenshot
+            ? [{ inlineData: { mimeType: 'image/png', data: screenshot } }]
+            : undefined,
+        },
+      });
+    }
+
+    contents.push({ role: 'user', parts: responseParts });
+  }
+
+  return { outcome: 'budget-exceeded', finalAnswer: lastText || `Hit the ${MAX_TURNS}-turn cap.`, turns: MAX_TURNS };
+}

@@ -169,6 +169,28 @@ export interface AppDeleteMessage {
   id: string;
 }
 
+/** Vision Mode (Computer Use) — one model turn. Stateless: caller passes the
+ *  full `contents` array each turn (the SW only adds the system instruction +
+ *  the computer_use tool config). Returns the model's text + function calls. */
+export interface VisionTurnMessage {
+  type: 'VISION_TURN';
+  contents: { role: 'user' | 'model'; parts: Record<string, unknown>[] }[];
+}
+
+/** Vision Mode — execute one Computer Use action (CDP-backed) on the given tab
+ *  and return the post-action screenshot + URL + title. */
+export interface VisionActionMessage {
+  type: 'VISION_ACTION';
+  tabId: number;
+  call: { name: string; args: Record<string, unknown> };
+}
+
+/** Vision Mode — capture the active tab's current screenshot + URL + title. */
+export interface VisionCaptureMessage {
+  type: 'VISION_CAPTURE';
+  tabId?: number;
+}
+
 /** Discriminated union of every message the background SW understands. */
 export type BuddyMessage =
   | KeySetMessage
@@ -176,6 +198,9 @@ export type BuddyMessage =
   | KeyValidateMessage
   | LlmGenerateMessage
   | ToolExecMessage
+  | VisionTurnMessage
+  | VisionActionMessage
+  | VisionCaptureMessage
   | ImageGenerateMessage
   | AudioTranscribeMessage
   | PageContextMessage
@@ -330,6 +355,33 @@ export type ResponseFor<M extends BuddyMessage> = M extends KeySetMessage
               ? PageContextResponse | ErrorResponse
               : never;
 
+export interface VisionTurnResponse {
+  type: 'VISION_TURN';
+  ok: true;
+  text: string;
+  functionCalls: { name: string; args: Record<string, unknown> }[];
+  modelTurn: { role: 'user' | 'model'; parts: Record<string, unknown>[] };
+}
+
+export interface VisionActionResponse {
+  type: 'VISION_ACTION';
+  ok: boolean;
+  screenshot?: string;
+  url?: string;
+  title?: string;
+  error?: string;
+}
+
+export interface VisionCaptureResponse {
+  type: 'VISION_CAPTURE';
+  ok: boolean;
+  tabId?: number;
+  screenshot?: string;
+  url?: string;
+  title?: string;
+  error?: string;
+}
+
 export type BuddyResponse =
   | KeySetResponse
   | KeyStatusResponse
@@ -339,6 +391,9 @@ export type BuddyResponse =
   | ImageGenerateResponse
   | AudioTranscribeResponse
   | PageContextResponse
+  | VisionTurnResponse
+  | VisionActionResponse
+  | VisionCaptureResponse
   | MemorySaveRunResponse
   | MemoryListRunsResponse
   | MemoryClearResponse
@@ -377,6 +432,9 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'WORKFLOW_DELETE' ||
     t === 'APP_SAVE' ||
     t === 'APP_LIST' ||
-    t === 'APP_DELETE'
+    t === 'APP_DELETE' ||
+    t === 'VISION_TURN' ||
+    t === 'VISION_ACTION' ||
+    t === 'VISION_CAPTURE'
   );
 }

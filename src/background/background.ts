@@ -26,10 +26,11 @@ import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { safetySettingsForNative } from '../llm/safety';
 import { BUDDY_UA } from '../llm/ua';
 import { retryFetch } from '../llm/retry';
-import { executePageTool, capturePageContext } from './pageTools';
+import { executePageTool, capturePageContext, resolveActiveTabId } from './pageTools';
 import { executeWebhook } from './webhook';
 import { executeWebSearch } from './search';
 import { executeFetchUrl } from './urlContext';
+import { executeVisionTurn, executeVisionAction, captureActiveTabPNG } from './vision';
 import { executeFileWrite } from './fileWrite';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
@@ -302,6 +303,32 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
       case 'PAGE_CONTEXT': {
         const page = await capturePageContext();
         return { type: 'PAGE_CONTEXT', ok: true, page };
+      }
+
+      case 'VISION_TURN': {
+        const r = await executeVisionTurn(message.contents, getStoredKey);
+        return { type: 'VISION_TURN', ok: true, text: r.text, functionCalls: r.functionCalls, modelTurn: r.modelTurn };
+      }
+
+      case 'VISION_ACTION': {
+        const r = await executeVisionAction(message.tabId, message.call);
+        return { type: 'VISION_ACTION', ...r };
+      }
+
+      case 'VISION_CAPTURE': {
+        // Resolve the active driveable (http(s)) tab — never the panel itself
+        // (chrome-extension:// can't be captured) — using the shared helper that
+        // falls back to any web tab when the side panel is focused.
+        const tabId = message.tabId ?? (await resolveActiveTabId());
+        if (typeof tabId !== 'number') {
+          return { type: 'VISION_CAPTURE', ok: false, error: 'No driveable web tab to capture. Open the site in a regular tab first.' };
+        }
+        try {
+          const cap = await captureActiveTabPNG(tabId);
+          return { type: 'VISION_CAPTURE', ok: true, tabId, screenshot: cap.data, url: cap.url, title: cap.title };
+        } catch (e) {
+          return { type: 'VISION_CAPTURE', ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
       }
 
       case 'MEMORY_SAVE_RUN': {
