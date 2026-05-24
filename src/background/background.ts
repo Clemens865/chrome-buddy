@@ -307,7 +307,14 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
 
       case 'VISION_TURN': {
         const r = await executeVisionTurn(message.contents, getStoredKey);
-        return { type: 'VISION_TURN', ok: true, text: r.text, functionCalls: r.functionCalls, modelTurn: r.modelTurn };
+        return {
+          type: 'VISION_TURN',
+          ok: true,
+          text: r.text,
+          functionCalls: r.functionCalls,
+          modelTurn: r.modelTurn,
+          usage: r.usage,
+        };
       }
 
       case 'VISION_ACTION': {

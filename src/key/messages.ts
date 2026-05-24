@@ -361,6 +361,15 @@ export interface VisionTurnResponse {
   text: string;
   functionCalls: { name: string; args: Record<string, unknown> }[];
   modelTurn: { role: 'user' | 'model'; parts: Record<string, unknown>[] };
+  /** Token usage for this turn (Computer Use is billed per-turn at the
+   *  preview model's pricing). The panel aggregates across turns. */
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cachedInputTokens?: number;
+    thoughtsTokens?: number;
+  };
 }
 
 export interface VisionActionResponse {

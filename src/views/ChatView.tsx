@@ -336,6 +336,7 @@ export function ChatView({
         // click-by-click via the gemini-2.5-computer-use-preview model.
         // Bypasses the planner/executor — its own loop.
         if (effectiveMode === 'vision') {
+          let lastNarration = '';
           const result = await runVisionTask({
             task: prompt,
             onConfirm: async ({ call, summary }) =>
@@ -355,6 +356,7 @@ export function ChatView({
               }),
             onEvent: (ev) => {
               if (ev.kind === 'narration') {
+                lastNarration = ev.text;
                 setItems((prev) => [...prev, agentItem(`vn_${seqRef.current++}`, ev.text)]);
               } else if (ev.kind === 'action') {
                 setItems((prev) => [
@@ -383,7 +385,26 @@ export function ChatView({
               }
             },
           });
-          setItems((prev) => [...prev, agentItem(`vd_${seqRef.current++}`, result.finalAnswer)]);
+          // Skip pushing the final-answer bubble if it duplicates the last
+          // narration we already streamed (the model often emits the same text
+          // again as its closing turn).
+          if (result.finalAnswer && result.finalAnswer.trim() !== lastNarration.trim()) {
+            setItems((prev) => [...prev, agentItem(`vd_${seqRef.current++}`, result.finalAnswer)]);
+          }
+          // Cost ledger + persist the run for History (FR-AGENT-7).
+          recordCost(result.costUsd);
+          void persistRun(
+            buildRunRecord({
+              kind: 'agent',
+              task: prompt,
+              answer: result.finalAnswer,
+              outcome: result.outcome === 'completed' ? 'completed' : result.outcome === 'budget-exceeded' ? 'budget-exceeded' : result.outcome === 'cancelled' ? 'cancelled' : 'failed',
+              tools: [],
+              provenance: [],
+              model: 'gemini-2.5-computer-use-preview-10-2025',
+              startedAt,
+            }),
+          );
         }
         // Auto-route (or honor the forced mode): simple Q&A → cheap tool-less
         // chat; page/action intent → the full agentic loop.

@@ -125,6 +125,53 @@ export async function cdpScrollAtCoord(
   await send(tabId, 'Input.dispatchMouseEvent', { type: 'mouseWheel', x: cssX, y: cssY, deltaX, deltaY });
 }
 
+/** Move the mouse to a coordinate (no press) — used for `hover_at`. */
+export async function cdpHoverAtCoord(tabId: number, cssX: number, cssY: number): Promise<void> {
+  await ensureAttached(tabId);
+  await send(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: cssX, y: cssY });
+}
+
+/** Press a single key (with optional modifier mask) and release it. */
+export async function cdpKeyPress(
+  tabId: number,
+  key: { key: string; code: string; windowsVirtualKeyCode: number },
+  modifiers = 0,
+): Promise<void> {
+  await ensureAttached(tabId);
+  const base = { ...key, modifiers };
+  await send(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', ...base });
+  await send(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+}
+
+/** Smooth drag from (x1,y1) to (x2,y2) — used for `drag_and_drop`. Splits the
+ *  move into intermediate frames so HTML5 dragstart/dragover handlers fire. */
+export async function cdpDragAndDrop(
+  tabId: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): Promise<void> {
+  await ensureAttached(tabId);
+  const base = { button: 'left' as const };
+  await send(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: x1, y: y1, clickCount: 1, ...base });
+  const STEPS = 10;
+  for (let i = 1; i <= STEPS; i++) {
+    const t = i / STEPS;
+    const ix = x1 + (x2 - x1) * t;
+    const iy = y1 + (y2 - y1) * t;
+    await send(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: ix, y: iy, ...base });
+    await new Promise((r) => setTimeout(r, 16));
+  }
+  await send(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: x2, y: y2, clickCount: 1, ...base });
+}
+
+/** window.scrollBy on the page — used for `scroll_document`. */
+export async function cdpScrollDocument(tabId: number, deltaX: number, deltaY: number): Promise<void> {
+  await ensureAttached(tabId);
+  await evalJson(tabId, `(window.scrollBy(${Number(deltaX)}, ${Number(deltaY)}), true)`);
+}
+
 /** Read the target tab's CSS viewport size — needed to denormalize 0–999 coords. */
 export async function cdpViewport(tabId: number): Promise<{ width: number; height: number }> {
   await ensureAttached(tabId);

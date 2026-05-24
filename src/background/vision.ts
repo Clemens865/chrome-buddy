@@ -14,8 +14,14 @@ import {
   cdpClickAtCoord,
   cdpTypeAtCoord,
   cdpScrollAtCoord,
+  cdpHoverAtCoord,
+  cdpKeyPress,
+  cdpDragAndDrop,
+  cdpScrollDocument,
   cdpViewport,
 } from '../page/cdp';
+import { parseKeys } from './visionKeys';
+import type { UsageStats } from '../llm/types';
 
 const VISION_MODEL = 'gemini-2.5-computer-use-preview-10-2025';
 const PROVIDER = 'google-gemini';
@@ -49,6 +55,8 @@ export interface VisionTurnResult {
   functionCalls: VisionFunctionCall[];
   /** Pass back to the next call as the model's previous turn. */
   modelTurn: VisionPart;
+  /** Token usage for this turn — accumulated by the panel for the cost ledger. */
+  usage: UsageStats;
   /** Raw candidate for debugging. */
   raw?: unknown;
 }
@@ -103,9 +111,25 @@ export async function executeVisionTurn(
     candidates?: {
       content?: { role?: string; parts?: Record<string, unknown>[] };
     }[];
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      thoughtsTokenCount?: number;
+      cachedContentTokenCount?: number;
+      totalTokenCount?: number;
+    };
   };
   const cand = data.candidates?.[0]?.content;
   const parts = (cand?.parts ?? []) as Record<string, unknown>[];
+
+  const um = data.usageMetadata ?? {};
+  const usage: UsageStats = {
+    inputTokens: um.promptTokenCount ?? 0,
+    outputTokens: um.candidatesTokenCount ?? 0,
+    totalTokens: um.totalTokenCount ?? (um.promptTokenCount ?? 0) + (um.candidatesTokenCount ?? 0),
+  };
+  if (typeof um.cachedContentTokenCount === 'number') usage.cachedInputTokens = um.cachedContentTokenCount;
+  if (typeof um.thoughtsTokenCount === 'number') usage.thoughtsTokens = um.thoughtsTokenCount;
 
   const text = parts
     .map((p) => (typeof p.text === 'string' ? p.text : ''))
@@ -125,6 +149,7 @@ export async function executeVisionTurn(
     text,
     functionCalls,
     modelTurn: { role: 'model', parts },
+    usage,
     raw: data,
   };
 }
@@ -156,8 +181,40 @@ export async function executeVisionAction(
       if (!url) return { ok: false, error: 'navigate requires `url`.' };
       await chrome.tabs.update(tabId, { url });
       await waitForTabComplete(tabId, 15_000);
+    } else if (call.name === 'go_back') {
+      await chrome.tabs.goBack(tabId).catch(() => undefined);
+      await waitForTabComplete(tabId, 10_000);
+    } else if (call.name === 'go_forward') {
+      await chrome.tabs.goForward(tabId).catch(() => undefined);
+      await waitForTabComplete(tabId, 10_000);
+    } else if (call.name === 'search') {
+      // Doc: "Navigates to the default search engine's homepage (e.g., Google)."
+      await chrome.tabs.update(tabId, { url: 'https://www.google.com' });
+      await waitForTabComplete(tabId, 15_000);
+    } else if (call.name === 'key_combination') {
+      const combo = typeof args.keys === 'string' ? args.keys : '';
+      if (!combo) return { ok: false, error: 'key_combination requires `keys`.' };
+      const { modifiers, main } = parseKeys(combo);
+      await cdpKeyPress(tabId, main, modifiers);
+    } else if (call.name === 'scroll_document') {
+      const dir = typeof args.direction === 'string' ? args.direction : 'down';
+      const vp = await cdpViewport(tabId);
+      // One PageUp/Down equivalent ≈ 80% of viewport.
+      const stepY = Math.round(vp.height * 0.8);
+      const stepX = Math.round(vp.width * 0.8);
+      const dx = dir === 'left' ? -stepX : dir === 'right' ? stepX : 0;
+      const dy = dir === 'up' ? -stepY : dir === 'down' ? stepY : 0;
+      await cdpScrollDocument(tabId, dx, dy);
+    } else if (call.name === 'drag_and_drop') {
+      const vp = await cdpViewport(tabId);
+      const x1 = (clampInt(args.x, 0, 999) / 1000) * vp.width;
+      const y1 = (clampInt(args.y, 0, 999) / 1000) * vp.height;
+      const x2 = (clampInt(args.destination_x, 0, 999) / 1000) * vp.width;
+      const y2 = (clampInt(args.destination_y, 0, 999) / 1000) * vp.height;
+      await cdpDragAndDrop(tabId, x1, y1, x2, y2);
     } else if (
       call.name === 'click_at' ||
+      call.name === 'hover_at' ||
       call.name === 'type_text_at' ||
       call.name === 'scroll_at'
     ) {
@@ -168,6 +225,8 @@ export async function executeVisionAction(
       const cssY = (yN / 1000) * vp.height;
       if (call.name === 'click_at') {
         await cdpClickAtCoord(tabId, cssX, cssY);
+      } else if (call.name === 'hover_at') {
+        await cdpHoverAtCoord(tabId, cssX, cssY);
       } else if (call.name === 'type_text_at') {
         const text = typeof args.text === 'string' ? args.text : '';
         const pressEnter = args.press_enter !== false;

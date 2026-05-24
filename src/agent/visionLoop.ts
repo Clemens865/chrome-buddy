@@ -20,6 +20,11 @@ import type {
   ErrorResponse,
 } from '../key/messages';
 import type { ApprovalDecision } from './types';
+import type { UsageStats } from '../llm/types';
+import { DEFAULT_REGISTRY } from '../llm/registry.default';
+import { estimateCost } from '../llm/router';
+
+const VISION_MODEL_ID = 'gemini-2.5-computer-use-preview-10-2025';
 
 const MAX_TURNS = 24;
 
@@ -44,10 +49,26 @@ export interface VisionLoopResult {
   finalAnswer: string;
   /** Number of model turns the loop made. */
   turns: number;
+  /** Aggregated token usage across all turns. */
+  usage: UsageStats;
+  /** Estimated USD cost for the whole run (Computer Use preview pricing). */
+  costUsd: number;
 }
 
 export async function runVisionTask(opts: VisionLoopOptions): Promise<VisionLoopResult> {
   const { task, onConfirm, onEvent, signal } = opts;
+
+  const usage: UsageStats = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  const model = DEFAULT_REGISTRY.models[VISION_MODEL_ID];
+
+  const finalize = (
+    outcome: VisionLoopResult['outcome'],
+    finalAnswer: string,
+    turns: number,
+  ): VisionLoopResult => {
+    const costUsd = model ? estimateCost(usage, model).totalCost : 0;
+    return { outcome, finalAnswer, turns, usage, costUsd };
+  };
 
   // Capture initial state from the active tab.
   const initCap = (await chrome.runtime.sendMessage({ type: 'VISION_CAPTURE' } as VisionCaptureMessage)) as
@@ -60,7 +81,7 @@ export async function runVisionTask(opts: VisionLoopOptions): Promise<VisionLoop
         : initCap.type === 'ERROR'
           ? initCap.error
           : (initCap.error ?? 'unknown');
-    return { outcome: 'failed', finalAnswer: `Could not capture the active tab: ${why}`, turns: 0 };
+    return finalize('failed', `Could not capture the active tab: ${why}`, 0);
   }
   const cap = initCap;
   const tabId = cap.tabId as number;
@@ -78,21 +99,30 @@ export async function runVisionTask(opts: VisionLoopOptions): Promise<VisionLoop
 
   let lastText = '';
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    if (signal?.aborted) return { outcome: 'cancelled', finalAnswer: lastText || 'Cancelled.', turns: turn };
+    if (signal?.aborted) return finalize('cancelled', lastText || 'Cancelled.', turn);
 
     // 1) Ask the model what to do next.
     const turnRes = (await chrome.runtime.sendMessage({ type: 'VISION_TURN', contents } as VisionTurnMessage)) as
       | VisionTurnResponse
       | ErrorResponse;
     if (!turnRes || turnRes.type === 'ERROR') {
-      return {
-        outcome: 'failed',
-        finalAnswer: turnRes?.type === 'ERROR' ? turnRes.error : 'Vision turn failed.',
-        turns: turn,
-      };
+      return finalize('failed', turnRes?.type === 'ERROR' ? turnRes.error : 'Vision turn failed.', turn);
     }
-    const { text, functionCalls, modelTurn } = turnRes as VisionTurnResponse;
-    if (text) {
+    const { text, functionCalls, modelTurn, usage: turnUsage } = turnRes as VisionTurnResponse;
+    // Accumulate token usage.
+    usage.inputTokens += turnUsage.inputTokens;
+    usage.outputTokens += turnUsage.outputTokens;
+    usage.totalTokens += turnUsage.totalTokens;
+    if (turnUsage.cachedInputTokens) {
+      usage.cachedInputTokens = (usage.cachedInputTokens ?? 0) + turnUsage.cachedInputTokens;
+    }
+    if (turnUsage.thoughtsTokens) {
+      usage.thoughtsTokens = (usage.thoughtsTokens ?? 0) + turnUsage.thoughtsTokens;
+    }
+
+    // Dedup: skip identical consecutive narration so we don't bubble the same
+    // sentence twice when the model emits two text-only turns in a row.
+    if (text && text !== lastText) {
       lastText = text;
       onEvent?.({ kind: 'narration', text });
     }
@@ -100,14 +130,14 @@ export async function runVisionTask(opts: VisionLoopOptions): Promise<VisionLoop
 
     // 2) No function calls → the model is done.
     if (functionCalls.length === 0) {
-      return { outcome: 'completed', finalAnswer: text || lastText || 'Done.', turns: turn + 1 };
+      return finalize('completed', text || lastText || 'Done.', turn + 1);
     }
 
     // 3) Execute each function call; collect FunctionResponse parts (each
     //    includes the post-action screenshot).
     const responseParts: Record<string, unknown>[] = [];
     for (const call of functionCalls) {
-      if (signal?.aborted) return { outcome: 'cancelled', finalAnswer: lastText, turns: turn };
+      if (signal?.aborted) return finalize('cancelled', lastText, turn);
 
       const safety = (call.args as { safety_decision?: { decision?: string; explanation?: string } }).safety_decision;
       const extra: Record<string, unknown> = {};
@@ -118,7 +148,7 @@ export async function runVisionTask(opts: VisionLoopOptions): Promise<VisionLoop
         const decision = await onConfirm({ call, summary });
         if (!decision.approved) {
           onEvent?.({ kind: 'denied' });
-          return { outcome: 'denied', finalAnswer: lastText || 'Cancelled at safety gate.', turns: turn + 1 };
+          return finalize('denied', lastText || 'Cancelled at safety gate.', turn + 1);
         }
         extra.safety_acknowledgement = 'true';
       }
@@ -153,5 +183,5 @@ export async function runVisionTask(opts: VisionLoopOptions): Promise<VisionLoop
     contents.push({ role: 'user', parts: responseParts });
   }
 
-  return { outcome: 'budget-exceeded', finalAnswer: lastText || `Hit the ${MAX_TURNS}-turn cap.`, turns: MAX_TURNS };
+  return finalize('budget-exceeded', lastText || `Hit the ${MAX_TURNS}-turn cap.`, MAX_TURNS);
 }

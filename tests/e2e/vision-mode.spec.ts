@@ -48,6 +48,17 @@ test('live: Vision mode loop fires against a real page and produces narration', 
     .locator('.msg-agent:not(.msg-subtle) .msg-body')
     .filter({ hasText: /example|domain|documentation|iana/i });
   await expect(reply.first()).toBeVisible({ timeout: 120_000 });
+
+  // Phase 2: Vision turns are now billed through the cost ledger, so the
+  // session-cost chip appears in the composer after the run completes.
+  await expect(panel.locator('.cost-chip').first()).toBeVisible({ timeout: 10_000 });
+
+  // Phase 2: identical consecutive narrations are deduped — the same exact
+  // text should not appear in two separate msg-agent bubbles.
+  const narrations = await reply.allInnerTexts();
+  const uniq = new Set(narrations.map((t) => t.trim()));
+  expect(uniq.size).toBe(narrations.length);
+
   await panel.waitForTimeout(1500);
   await panel.screenshot({ path: path.join(SHOTS, '76-vision-loop.png') });
 });
