@@ -319,6 +319,57 @@ export const noteListTool: ToolDefinition = {
   handler: notWired('note_list'),
 };
 
+// --- github_* — write / read / list files in a user repo via Contents API --
+export const githubWriteTool: ToolDefinition = {
+  name: 'github_write',
+  description:
+    "Commit a file to a user's GitHub repo (creates or updates). Use when the " +
+    'user explicitly says "save to GitHub", "commit to my repo", or names a ' +
+    'repo + path. CONSEQUENTIAL — every commit passes through the HITL gate.',
+  paramsSchema: objectSchema(
+    {
+      repo: { type: 'string', description: 'Repo in the form "owner/name" (e.g. "user/buddy-vault").' },
+      path: { type: 'string', description: 'Path inside the repo (no leading slash). E.g. "notes/2026-05-25.md".' },
+      content: { type: 'string', description: 'File contents to commit (UTF-8 text).' },
+      message: { type: 'string', description: 'Optional commit message. Defaults to "chore: update <path> via Chrome Buddy".' },
+      branch: { type: 'string', description: 'Optional branch; omitted = default branch.' },
+    },
+    ['repo', 'path', 'content'],
+  ),
+  consequential: true,
+  handler: notWired('github_write'),
+};
+
+export const githubReadTool: ToolDefinition = {
+  name: 'github_read',
+  description: 'Read the contents of a file from a user GitHub repo. Returns UTF-8 text.',
+  paramsSchema: objectSchema(
+    {
+      repo: { type: 'string', description: 'Repo in "owner/name" form.' },
+      path: { type: 'string', description: 'Path inside the repo.' },
+      ref: { type: 'string', description: 'Optional branch / tag / SHA; omit for the default branch.' },
+    },
+    ['repo', 'path'],
+  ),
+  consequential: false,
+  handler: notWired('github_read'),
+};
+
+export const githubListTool: ToolDefinition = {
+  name: 'github_list',
+  description: 'List files and subdirectories at a path in a user GitHub repo (path omitted = root).',
+  paramsSchema: objectSchema(
+    {
+      repo: { type: 'string', description: 'Repo in "owner/name" form.' },
+      path: { type: 'string', description: 'Optional subpath; omitted = repo root.' },
+      ref: { type: 'string', description: 'Optional branch / tag / SHA.' },
+    },
+    ['repo'],
+  ),
+  consequential: false,
+  handler: notWired('github_list'),
+};
+
 // --- file_search (H8 — Gemini fileSearch built-in RAG) ---------------------
 export const fileSearchTool: ToolDefinition = {
   name: 'file_search',
@@ -468,6 +519,9 @@ export const stubToolDefs: ToolDefinition[] = [
   sendWebhookTool,
   fetchUrlTool,
   fileSearchTool,
+  githubWriteTool,
+  githubReadTool,
+  githubListTool,
   noteSaveTool,
   noteGetTool,
   noteListTool,

@@ -32,6 +32,7 @@ import { executeWebhook } from './webhook';
 import { executeWebSearch } from './search';
 import { executeFetchUrl } from './urlContext';
 import { executeFileSearch } from './fileSearch';
+import { executeGithubWrite, executeGithubRead, executeGithubList } from './github';
 import { executeVisionTurn, executeVisionAction, captureActiveTabPNG } from './vision';
 import { executeFileWrite } from './fileWrite';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
@@ -294,6 +295,15 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         }
         if (message.tool === 'file_search') {
           return { type: 'TOOL_EXEC', ok: true, result: await executeFileSearch(message.args, getStoredKey) };
+        }
+        if (message.tool === 'github_write') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeGithubWrite(message.args) };
+        }
+        if (message.tool === 'github_read') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeGithubRead(message.args) };
+        }
+        if (message.tool === 'github_list') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeGithubList(message.args) };
         }
         // write_file is consequential — only reaches here after HITL approval.
         if (message.tool === 'write_file') {

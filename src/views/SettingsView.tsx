@@ -1,6 +1,6 @@
 // SettingsView.tsx — real settings: appearance (theme + accent), BYO key, model.
 // No mock account/usage data.
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Pill } from '../ui/primitives';
 import { THEMES, type ThemeName } from '../ui/theme';
 import { selectableModels, useActiveModel } from '../llm/modelPref';
@@ -49,6 +49,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   const [askBeforePlan, setAskBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
   const [visionConfirmAll, setVisionConfirmAll] = usePersistedState<boolean>('visionConfirmAll', false);
   const [fileSearchStores, setFileSearchStores] = usePersistedState<string[]>('fileSearchStores', []);
+  const [githubDefaultRepo, setGithubDefaultRepo] = usePersistedState<string>('githubDefaultRepo', '');
   const [preferNano, setPreferNano] = usePersistedState<boolean>('preferNano', false);
   const current: UserProfile = profiles[activeProfile] ?? {};
   const updateProfile = (patch: Partial<UserProfile>) =>
@@ -207,6 +208,23 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
           s="Off (default): only confirm when the model flags an action (per ToS). On: gate every click/type."
         >
           <Toggle on={visionConfirmAll} onChange={setVisionConfirmAll} />
+        </SettingsRow>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-section-h">GitHub</div>
+        <SettingsRow t="Personal access token" s="Paste a fine-scoped PAT. Stored in memory only — never written to disk; cleared at browser-session end.">
+          <GitHubTokenControl />
+        </SettingsRow>
+        <SettingsRow t="Default repo" s="Optional convenience: e.g. `clemens/buddy-vault`. The model still picks per-task.">
+          <input
+            className="settings-input"
+            style={{ minWidth: 220 }}
+            placeholder="owner/name"
+            value={githubDefaultRepo}
+            onChange={(e) => setGithubDefaultRepo(e.target.value.trim())}
+            aria-label="Default GitHub repo"
+          />
         </SettingsRow>
       </div>
 
@@ -506,6 +524,101 @@ function ApiKeyControl() {
         </button>
       </div>
       {msg ? <Pill tone={msg.tone === 'ok' ? 'ok' : undefined}>{msg.text}</Pill> : null}
+    </div>
+  );
+}
+
+/** GitHub PAT custody mirrors NFR-SEC-1: lives only in chrome.storage.session
+ *  (in-memory; cleared at browser-session end). Never written to disk. */
+function GitHubTokenControl() {
+  const [hasToken, setHasToken] = useState<boolean | 'unknown'>('unknown');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (typeof chrome === 'undefined' || !chrome.storage?.session) {
+      setHasToken(false);
+      return;
+    }
+    const r = (await chrome.storage.session.get('gh_token')) as { gh_token?: string };
+    setHasToken(typeof r.gh_token === 'string' && r.gh_token.length > 0);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'session' && 'gh_token' in changes) void refresh();
+    };
+    chrome.storage?.onChanged?.addListener?.(onChanged);
+    return () => {
+      chrome.storage?.onChanged?.removeListener?.(onChanged);
+    };
+  }, [refresh]);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await chrome.storage.session.set({ gh_token: draft });
+      setDraft('');
+      setEditing(false);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clear = async () => {
+    await chrome.storage.session.remove('gh_token');
+    await refresh();
+  };
+
+  if (!editing) {
+    return (
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {hasToken === true ? <Pill tone="ok">Token set</Pill> : hasToken === false ? <Pill>Not set</Pill> : null}
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          onClick={() => {
+            setEditing(true);
+            setDraft('');
+          }}
+        >
+          {hasToken === true ? 'Replace' : 'Add token'}
+        </button>
+        {hasToken === true && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void clear()}>
+            Remove
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 220 }}>
+      <input
+        type="password"
+        className="settings-input"
+        placeholder="ghp_… or github_pat_…"
+        value={draft}
+        autoFocus
+        onChange={(e) => setDraft(e.target.value)}
+        aria-label="GitHub personal access token"
+      />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          disabled={busy || draft.length === 0}
+          onClick={() => void save()}
+        >
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
