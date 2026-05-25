@@ -6,6 +6,10 @@ import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { Ic } from '../../ui/icons';
 import type { ToolResult } from '../../types';
 import type { ErrorMatch } from '../../console/errorPatterns';
+import type { SensitiveHit } from '../../console/sensitivePatterns';
+import type { TechMatch } from '../../console/techStack';
+import type { A11yReport } from '../../console/a11y';
+import type { StorageReport } from '../../console/storageSummary';
 
 // --- Shared TOOL_EXEC bridge ----------------------------------------------
 
@@ -399,4 +403,273 @@ function hostOnly(s: string | undefined): string {
   } catch {
     return s;
   }
+}
+
+// --- StoragePanel ----------------------------------------------------------
+
+export function StoragePanel() {
+  const [data, setData] = useState<StorageReport | undefined>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const run = useCallback(async () => {
+    setBusy(true);
+    setError(undefined);
+    const r = await runTool<StorageReport>('read_storage', { limit: 10 });
+    setBusy(false);
+    if (!r.ok) setError(r.error.message);
+    else setData(r.data);
+  }, []);
+  useEffect(() => { void run(); }, [run]);
+
+  return (
+    <div className="ci-panel" data-testid="ci-panel-storage">
+      <div className="ci-panel-bar">
+        <button type="button" className="btn btn-sm btn-primary" onClick={run} disabled={busy}>
+          {busy ? 'Reading…' : 'Refresh'}
+        </button>
+        {data && (
+          <span className="ci-panel-meta">
+            {data.total.keys} key(s) · {formatBytes(data.total.bytes)}
+          </span>
+        )}
+      </div>
+      {error && <div className="console-notice" role="alert" style={errNoticeStyle}>{error}</div>}
+      {data && (
+        <div className="ci-storage" data-testid="ci-storage">
+          <div className="ci-storage-totals">
+            {(['localStorage', 'sessionStorage', 'cookies'] as const).map((area) => (
+              <div key={area} className="ci-storage-area">
+                <div className="ci-storage-area-key">{area}</div>
+                <div className="ci-storage-area-val">
+                  {data.byArea[area].keys} · {formatBytes(data.byArea[area].bytes)}
+                </div>
+              </div>
+            ))}
+          </div>
+          {data.flagged.length > 0 && (
+            <div className="ci-storage-flagged">
+              <div className="ci-storage-hd">Flagged keys</div>
+              {data.flagged.map((f, i) => (
+                <div key={i} className="ci-storage-flag-row">
+                  <span className="ci-sev-pill ci-sev-pill-high">{f.area}</span>
+                  <code>{f.key}</code>
+                  <span className="ci-storage-flag-why">{f.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="ci-storage-hd">Top entries</div>
+          <div className="ci-storage-list">
+            {data.top.length === 0 ? (
+              <div className="empty-state-desc">No storage on this origin.</div>
+            ) : (
+              data.top.map((e, i) => (
+                <div key={i} className="ci-storage-row">
+                  <span className="console-lvl console-lvl-net">{e.area === 'localStorage' ? 'local' : e.area === 'sessionStorage' ? 'session' : 'cookie'}</span>
+                  <code className="ci-storage-key" title={e.key}>{e.key}</code>
+                  <span className="ci-storage-preview" title={e.preview}>{e.preview}</span>
+                  <span className="ci-storage-bytes">{formatBytes(e.bytes)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- SensitivePanel --------------------------------------------------------
+
+export function SensitivePanel() {
+  const [data, setData] = useState<{ url?: string; hits: SensitiveHit[]; scanned: number } | undefined>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const run = useCallback(async () => {
+    setBusy(true);
+    setError(undefined);
+    const r = await runTool<{ url?: string; hits: SensitiveHit[]; scanned: number }>('scan_sensitive_data');
+    setBusy(false);
+    if (!r.ok) setError(r.error.message);
+    else setData(r.data);
+  }, []);
+  useEffect(() => { void run(); }, [run]);
+
+  return (
+    <div className="ci-panel" data-testid="ci-panel-sensitive">
+      <div className="ci-panel-bar">
+        <button type="button" className="btn btn-sm btn-primary" onClick={run} disabled={busy}>
+          {busy ? 'Scanning…' : 'Re-scan'}
+        </button>
+        {data && (
+          <span className="ci-panel-meta">
+            {data.hits.length} hit(s) across {data.scanned} source(s)
+          </span>
+        )}
+      </div>
+      {error && <div className="console-notice" role="alert" style={errNoticeStyle}>{error}</div>}
+      {data && (
+        <div className="ci-cards" data-testid="ci-sensitive">
+          {data.hits.length === 0 ? (
+            <div className="empty-state">
+              <span className="ic" style={{ width: 28, height: 28 }}>{Ic.console}</span>
+              <div className="empty-state-title">No leaked secrets detected</div>
+              <div className="empty-state-desc">
+                Scanned storage + visible page text. Re-run after the user signs in or after a
+                state change to recheck.
+              </div>
+            </div>
+          ) : (
+            data.hits.map((h, i) => (
+              <div key={i} className={'ci-card ci-sev-' + h.severity}>
+                <div className="ci-card-hd">
+                  <span className={'ci-sev-pill ci-sev-pill-' + h.severity}>{h.severity}</span>
+                  <span className="ci-card-cat">{h.category}</span>
+                  {h.count > 1 && <span className="ci-card-count">×{h.count}</span>}
+                </div>
+                <div className="ci-card-desc">{h.description}</div>
+                <div className="ci-card-fix">
+                  <strong>Found in:</strong> <code>{h.source}</code> — <code>{h.preview}</code>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- TechStackPanel --------------------------------------------------------
+
+export function TechStackPanel() {
+  const [data, setData] = useState<{ url: string; matches: TechMatch[] } | undefined>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const run = useCallback(async () => {
+    setBusy(true);
+    setError(undefined);
+    const r = await runTool<{ url: string; matches: TechMatch[]; count: number }>('detect_tech_stack');
+    setBusy(false);
+    if (!r.ok) setError(r.error.message);
+    else setData(r.data);
+  }, []);
+  useEffect(() => { void run(); }, [run]);
+
+  // Group matches by category for the list.
+  const grouped = data
+    ? data.matches.reduce<Record<string, TechMatch[]>>((acc, m) => {
+        (acc[m.category] ??= []).push(m);
+        return acc;
+      }, {})
+    : {};
+
+  return (
+    <div className="ci-panel" data-testid="ci-panel-tech">
+      <div className="ci-panel-bar">
+        <button type="button" className="btn btn-sm btn-primary" onClick={run} disabled={busy}>
+          {busy ? 'Detecting…' : 'Re-detect'}
+        </button>
+        {data && <span className="ci-panel-meta">{data.matches.length} detected</span>}
+      </div>
+      {error && <div className="console-notice" role="alert" style={errNoticeStyle}>{error}</div>}
+      {data && (
+        <div className="ci-tech" data-testid="ci-tech">
+          {data.matches.length === 0 ? (
+            <div className="empty-state">
+              <span className="ic" style={{ width: 28, height: 28 }}>{Ic.console}</span>
+              <div className="empty-state-title">No known frameworks detected</div>
+              <div className="empty-state-desc">
+                The page may be plain HTML, or uses a stack outside our fingerprint set.
+              </div>
+            </div>
+          ) : (
+            Object.entries(grouped).map(([cat, items]) => (
+              <div key={cat} className="ci-tech-group">
+                <div className="ci-tech-cat">{cat}</div>
+                {items.map((m, i) => (
+                  <div key={i} className="ci-tech-row" title={m.evidence.join('\n')}>
+                    <span className="ci-tech-name">{m.name}</span>
+                    <span className="ci-tech-ev">{m.evidence.length} signal(s)</span>
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- A11yPanel -------------------------------------------------------------
+
+export function A11yPanel() {
+  const [data, setData] = useState<A11yReport | undefined>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const run = useCallback(async () => {
+    setBusy(true);
+    setError(undefined);
+    const r = await runTool<A11yReport>('analyze_a11y');
+    setBusy(false);
+    if (!r.ok) setError(r.error.message);
+    else setData(r.data);
+  }, []);
+  useEffect(() => { void run(); }, [run]);
+
+  return (
+    <div className="ci-panel" data-testid="ci-panel-a11y">
+      <div className="ci-panel-bar">
+        <button type="button" className="btn btn-sm btn-primary" onClick={run} disabled={busy}>
+          {busy ? 'Auditing…' : 'Re-audit'}
+        </button>
+        {data && (
+          <span className="ci-panel-meta">
+            {data.issues.length} rule(s) · {data.total} element(s)
+          </span>
+        )}
+      </div>
+      {error && <div className="console-notice" role="alert" style={errNoticeStyle}>{error}</div>}
+      {data && (
+        <div className="ci-cards" data-testid="ci-a11y">
+          {data.issues.length === 0 ? (
+            <div className="empty-state">
+              <span className="ic" style={{ width: 28, height: 28 }}>{Ic.console}</span>
+              <div className="empty-state-title">No accessibility issues detected</div>
+              <div className="empty-state-desc">
+                This is a light audit — for a full WCAG pass, run axe-core or Lighthouse.
+              </div>
+            </div>
+          ) : (
+            data.issues.map((i, idx) => (
+              <div key={idx} className={'ci-card ci-sev-' + i.severity}>
+                <div className="ci-card-hd">
+                  <span className={'ci-sev-pill ci-sev-pill-' + i.severity}>{i.severity}</span>
+                  <span className="ci-card-cat">{i.rule}</span>
+                  {i.count > 1 && <span className="ci-card-count">×{i.count}</span>}
+                </div>
+                <div className="ci-card-desc">{i.description}</div>
+                <div className="ci-card-fix">
+                  <strong>Fix:</strong> {i.suggestion}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- helpers ---------------------------------------------------------------
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }

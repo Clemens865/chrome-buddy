@@ -821,3 +821,30 @@ button.ctx-chip.is-on { color: var(--accent); background: var(--accent-soft); }
 .ci-sec-state { font-size: 12.5px; color: var(--panel-fg); line-height: 1.45; margin-top: 2px; }
 .ci-sec-list { margin: 8px 0 0; padding-left: 20px; font-size: 11.5px; color: var(--panel-muted); display: flex; flex-direction: column; gap: 3px; }
 .ci-sec-list code { background: var(--code); padding: 0 4px; border-radius: 3px; }
+.ci-modes { overflow-x: auto; scrollbar-width: thin; }
+.ci-modes::-webkit-scrollbar { height: 4px; }
+.ci-mode { white-space: nowrap; }
+/* Storage panel */
+.ci-storage { padding: 12px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.ci-storage-totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ci-storage-area { border: 1px solid var(--panel-border-soft); border-radius: 8px; padding: 8px 10px; background: var(--panel-elev); }
+.ci-storage-area-key { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--panel-muted); }
+.ci-storage-area-val { font-size: 13px; font-weight: 600; color: var(--panel-fg); font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; }
+.ci-storage-hd { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--panel-muted); margin-top: 4px; }
+.ci-storage-flagged { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid rgba(245,158,11,.4); border-radius: 8px; background: color-mix(in srgb, #F59E0B 6%, transparent); }
+.ci-storage-flag-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--panel-fg); }
+.ci-storage-flag-row code { background: var(--code); padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+.ci-storage-flag-why { color: var(--panel-muted); }
+.ci-storage-list { display: flex; flex-direction: column; gap: 4px; }
+.ci-storage-row { display: grid; grid-template-columns: 56px 1fr auto auto; gap: 8px; padding: 6px 0; align-items: center; font-size: 11.5px; border-bottom: 1px solid var(--panel-border-soft); }
+.ci-storage-key { background: var(--code); padding: 1px 5px; border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 11px; }
+.ci-storage-preview { color: var(--panel-muted); font-style: italic; }
+.ci-storage-bytes { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: var(--panel-muted-soft); }
+/* Tech stack panel */
+.ci-tech { padding: 12px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.ci-tech-group { border: 1px solid var(--panel-border-soft); border-radius: 8px; padding: 8px 12px; background: var(--panel-elev); }
+.ci-tech-cat { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--panel-muted); margin-bottom: 4px; }
+.ci-tech-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; font-size: 12.5px; color: var(--panel-fg); border-bottom: 1px solid var(--panel-border-soft); }
+.ci-tech-row:last-child { border-bottom: 0; }
+.ci-tech-name { font-weight: 500; }
+.ci-tech-ev { font-size: 10.5px; color: var(--panel-muted); font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; }

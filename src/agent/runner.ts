@@ -70,6 +70,10 @@ const AGENT_TOOLS = new Set([
   'web_vitals',
   'read_network',
   'scan_security',
+  'read_storage',
+  'scan_sensitive_data',
+  'detect_tech_stack',
+  'analyze_a11y',
   'ask_user',
 ]);
 

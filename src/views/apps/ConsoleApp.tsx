@@ -9,10 +9,28 @@ import {
   type LogEntry,
   type LogLevel,
 } from '../../console';
-import { ErrorsPanel, NetworkPanel, VitalsPanel, SecurityPanel } from './consolePanels';
+import {
+  ErrorsPanel,
+  NetworkPanel,
+  VitalsPanel,
+  SecurityPanel,
+  StoragePanel,
+  SensitivePanel,
+  TechStackPanel,
+  A11yPanel,
+} from './consolePanels';
 
 type Filter = 'all' | LogLevel;
-type Mode = 'console' | 'errors' | 'network' | 'vitals' | 'security';
+type Mode =
+  | 'console'
+  | 'errors'
+  | 'network'
+  | 'vitals'
+  | 'security'
+  | 'storage'
+  | 'sensitive'
+  | 'tech'
+  | 'a11y';
 const TABS: Filter[] = ['all', 'error', 'warn', 'log', 'net'];
 const MODES: { id: Mode; label: string }[] = [
   { id: 'console', label: 'Console' },
@@ -20,6 +38,10 @@ const MODES: { id: Mode; label: string }[] = [
   { id: 'network', label: 'Network' },
   { id: 'vitals', label: 'Vitals' },
   { id: 'security', label: 'Security' },
+  { id: 'storage', label: 'Storage' },
+  { id: 'sensitive', label: 'Secrets' },
+  { id: 'tech', label: 'Stack' },
+  { id: 'a11y', label: 'A11y' },
 ];
 
 export function ConsoleApp({ onBack }: { onBack: () => void }) {
@@ -120,6 +142,10 @@ export function ConsoleApp({ onBack }: { onBack: () => void }) {
       {mode === 'network' && <NetworkPanel capturing={capturing} />}
       {mode === 'vitals' && <VitalsPanel />}
       {mode === 'security' && <SecurityPanel />}
+      {mode === 'storage' && <StoragePanel />}
+      {mode === 'sensitive' && <SensitivePanel />}
+      {mode === 'tech' && <TechStackPanel />}
+      {mode === 'a11y' && <A11yPanel />}
 
       {mode === 'console' && (
         <>

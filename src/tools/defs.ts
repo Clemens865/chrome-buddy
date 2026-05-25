@@ -550,6 +550,63 @@ export const scanSecurityTool: ToolDefinition = {
   handler: notWired('scan_security'),
 };
 
+// --- read_storage (Console-Buddy parity, Tier 2) ---------------------------
+export const readStorageTool: ToolDefinition = {
+  name: 'read_storage',
+  description:
+    "Inspect the active page's localStorage, sessionStorage, and cookies. " +
+    'Returns aggregate counts, total bytes, the top-N largest entries, and a ' +
+    'list of keys flagged as token / credential / PII by name. Values are ' +
+    'NEVER returned in cleartext — only a shape preview ("jwt-ish 247 chars").',
+  paramsSchema: objectSchema(
+    {
+      limit: { type: 'number', description: 'Max number of top entries to return (default 10).' },
+    },
+    [],
+  ),
+  consequential: false,
+  handler: notWired('read_storage'),
+};
+
+// --- scan_sensitive_data (Console-Buddy parity, Tier 2) --------------------
+export const scanSensitiveDataTool: ToolDefinition = {
+  name: 'scan_sensitive_data',
+  description:
+    "Scan the active page's storage values AND visible body text for leaked " +
+    'secrets (API keys, JWTs, AWS keys, PEM private keys, Stripe/GitHub/Slack ' +
+    'tokens), and PII (credit cards w/ Luhn, emails, phone numbers). Matched ' +
+    'values are returned in redacted form (first 4 + last 4 chars only).',
+  paramsSchema: objectSchema({}, []),
+  consequential: false,
+  handler: notWired('scan_sensitive_data'),
+};
+
+// --- detect_tech_stack (Console-Buddy parity, Tier 2) ----------------------
+export const detectTechStackTool: ToolDefinition = {
+  name: 'detect_tech_stack',
+  description:
+    'Identify which frontend frameworks, UI libraries, CSS frameworks, ' +
+    'analytics tools, and CDN/hosts are in use on the active page. Uses ' +
+    'Wappalyzer-style fingerprinting (window globals, script src, link href, ' +
+    'meta generator, cookies). Returns matches with evidence per signal.',
+  paramsSchema: objectSchema({}, []),
+  consequential: false,
+  handler: notWired('detect_tech_stack'),
+};
+
+// --- analyze_a11y (Console-Buddy parity, Tier 2) ---------------------------
+export const analyzeA11yTool: ToolDefinition = {
+  name: 'analyze_a11y',
+  description:
+    'Audit the active page for common accessibility issues: missing img alt, ' +
+    'unlabeled form controls, missing <html lang>, missing <title>, heading ' +
+    'order jumps, no <h1>, unlabeled buttons / links. Returns severity-sorted ' +
+    'issues with fix suggestions.',
+  paramsSchema: objectSchema({}, []),
+  consequential: false,
+  handler: notWired('analyze_a11y'),
+};
+
 // --- ask_user (FR-TOOLS-11) ------------------------------------------------
 export const askUserTool: ToolDefinition = {
   name: 'ask_user',
@@ -602,5 +659,9 @@ export const stubToolDefs: ToolDefinition[] = [
   webVitalsTool,
   readNetworkTool,
   scanSecurityTool,
+  readStorageTool,
+  scanSensitiveDataTool,
+  detectTechStackTool,
+  analyzeA11yTool,
   askUserTool,
 ];

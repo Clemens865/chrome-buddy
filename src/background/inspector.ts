@@ -8,6 +8,10 @@
 // passed to `func:` is serialised — keep it self-contained (no closure refs).
 import { ok, err, type ToolResult } from '../types';
 import { matchErrors } from '../console/errorPatterns';
+import { scanSensitive } from '../console/sensitivePatterns';
+import { detectTech } from '../console/techStack';
+import { analyzeA11y } from '../console/a11y';
+import { summarizeStorage } from '../console/storageSummary';
 import { consoleController } from '../console';
 import { resolveActiveTabId } from './pageTools';
 
@@ -198,4 +202,210 @@ export async function executeAnalyzeErrors(args: Record<string, unknown>): Promi
     matchCount: matches.length,
     matches,
   });
+}
+
+// ---- read_storage ---------------------------------------------------------
+
+async function probeStorage(tabId: number) {
+  const res = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    func: () => {
+      const local: { key: string; value: string }[] = [];
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k == null) continue;
+          local.push({ key: k, value: localStorage.getItem(k) ?? '' });
+        }
+      } catch {
+        /* sandboxed iframes can throw on storage access; ignore */
+      }
+      const session: { key: string; value: string }[] = [];
+      try {
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (k == null) continue;
+          session.push({ key: k, value: sessionStorage.getItem(k) ?? '' });
+        }
+      } catch {
+        /* same */
+      }
+      const cookies: { name: string; value: string }[] = (document.cookie || '')
+        .split(/;\s*/)
+        .filter(Boolean)
+        .map((pair) => {
+          const idx = pair.indexOf('=');
+          return idx === -1
+            ? { name: pair, value: '' }
+            : { name: pair.slice(0, idx), value: pair.slice(idx + 1) };
+        });
+      return { url: location.href, localStorage: local, sessionStorage: session, cookies };
+    },
+  });
+  return res?.[0]?.result as
+    | {
+        url: string;
+        localStorage: { key: string; value: string }[];
+        sessionStorage: { key: string; value: string }[];
+        cookies: { name: string; value: string }[];
+      }
+    | undefined;
+}
+
+export async function executeReadStorage(args: Record<string, unknown>): Promise<ToolResult> {
+  const limit = typeof args.limit === 'number' && args.limit > 0 ? Math.floor(args.limit) : 10;
+  const tabId = await resolveActiveTabId();
+  if (typeof tabId !== 'number') return err('undriveable', 'No active web tab to inspect.');
+  try {
+    const snap = await probeStorage(tabId);
+    if (!snap) return err('runtime-error', 'Could not read storage on the active page.');
+    const report = summarizeStorage(snap, limit);
+    return ok(report);
+  } catch (e) {
+    return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
+// ---- scan_sensitive_data --------------------------------------------------
+
+export async function executeScanSensitive(): Promise<ToolResult> {
+  const tabId = await resolveActiveTabId();
+  if (typeof tabId !== 'number') return err('undriveable', 'No active web tab to inspect.');
+  try {
+    const snap = await probeStorage(tabId);
+    // Collect the corpus: every storage value + the page's visible text.
+    const sources: { source: string; text: string }[] = [];
+    if (snap) {
+      for (const e of snap.localStorage) sources.push({ source: `localStorage:${e.key}`, text: e.value });
+      for (const e of snap.sessionStorage) sources.push({ source: `sessionStorage:${e.key}`, text: e.value });
+      for (const e of snap.cookies) sources.push({ source: `cookie:${e.name}`, text: e.value });
+    }
+    // Visible body text (capped) so we catch leaked secrets rendered inline.
+    const bodyText = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: () => (document.body?.innerText ?? '').slice(0, 50_000),
+    });
+    const dom = bodyText?.[0]?.result as string | undefined;
+    if (dom) sources.push({ source: 'dom', text: dom });
+    const hits = scanSensitive(sources);
+    return ok({ url: snap?.url, hits, scanned: sources.length });
+  } catch (e) {
+    return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
+// ---- detect_tech_stack ----------------------------------------------------
+
+async function probeTechStack(tabId: number) {
+  const res = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    func: () => {
+      // Probe a small fixed set of well-known globals. Scanning ALL window
+      // props is expensive and would leak too many noisy names.
+      const CANDIDATES = [
+        'React', '__NEXT_DATA__', '__NUXT__', 'Vue', 'ng', 'angular', 'Svelte',
+        'Ember', 'jQuery', '$', '__REDUX_DEVTOOLS_EXTENSION__', 'Shopify',
+        'gtag', 'analytics', 'mixpanel', 'hj', 'dataLayer',
+      ];
+      const w = window as unknown as Record<string, unknown>;
+      const globals = CANDIDATES.filter((k) => typeof w[k] !== 'undefined');
+      const scripts = Array.from(document.querySelectorAll('script[src]'))
+        .map((s) => (s as HTMLScriptElement).src)
+        .filter(Boolean);
+      const links = Array.from(document.querySelectorAll('link[href]'))
+        .map((s) => (s as HTMLLinkElement).href)
+        .filter(Boolean);
+      const metaGenerator = document.querySelector('meta[name="generator" i]')?.getAttribute('content') ?? undefined;
+      const cookies = (document.cookie || '')
+        .split(/;\s*/)
+        .map((pair) => pair.split('=')[0])
+        .filter(Boolean);
+      return { url: location.href, globals, scripts, links, metaGenerator, cookies };
+    },
+  });
+  return res?.[0]?.result as
+    | {
+        url: string;
+        globals: string[];
+        scripts: string[];
+        links: string[];
+        metaGenerator?: string;
+        cookies: string[];
+      }
+    | undefined;
+}
+
+export async function executeDetectTechStack(): Promise<ToolResult> {
+  const tabId = await resolveActiveTabId();
+  if (typeof tabId !== 'number') return err('undriveable', 'No active web tab to inspect.');
+  try {
+    const probe = await probeTechStack(tabId);
+    if (!probe) return err('runtime-error', 'Could not inspect the active page.');
+    const matches = detectTech(probe);
+    return ok({ url: probe.url, count: matches.length, matches });
+  } catch (e) {
+    return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
+// ---- analyze_a11y ---------------------------------------------------------
+
+async function probeA11y(tabId: number) {
+  const res = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    func: () => {
+      const images = Array.from(document.images).map((img) => ({
+        src: img.src,
+        // Distinguish "alt missing entirely" from alt="" (decorative).
+        alt: img.hasAttribute('alt') ? img.getAttribute('alt') ?? '' : undefined,
+        role: img.getAttribute('role') ?? undefined,
+      }));
+      const controls = Array.from(
+        document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea'),
+      ).map((el) => {
+        const id = el.id || undefined;
+        // <label for="id"> reference OR a wrapping <label>.
+        const refLabel = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`) : null;
+        const wrap = el.closest('label');
+        return {
+          tag: el.tagName.toLowerCase() as 'input' | 'select' | 'textarea',
+          type: (el as HTMLInputElement).type,
+          id,
+          name: (el as HTMLInputElement).name || undefined,
+          ariaLabel: el.getAttribute('aria-label') ?? undefined,
+          hasLabel: !!(refLabel || wrap),
+        };
+      });
+      const headingLevels = Array.from(document.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')).map(
+        (h) => Number(h.tagName.slice(1)),
+      );
+      const htmlLang = document.documentElement.getAttribute('lang') || undefined;
+      const title = document.title || undefined;
+      const unlabeledButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).filter(
+        (b) => !b.textContent?.trim() && !b.getAttribute('aria-label'),
+      ).length;
+      const unlabeledLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a')).filter(
+        (a) => !a.textContent?.trim() && !a.getAttribute('aria-label'),
+      ).length;
+      return { images, controls, headingLevels, htmlLang, title, unlabeledButtons, unlabeledLinks };
+    },
+  });
+  return res?.[0]?.result;
+}
+
+export async function executeAnalyzeA11y(): Promise<ToolResult> {
+  const tabId = await resolveActiveTabId();
+  if (typeof tabId !== 'number') return err('undriveable', 'No active web tab to inspect.');
+  try {
+    const sig = await probeA11y(tabId);
+    if (!sig) return err('runtime-error', 'Could not inspect the active page.');
+    const report = analyzeA11y(sig);
+    return ok(report);
+  } catch (e) {
+    return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
 }
