@@ -4,7 +4,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 export const DB_NAME = 'chrome-buddy';
-const VERSION = 8;
+const VERSION = 9;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -42,6 +42,17 @@ export function getDB(): Promise<IDBPDatabase> {
         // Routing layer 1 default sink — see docs/gemini/action-items.md.
         if (!d.objectStoreNames.contains('notes')) {
           d.createObjectStore('notes', { keyPath: 'key' }).createIndex('updatedAt', 'updatedAt');
+        }
+        // Library v1 — RAG index. One store for docs (display unit, user-
+        // visible records), one for chunks (search unit, embedded vectors).
+        // Cascade-on-delete is enforced in code (deleteDoc removes chunks).
+        if (!d.objectStoreNames.contains('libraryDocs')) {
+          const docs = d.createObjectStore('libraryDocs', { keyPath: 'id' });
+          docs.createIndex('updatedAt', 'updatedAt');
+          docs.createIndex('source', 'source');
+        }
+        if (!d.objectStoreNames.contains('libraryChunks')) {
+          d.createObjectStore('libraryChunks', { keyPath: 'id' }).createIndex('docId', 'docId');
         }
       },
     });

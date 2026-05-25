@@ -621,6 +621,35 @@ export const analyzeSeoTool: ToolDefinition = {
   handler: notWired('analyze_seo'),
 };
 
+// --- search_library (Library v1 — local RAG over notes + chats + imports) --
+export const searchLibraryTool: ToolDefinition = {
+  name: 'search_library',
+  description:
+    "Search the user's PRIVATE local library (their notes, past chats, " +
+    "and any markdown files they imported) for content semantically similar " +
+    'to a question. Returns the top-K matching snippets with the parent ' +
+    "doc title + source so you can cite them. Use this when the user asks " +
+    "'what do I have on X?' / 'what did I write about Y?' or whenever " +
+    "their own prior notes / chats / imports would help answer the question.",
+  paramsSchema: objectSchema(
+    {
+      query: { type: 'string', description: 'The question or topic to search for.' },
+      k: {
+        type: 'number',
+        description: 'Max number of snippets to return (default 5, hard cap 20).',
+      },
+      threshold: {
+        type: 'number',
+        description:
+          'Minimum cosine-similarity score to include (default 0). Pass 0.65+ for stricter quality.',
+      },
+    },
+    ['query'],
+  ),
+  consequential: false,
+  handler: notWired('search_library'),
+};
+
 // --- ask_user (FR-TOOLS-11) ------------------------------------------------
 export const askUserTool: ToolDefinition = {
   name: 'ask_user',
@@ -678,5 +707,6 @@ export const stubToolDefs: ToolDefinition[] = [
   detectTechStackTool,
   analyzeA11yTool,
   analyzeSeoTool,
+  searchLibraryTool,
   askUserTool,
 ];

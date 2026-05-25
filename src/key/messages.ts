@@ -169,6 +169,16 @@ export interface AppDeleteMessage {
   id: string;
 }
 
+/** Library v1 — index one doc into the local RAG library. Used by the chat
+ * auto-mirror, note auto-mirror, folder import flow, and tests. */
+export interface LibraryIndexMessage {
+  type: 'LIBRARY_INDEX';
+  source: 'chat' | 'note' | 'folder' | 'manual';
+  sourceRef?: string;
+  title: string;
+  content: string;
+}
+
 /** Vision Mode (Computer Use) — one model turn. Stateless: caller passes the
  *  full `contents` array each turn (the SW only adds the system instruction +
  *  the computer_use tool config). Returns the model's text + function calls. */
@@ -215,7 +225,8 @@ export type BuddyMessage =
   | WorkflowDeleteMessage
   | AppSaveMessage
   | AppListMessage
-  | AppDeleteMessage;
+  | AppDeleteMessage
+  | LibraryIndexMessage;
 
 // ---- Responses --------------------------------------------------------------
 
@@ -331,6 +342,12 @@ export interface AppDeleteResponse {
   ok: true;
 }
 
+export interface LibraryIndexResponse {
+  type: 'LIBRARY_INDEX';
+  ok: true;
+  result: ToolResult;
+}
+
 /** Uniform error envelope returned for any failed message handling. */
 export interface ErrorResponse {
   type: 'ERROR';
@@ -415,6 +432,7 @@ export type BuddyResponse =
   | AppSaveResponse
   | AppListResponse
   | AppDeleteResponse
+  | LibraryIndexResponse
   | ErrorResponse;
 
 /** Type guard: is this an inbound message the SW should handle? */
@@ -444,6 +462,7 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'APP_DELETE' ||
     t === 'VISION_TURN' ||
     t === 'VISION_ACTION' ||
-    t === 'VISION_CAPTURE'
+    t === 'VISION_CAPTURE' ||
+    t === 'LIBRARY_INDEX'
   );
 }

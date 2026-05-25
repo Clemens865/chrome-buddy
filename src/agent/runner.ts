@@ -75,6 +75,7 @@ const AGENT_TOOLS = new Set([
   'detect_tech_stack',
   'analyze_a11y',
   'analyze_seo',
+  'search_library',
   'ask_user',
 ]);
 

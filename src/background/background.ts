@@ -46,6 +46,7 @@ import {
   executeAnalyzeA11y,
   executeAnalyzeSeo,
 } from './inspector';
+import { executeSearchLibrary, executeIndexDoc } from './library';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
 import { saveWorkflow, listWorkflows, deleteWorkflow } from '../workflows/store';
@@ -255,6 +256,8 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
   detect_tech_stack: () => executeDetectTechStack(),
   analyze_a11y: () => executeAnalyzeA11y(),
   analyze_seo: () => executeAnalyzeSeo(),
+  // Library RAG (local IDB index, Gemini embeddings).
+  search_library: (a, k) => executeSearchLibrary(a, k),
 };
 
 /** Default model for audio transcription (audio-understanding capable). */
@@ -437,6 +440,22 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
       case 'APP_DELETE': {
         await deleteApp(message.id);
         return { type: 'APP_DELETE', ok: true };
+      }
+
+      case 'LIBRARY_INDEX': {
+        // Used by the chat auto-mirror, the note auto-mirror, the folder
+        // import flow, and the e2e tests. Each call chunks, embeds (Gemini),
+        // and stores one doc atomically.
+        const result = await executeIndexDoc(
+          {
+            source: message.source,
+            sourceRef: message.sourceRef,
+            title: message.title,
+            content: message.content,
+          },
+          getStoredKey,
+        );
+        return { type: 'LIBRARY_INDEX', ok: true, result };
       }
 
       case 'IMAGE_GENERATE': {
