@@ -1,0 +1,175 @@
+// Build a paste-ready bug-fix prompt from console-inspector findings.
+// Goal: the user clicks "Copy fix prompt" in the Errors panel, pastes the
+// result into their coding IDE (Cursor / Claude Code / Continue / Cody / …),
+// and the IDE has everything needed to locate and fix the bug.
+//
+// Pure module — no chrome, no I/O — fully unit-testable.
+
+import type { ErrorMatch, Severity } from './errorPatterns';
+import type { LogEntry } from './capture';
+
+export interface FixPromptContext {
+  /** The page URL where the error was captured. */
+  url?: string;
+  /** Page title (used as a friendly label when the URL is long). */
+  title?: string;
+  /** Detected tech stack (from detect_tech_stack), e.g. ['React', 'Next.js']. */
+  techStack?: readonly string[];
+}
+
+export interface FixPromptInput {
+  /** The pattern matches from analyze_errors (grouped, severity-sorted). */
+  matches: readonly ErrorMatch[];
+  /** Optional raw console snapshot — used to add concrete stack-trace lines. */
+  logs?: readonly LogEntry[];
+  context?: FixPromptContext;
+}
+
+/**
+ * Build a single, paste-ready markdown prompt covering ALL matched patterns.
+ * Designed for "Copy and paste this into your IDE" — opens with what / where /
+ * stack, then per-error diagnosis + fix, then a numbered task list.
+ */
+export function buildFixPrompt(input: FixPromptInput): string {
+  const ctx = input.context ?? {};
+  const lines: string[] = [];
+
+  // --- Header ----------------------------------------------------------
+  lines.push('# Bug-fix request — captured by Chrome Buddy console inspector');
+  lines.push('');
+  lines.push('I captured the following error(s) on a live page. Please locate the');
+  lines.push('offending code in this repository and fix each one. Use the framework-');
+  lines.push('idiomatic pattern noted under each error and run the test suite when done.');
+  lines.push('');
+
+  // --- Context block ---------------------------------------------------
+  if (ctx.url || ctx.title || (ctx.techStack && ctx.techStack.length)) {
+    lines.push('## Context');
+    if (ctx.url) lines.push(`- **Page URL:** ${ctx.url}`);
+    if (ctx.title) lines.push(`- **Page title:** ${ctx.title}`);
+    if (ctx.techStack && ctx.techStack.length) {
+      lines.push(`- **Detected stack:** ${ctx.techStack.join(', ')}`);
+    }
+    lines.push('');
+  }
+
+  // --- Per-error sections ----------------------------------------------
+  if (input.matches.length === 0) {
+    lines.push('## Errors');
+    lines.push('');
+    lines.push('_No known patterns matched. See the raw console snapshot below._');
+    lines.push('');
+  } else {
+    input.matches.forEach((m, idx) => {
+      lines.push(`## ${idx + 1}. ${m.category}${m.framework ? ` · ${m.framework}` : ''} — \`${m.severity}\``);
+      lines.push('');
+      lines.push(`**Diagnosis:** ${m.description}`);
+      lines.push('');
+      lines.push(`**Suggested fix:** ${m.suggestion}`);
+      if (m.docUrl) {
+        lines.push('');
+        lines.push(`**Reference:** ${m.docUrl}`);
+      }
+      lines.push('');
+      lines.push('### Captured');
+      lines.push('```');
+      lines.push(truncate(m.text, 800));
+      lines.push('```');
+      if (m.count > 1) {
+        lines.push(`_This pattern fired ${m.count} time(s) during the capture._`);
+      }
+      // If we have raw logs, surface the FIRST entry that contains the
+      // matched text — its `source` field usually carries a stack-line URL.
+      const stackHint = input.logs ? findStackHint(input.logs, m.text) : undefined;
+      if (stackHint) {
+        lines.push('');
+        lines.push(`**Stack hint:** ${stackHint}`);
+      }
+      lines.push('');
+    });
+  }
+
+  // --- Raw snapshot tail (only when small enough to be useful) ---------
+  if (input.logs && input.logs.length > 0) {
+    const tail = input.logs.slice(-15);
+    lines.push('## Recent console snapshot');
+    lines.push('```');
+    for (const e of tail) {
+      const src = e.source ? ` @ ${shortSource(e.source)}` : '';
+      lines.push(`[${e.level}] ${truncate(e.text, 200)}${src}`);
+    }
+    lines.push('```');
+    lines.push('');
+  }
+
+  // --- Task block ------------------------------------------------------
+  lines.push('## Your task');
+  lines.push('');
+  lines.push('1. For each numbered error above, locate the offending code in this repo.');
+  lines.push('   (Search for the error text; check the stack-hint URL if present.)');
+  lines.push('2. Apply the suggested fix using the framework-idiomatic pattern.');
+  lines.push('3. Add or update a test so the regression cannot recur silently.');
+  lines.push('4. Run the project test suite and report which tests now pass.');
+  lines.push('');
+  lines.push('Treat errors marked `critical` or `high` as P0; surface `medium` and `low`');
+  lines.push('as follow-ups if a focused fix is more appropriate.');
+
+  return lines.join('\n');
+}
+
+/** Short single-error prompt for the per-card "Copy" button. */
+export function buildSingleFixPrompt(match: ErrorMatch, context?: FixPromptContext): string {
+  return buildFixPrompt({ matches: [match], context });
+}
+
+/**
+ * A compact "send to Buddy chat" prompt — uses the same diagnosis but asks
+ * Buddy to use its own tools (read_file / list_files / search_web) to find
+ * and apply the fix in the user's root folder.
+ */
+export function buildBuddyChatPrompt(input: FixPromptInput): string {
+  const ctx = input.context ?? {};
+  const lines: string[] = [];
+  lines.push("Use list_files + read_file to locate the source of this error in the user's");
+  lines.push('root folder, then propose a fix. If a write_file would correct it, prepare it');
+  lines.push('and wait for confirmation.');
+  lines.push('');
+  if (ctx.url) lines.push(`Page URL: ${ctx.url}`);
+  if (ctx.techStack?.length) lines.push(`Detected stack: ${ctx.techStack.join(', ')}`);
+  lines.push('');
+  for (const m of input.matches.slice(0, 5)) {
+    lines.push(`- [${m.severity}] ${m.category}: ${truncate(m.text, 240)}`);
+    lines.push(`  → Suggestion: ${m.suggestion}`);
+  }
+  return lines.join('\n');
+}
+
+// --- helpers ---------------------------------------------------------------
+
+function truncate(s: string, max: number): string {
+  if (!s) return '';
+  return s.length <= max ? s : s.slice(0, max - 1) + '…';
+}
+
+function shortSource(s: string): string {
+  try {
+    const u = new URL(s);
+    return `${u.host}${u.pathname}`;
+  } catch {
+    return s;
+  }
+}
+
+/** Return the first log line whose text contains the matched substring, with
+ * its source URL appended as a stack-hint. Used to enrich the per-error block. */
+function findStackHint(logs: readonly LogEntry[], matchText: string): string | undefined {
+  const needle = matchText.slice(0, 40);
+  for (const e of logs) {
+    if (e.text.includes(needle) && e.source) return shortSource(e.source);
+  }
+  return undefined;
+}
+
+/** Test-only helper — exposed so unit tests can verify severity ordering. */
+export const severityRank = (s: Severity): number =>
+  s === 'critical' ? 0 : s === 'high' ? 1 : s === 'medium' ? 2 : 3;

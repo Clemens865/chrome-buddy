@@ -81,7 +81,7 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
 
   let content;
   if (view === 'apps') {
-    if (openApp === 'console') content = <ConsoleApp onBack={() => setOpenApp(null)} />;
+    if (openApp === 'console') content = <ConsoleApp onBack={() => setOpenApp(null)} onHandoff={runPreset} />;
     else if (openApp === 'image') content = <ImageApp onBack={() => setOpenApp(null)} />;
     else if (openApp === 'transcriber') content = <TranscriberApp onBack={() => setOpenApp(null)} />;
     else content = <AppsView onOpenApp={setOpenApp} onPreset={runPreset} />;

@@ -18,6 +18,7 @@ import {
   SensitivePanel,
   TechStackPanel,
   A11yPanel,
+  type OnHandoff,
 } from './consolePanels';
 
 type Filter = 'all' | LogLevel;
@@ -44,7 +45,13 @@ const MODES: { id: Mode; label: string }[] = [
   { id: 'a11y', label: 'A11y' },
 ];
 
-export function ConsoleApp({ onBack }: { onBack: () => void }) {
+export function ConsoleApp({
+  onBack,
+  onHandoff,
+}: {
+  onBack: () => void;
+  onHandoff?: OnHandoff;
+}) {
   const app = appById('console');
   const controllerRef = useRef(consoleController());
 
@@ -138,7 +145,7 @@ export function ConsoleApp({ onBack }: { onBack: () => void }) {
         ))}
       </div>
 
-      {mode === 'errors' && <ErrorsPanel capturing={capturing} />}
+      {mode === 'errors' && <ErrorsPanel capturing={capturing} onHandoff={onHandoff} />}
       {mode === 'network' && <NetworkPanel capturing={capturing} />}
       {mode === 'vitals' && <VitalsPanel />}
       {mode === 'security' && <SecurityPanel />}
