@@ -219,6 +219,44 @@ async function getStoredKey(provider: string): Promise<string | undefined> {
   return readSessionApiKey(provider);
 }
 
+/**
+ * Tool-name → handler map for TOOL_EXEC routing. Replaces the previous 17-deep
+ * if/else chain; new tools just add a row here. Handlers that need the API key
+ * receive `getStoredKey`; handlers that don't ignore the second arg.
+ *
+ * SECURITY: this is the SW-side dispatch. Consequential tools (send_webhook,
+ * write_file) only reach this map AFTER the runtime's HITL gate approved them
+ * in the UI — see src/agent/runner.ts.
+ */
+type ToolHandler = (
+  args: Record<string, unknown>,
+  getKey: typeof getStoredKey,
+) => Promise<import('../types').ToolResult>;
+
+const TOOL_HANDLERS: Record<string, ToolHandler> = {
+  // Consequential (HITL-gated upstream) — SW just performs.
+  send_webhook: (a) => executeWebhook(a),
+  write_file: (a) => executeFileWrite(a),
+  // Network/search built-ins (need the API key).
+  search_web: (a, k) => executeWebSearch(a, k),
+  fetch_url: (a, k) => executeFetchUrl(a, k),
+  file_search: (a, k) => executeFileSearch(a, k),
+  // GitHub Contents API (uses the stored PAT internally).
+  github_write: (a) => executeGithubWrite(a),
+  github_read: (a) => executeGithubRead(a),
+  github_list: (a) => executeGithubList(a),
+  // Console Inspector — Tier 1 + Tier 2.
+  analyze_errors: (a) => executeAnalyzeErrors(a),
+  web_vitals: () => executeWebVitals(),
+  read_network: (a) => executeReadNetwork(a),
+  scan_security: () => executeScanSecurity(),
+  read_storage: (a) => executeReadStorage(a),
+  scan_sensitive_data: () => executeScanSensitive(),
+  detect_tech_stack: () => executeDetectTechStack(),
+  analyze_a11y: () => executeAnalyzeA11y(),
+  analyze_seo: () => executeAnalyzeSeo(),
+};
+
 /** Default model for audio transcription (audio-understanding capable). */
 const TRANSCRIBE_MODEL = 'gemini-2.5-flash';
 const TRANSCRIBE_PROMPT =
@@ -293,64 +331,14 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
       }
 
       case 'TOOL_EXEC': {
-        // send_webhook is consequential — it only reaches here AFTER the runtime's
-        // HITL gate obtained user approval (UI side). The SW just performs it.
-        if (message.tool === 'send_webhook') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeWebhook(message.args) };
-        }
-        if (message.tool === 'search_web') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeWebSearch(message.args, getStoredKey) };
-        }
-        if (message.tool === 'fetch_url') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeFetchUrl(message.args, getStoredKey) };
-        }
-        if (message.tool === 'file_search') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeFileSearch(message.args, getStoredKey) };
-        }
-        if (message.tool === 'github_write') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeGithubWrite(message.args) };
-        }
-        if (message.tool === 'github_read') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeGithubRead(message.args) };
-        }
-        if (message.tool === 'github_list') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeGithubList(message.args) };
-        }
-        // write_file is consequential — only reaches here after HITL approval.
-        if (message.tool === 'write_file') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeFileWrite(message.args) };
-        }
-        // Console Inspector Tier-1 tools — all SW-side, no HITL.
-        if (message.tool === 'analyze_errors') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeAnalyzeErrors(message.args) };
-        }
-        if (message.tool === 'web_vitals') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeWebVitals() };
-        }
-        if (message.tool === 'read_network') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeReadNetwork(message.args) };
-        }
-        if (message.tool === 'scan_security') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeScanSecurity() };
-        }
-        if (message.tool === 'read_storage') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeReadStorage(message.args) };
-        }
-        if (message.tool === 'scan_sensitive_data') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeScanSensitive() };
-        }
-        if (message.tool === 'detect_tech_stack') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeDetectTechStack() };
-        }
-        if (message.tool === 'analyze_a11y') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeAnalyzeA11y() };
-        }
-        if (message.tool === 'analyze_seo') {
-          return { type: 'TOOL_EXEC', ok: true, result: await executeAnalyzeSeo() };
-        }
-        // DOM-first: run page read/act tools in the SW against the active tab.
-        // Restricted URLs are refused inside executePageTool with a structured error.
-        const result = await executePageTool(message.tool, message.args);
+        // Look up the handler in the dispatch map; fall back to executePageTool
+        // for DOM-first page tools (navigate, click, type, scroll, read_dom,
+        // extract, screenshot, summarize). Restricted URLs are refused inside
+        // executePageTool with a structured error.
+        const handler = TOOL_HANDLERS[message.tool];
+        const result = handler
+          ? await handler(message.args, getStoredKey)
+          : await executePageTool(message.tool, message.args);
         return { type: 'TOOL_EXEC', ok: true, result };
       }
 
