@@ -17,11 +17,12 @@ import type { AppConfig } from '../apps/types';
 
 export type AppId = 'console' | 'image' | 'transcriber';
 
-/** Chat presets launched from an app card instead of opening an app view. */
+/** Chat presets launched from an app card instead of opening an app view.
+ *  (Kept as a hook for future preset cards — Summarizer used to live here but
+ *  was removed from the grid per the apps-vs-chat-decision memory: anything
+ *  that's just "preset a chat prompt" doesn't earn an app card. Ask in chat.) */
 export type AppPreset = { prompt: string; mode: 'auto' | 'ask' | 'agent' };
-const PRESETS: Record<string, AppPreset> = {
-  summarizer: { prompt: 'Summarize this page into a concise TL;DR followed by the key points.', mode: 'ask' },
-};
+const PRESETS: Record<string, AppPreset> = {};
 
 export interface AppMeta {
   id: string;
@@ -33,7 +34,6 @@ export interface AppMeta {
 }
 
 export const APPS: AppMeta[] = [
-  { id: 'summarizer', icon: Ic.reader, name: 'Page Summarizer', desc: 'Distill any page into TL;DR + key points.', color: '#0EA5E9' },
   { id: 'console', icon: Ic.console, name: 'Console Inspector', desc: 'Read console logs and explain errors.', color: '#10B981' },
   { id: 'image', icon: Ic.image, name: 'Image Generator', desc: 'Generate images from a prompt.', color: '#A78BFA' },
   { id: 'transcriber', icon: Ic.mic, name: 'Audio Transcriber', desc: 'Turn an audio file into text.', color: '#0EA5E9' },
@@ -50,7 +50,7 @@ const GEN_COLOR = '#8B5CF6';
 export function AppsView({
   onOpenApp,
   onPreset,
-  recents = ['summarizer', 'image'],
+  recents = ['console', 'image'],
 }: {
   onOpenApp: (id: AppId) => void;
   onPreset: (preset: AppPreset) => void;
