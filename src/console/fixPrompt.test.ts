@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFixPrompt, buildSingleFixPrompt, buildBuddyChatPrompt } from './fixPrompt';
+import { buildFixPrompt, buildSingleFixPrompt, buildBuddyChatPrompt, buildFindingsPrompt, buildBuddyFindingsPrompt, type Finding } from './fixPrompt';
 import type { ErrorMatch } from './errorPatterns';
 
 const REACT_CRIT: ErrorMatch = {
@@ -100,6 +100,55 @@ describe('buildSingleFixPrompt', () => {
     const out = buildSingleFixPrompt(NULL_HIGH, { url: 'https://x.test' });
     expect(out).toContain('Null Reference');
     expect(out).toContain('https://x.test');
+  });
+});
+
+const A11Y_CRIT: Finding = {
+  rule: 'Form controls must have labels',
+  severity: 'critical',
+  description: '2 form control(s) have no associated <label> or aria-label.',
+  suggestion: 'Wrap the control in a <label>, link via for=/id=, or add aria-label="…".',
+  count: 2,
+};
+const SEO_HIGH: Finding = {
+  rule: 'Meta description',
+  severity: 'high',
+  description: 'No <meta name="description"> tag.',
+  suggestion: 'Add a unique 50-160 char description.',
+};
+
+describe('buildFindingsPrompt', () => {
+  it('headers the prompt with the topic name and renders each finding', () => {
+    const md = buildFindingsPrompt('Accessibility', [A11Y_CRIT], { url: 'https://x.test', techStack: ['React'] });
+    expect(md).toContain('# Accessibility fix request');
+    expect(md).toContain('## 1. Form controls must have labels — `critical`');
+    expect(md).toContain('Wrap the control in a <label>');
+    expect(md).toContain('Page URL:** https://x.test');
+    expect(md).toContain('Detected stack:** React');
+  });
+  it('surfaces count + detail when present', () => {
+    const md = buildFindingsPrompt('Accessibility', [{ ...A11Y_CRIT, detail: '2 controls' }]);
+    expect(md).toContain('2 element(s) triggered');
+    expect(md).toContain('Measured: 2 controls');
+  });
+  it('falls back to "no issues" message on empty', () => {
+    expect(buildFindingsPrompt('SEO', [])).toContain('No issues found');
+  });
+  it('ends with a task block referencing the topic in lowercase', () => {
+    const md = buildFindingsPrompt('SEO', [SEO_HIGH]);
+    expect(md).toContain('Locate each seo issue');
+    expect(md).toContain('Re-run the audit');
+  });
+});
+
+describe('buildBuddyFindingsPrompt', () => {
+  it('caps to 5 findings and embeds severity-tagged bullets', () => {
+    const many: Finding[] = Array.from({ length: 8 }, (_, i) => ({ ...SEO_HIGH, rule: `Rule ${i}` }));
+    const md = buildBuddyFindingsPrompt('SEO', many);
+    const bullets = md.match(/^- \[/gm) ?? [];
+    expect(bullets).toHaveLength(5);
+    expect(md).toContain('list_files');
+    expect(md).toContain('write_file');
   });
 });
 

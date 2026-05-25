@@ -607,6 +607,20 @@ export const analyzeA11yTool: ToolDefinition = {
   handler: notWired('analyze_a11y'),
 };
 
+// --- analyze_seo (Console-Buddy parity, Tier 3) ----------------------------
+export const analyzeSeoTool: ToolDefinition = {
+  name: 'analyze_seo',
+  description:
+    'Audit the active page for SEO best practices: title length, meta ' +
+    'description, viewport, canonical URL, Open Graph + Twitter Card tags, ' +
+    'heading structure (one h1), structured data (JSON-LD validity), robots ' +
+    'directive, lang attribute. Returns an overall 0-100 score and a sorted ' +
+    'list of issues with fix suggestions.',
+  paramsSchema: objectSchema({}, []),
+  consequential: false,
+  handler: notWired('analyze_seo'),
+};
+
 // --- ask_user (FR-TOOLS-11) ------------------------------------------------
 export const askUserTool: ToolDefinition = {
   name: 'ask_user',
@@ -663,5 +677,6 @@ export const stubToolDefs: ToolDefinition[] = [
   scanSensitiveDataTool,
   detectTechStackTool,
   analyzeA11yTool,
+  analyzeSeoTool,
   askUserTool,
 ];

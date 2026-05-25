@@ -18,6 +18,7 @@ import {
   SensitivePanel,
   TechStackPanel,
   A11yPanel,
+  SeoPanel,
   type OnHandoff,
 } from './consolePanels';
 
@@ -31,7 +32,8 @@ type Mode =
   | 'storage'
   | 'sensitive'
   | 'tech'
-  | 'a11y';
+  | 'a11y'
+  | 'seo';
 const TABS: Filter[] = ['all', 'error', 'warn', 'log', 'net'];
 const MODES: { id: Mode; label: string }[] = [
   { id: 'console', label: 'Console' },
@@ -43,6 +45,7 @@ const MODES: { id: Mode; label: string }[] = [
   { id: 'sensitive', label: 'Secrets' },
   { id: 'tech', label: 'Stack' },
   { id: 'a11y', label: 'A11y' },
+  { id: 'seo', label: 'SEO' },
 ];
 
 export function ConsoleApp({
@@ -148,11 +151,12 @@ export function ConsoleApp({
       {mode === 'errors' && <ErrorsPanel capturing={capturing} onHandoff={onHandoff} />}
       {mode === 'network' && <NetworkPanel capturing={capturing} />}
       {mode === 'vitals' && <VitalsPanel />}
-      {mode === 'security' && <SecurityPanel />}
+      {mode === 'security' && <SecurityPanel onHandoff={onHandoff} />}
       {mode === 'storage' && <StoragePanel />}
       {mode === 'sensitive' && <SensitivePanel />}
       {mode === 'tech' && <TechStackPanel />}
-      {mode === 'a11y' && <A11yPanel />}
+      {mode === 'a11y' && <A11yPanel onHandoff={onHandoff} />}
+      {mode === 'seo' && <SeoPanel onHandoff={onHandoff} />}
 
       {mode === 'console' && (
         <>

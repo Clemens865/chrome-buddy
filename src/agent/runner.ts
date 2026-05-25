@@ -74,6 +74,7 @@ const AGENT_TOOLS = new Set([
   'scan_sensitive_data',
   'detect_tech_stack',
   'analyze_a11y',
+  'analyze_seo',
   'ask_user',
 ]);
 

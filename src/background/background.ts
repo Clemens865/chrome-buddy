@@ -44,6 +44,7 @@ import {
   executeScanSensitive,
   executeDetectTechStack,
   executeAnalyzeA11y,
+  executeAnalyzeSeo,
 } from './inspector';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
@@ -343,6 +344,9 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         }
         if (message.tool === 'analyze_a11y') {
           return { type: 'TOOL_EXEC', ok: true, result: await executeAnalyzeA11y() };
+        }
+        if (message.tool === 'analyze_seo') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeAnalyzeSeo() };
         }
         // DOM-first: run page read/act tools in the SW against the active tab.
         // Restricted URLs are refused inside executePageTool with a structured error.

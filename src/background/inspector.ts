@@ -11,6 +11,7 @@ import { matchErrors } from '../console/errorPatterns';
 import { scanSensitive } from '../console/sensitivePatterns';
 import { detectTech } from '../console/techStack';
 import { analyzeA11y } from '../console/a11y';
+import { analyzeSeo } from '../console/seo';
 import { summarizeStorage } from '../console/storageSummary';
 import { consoleController } from '../console';
 import { resolveActiveTabId } from './pageTools';
@@ -405,6 +406,89 @@ export async function executeAnalyzeA11y(): Promise<ToolResult> {
     if (!sig) return err('runtime-error', 'Could not inspect the active page.');
     const report = analyzeA11y(sig);
     return ok(report);
+  } catch (e) {
+    return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
+// ---- analyze_seo ----------------------------------------------------------
+
+async function probeSeo(tabId: number) {
+  const res = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    func: () => {
+      const title = document.title || undefined;
+      const metaContent = (sel: string): string | undefined =>
+        document.querySelector(sel)?.getAttribute('content') ?? undefined;
+      const metaDescription = metaContent('meta[name="description" i]');
+      const metaViewport = metaContent('meta[name="viewport" i]');
+      const metaRobots = metaContent('meta[name="robots" i]');
+      const canonicalEl = document.querySelector('link[rel="canonical" i]');
+      const canonical = canonicalEl?.getAttribute('href') ?? undefined;
+      // Open Graph: meta[property^="og:"]
+      const openGraph: Record<string, string> = {};
+      Array.from(document.querySelectorAll('meta[property]')).forEach((el) => {
+        const p = (el as HTMLMetaElement).getAttribute('property') ?? '';
+        const c = (el as HTMLMetaElement).getAttribute('content') ?? '';
+        if (p.toLowerCase().startsWith('og:') && c) openGraph[p.toLowerCase()] = c;
+      });
+      // Twitter Card: meta[name^="twitter:"]
+      const twitterCard: Record<string, string> = {};
+      Array.from(document.querySelectorAll('meta[name]')).forEach((el) => {
+        const n = (el as HTMLMetaElement).getAttribute('name') ?? '';
+        const c = (el as HTMLMetaElement).getAttribute('content') ?? '';
+        if (n.toLowerCase().startsWith('twitter:') && c) twitterCard[n.toLowerCase()] = c;
+      });
+      const h1s = document.querySelectorAll('h1');
+      const h1Count = h1s.length;
+      const h1Text = h1s[0]?.textContent?.trim() || undefined;
+      const imgsMissingAlt = Array.from(document.images).filter((img) => !img.hasAttribute('alt')).length;
+      // Structured data: try to parse each ld+json block.
+      let structuredDataBlocks = 0;
+      let structuredDataValid = true;
+      Array.from(document.querySelectorAll('script[type="application/ld+json" i]')).forEach((s) => {
+        structuredDataBlocks += 1;
+        try {
+          JSON.parse((s as HTMLScriptElement).textContent ?? '');
+        } catch {
+          structuredDataValid = false;
+        }
+      });
+      // If we have zero blocks, validity is irrelevant — set true to skip the rule.
+      if (structuredDataBlocks === 0) structuredDataValid = true;
+      const htmlLang = document.documentElement.getAttribute('lang') || undefined;
+      const isHttps = location.protocol === 'https:';
+      return {
+        url: location.href,
+        title,
+        metaDescription,
+        metaViewport,
+        metaRobots,
+        canonical,
+        openGraph,
+        twitterCard,
+        h1Count,
+        h1Text,
+        imgsMissingAlt,
+        structuredDataBlocks,
+        structuredDataValid,
+        htmlLang,
+        isHttps,
+      };
+    },
+  });
+  return res?.[0]?.result;
+}
+
+export async function executeAnalyzeSeo(): Promise<ToolResult> {
+  const tabId = await resolveActiveTabId();
+  if (typeof tabId !== 'number') return err('undriveable', 'No active web tab to inspect.');
+  try {
+    const probe = await probeSeo(tabId);
+    if (!probe) return err('runtime-error', 'Could not inspect the active page.');
+    const report = analyzeSeo(probe);
+    return ok({ url: probe.url, h1Text: probe.h1Text, ...report });
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
   }

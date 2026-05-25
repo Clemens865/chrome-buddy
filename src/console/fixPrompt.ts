@@ -173,3 +173,97 @@ function findStackHint(logs: readonly LogEntry[], matchText: string): string | u
 /** Test-only helper — exposed so unit tests can verify severity ordering. */
 export const severityRank = (s: Severity): number =>
   s === 'critical' ? 0 : s === 'high' ? 1 : s === 'medium' ? 2 : 3;
+
+// ---------------------------------------------------------------------------
+// Generic finding-fix-prompt builder (shared by A11y / Security / SEO panels)
+// ---------------------------------------------------------------------------
+
+/** Severity used by the A11y, Security, and SEO analyzers. Wider than Severity
+ * (which is the console-error type) because a11y adds 'serious' and 'minor'. */
+export type FindingSeverity = 'critical' | 'high' | 'serious' | 'moderate' | 'medium' | 'minor' | 'low';
+
+/** Structural finding shared across analytical panels. */
+export interface Finding {
+  /** Short rule name (e.g. "Images must have alt text"). */
+  rule: string;
+  description: string;
+  suggestion: string;
+  severity: FindingSeverity;
+  /** Optional measurement (e.g. "12 chars"). */
+  detail?: string;
+  /** Number of elements that triggered the rule. */
+  count?: number;
+  /** Optional docs link. */
+  docUrl?: string;
+}
+
+/** Build a paste-ready markdown bug-fix prompt for any list of findings. */
+export function buildFindingsPrompt(
+  topic: string,
+  findings: ReadonlyArray<Finding>,
+  context?: FixPromptContext,
+): string {
+  const lines: string[] = [];
+  lines.push(`# ${topic} fix request — captured by Chrome Buddy console inspector`);
+  lines.push('');
+  lines.push(`I audited a live page and found the following ${topic.toLowerCase()} issue(s).`);
+  lines.push('Please locate the offending code in this repository and apply each fix.');
+  lines.push('');
+  if (context && (context.url || context.title || context.techStack?.length)) {
+    lines.push('## Context');
+    if (context.url) lines.push(`- **Page URL:** ${context.url}`);
+    if (context.title) lines.push(`- **Page title:** ${context.title}`);
+    if (context.techStack?.length) lines.push(`- **Detected stack:** ${context.techStack.join(', ')}`);
+    lines.push('');
+  }
+  if (findings.length === 0) {
+    lines.push('_No issues found._');
+    return lines.join('\n');
+  }
+  findings.forEach((f, i) => {
+    lines.push(`## ${i + 1}. ${f.rule} — \`${f.severity}\``);
+    if (typeof f.count === 'number' && f.count > 1) {
+      lines.push(`_${f.count} element(s) triggered this rule._`);
+    }
+    if (f.detail) {
+      lines.push(`_Measured: ${f.detail}_`);
+    }
+    lines.push('');
+    lines.push(`**Issue:** ${f.description}`);
+    lines.push('');
+    lines.push(`**Fix:** ${f.suggestion}`);
+    if (f.docUrl) {
+      lines.push('');
+      lines.push(`**Reference:** ${f.docUrl}`);
+    }
+    lines.push('');
+  });
+  lines.push('## Your task');
+  lines.push('');
+  lines.push(`1. Locate each ${topic.toLowerCase()} issue in this repo. Search for the affected`);
+  lines.push('   element/attribute/header named above.');
+  lines.push('2. Apply the suggested fix using the framework-idiomatic pattern.');
+  lines.push('3. Re-run the audit in Chrome Buddy and verify the issue is resolved.');
+  return lines.join('\n');
+}
+
+/** Compact "Send to Buddy" prompt — shared shape across panels. */
+export function buildBuddyFindingsPrompt(
+  topic: string,
+  findings: ReadonlyArray<Finding>,
+  context?: FixPromptContext,
+): string {
+  const lines: string[] = [];
+  lines.push(`Use list_files + read_file to locate the source of these ${topic.toLowerCase()} issues in the`);
+  lines.push("user's root folder, then propose a fix. If a write_file would correct it, prepare it");
+  lines.push('and wait for confirmation.');
+  lines.push('');
+  if (context?.url) lines.push(`Page URL: ${context.url}`);
+  if (context?.techStack?.length) lines.push(`Detected stack: ${context.techStack.join(', ')}`);
+  lines.push('');
+  for (const f of findings.slice(0, 5)) {
+    lines.push(`- [${f.severity}] ${f.rule}: ${f.description}`);
+    lines.push(`  → ${f.suggestion}`);
+  }
+  return lines.join('\n');
+}
