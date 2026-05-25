@@ -5,6 +5,47 @@ import path from 'node:path';
 
 const SHOTS = path.join(process.cwd(), 'screenshots');
 
+// Regression for the user-reported "cannot scroll on the History page".
+// Seeds enough runs that the list exceeds the viewport, then asserts the
+// LAST row is reachable by scrolling within the history container.
+test('History scrolls when there are more runs than fit on screen', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  // Deliberately short panel so a modest number of seeded runs overflow.
+  await panel.setViewportSize({ width: 440, height: 600 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  // Seed 30 runs through the public SW handler.
+  await panel.evaluate(async () => {
+    for (let i = 0; i < 30; i++) {
+      await chrome.runtime.sendMessage({
+        type: 'MEMORY_SAVE_RUN',
+        run: {
+          id: `seed_${i}`,
+          kind: 'chat',
+          task: `Seeded run #${i.toString().padStart(2, '0')}`,
+          answer: 'ok',
+          outcome: 'answered',
+          toolCount: 0,
+          tools: [],
+          provenance: [],
+          model: 'gemini-3.5-flash',
+          startedAt: Date.now() - i * 1000,
+          durationMs: 100,
+        },
+      });
+    }
+  });
+  await panel.reload();
+
+  await panel.getByRole('button', { name: 'History', exact: true }).click();
+  await expect(panel.locator('.stub-row-title', { hasText: 'Seeded run #00' })).toBeVisible();
+
+  // The last seeded row is below the fold — must be reachable via scroll.
+  const lastTitle = panel.locator('.stub-row-title', { hasText: 'Seeded run #29' });
+  await lastTitle.scrollIntoViewIfNeeded();
+  await expect(lastTitle).toBeInViewport();
+});
+
 test('History row expands inline to show answer, tools, and sources', async ({ context, extensionId }) => {
   const panel = await context.newPage();
   await panel.setViewportSize({ width: 440, height: 980 });
