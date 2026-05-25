@@ -15,6 +15,9 @@ export interface Conversation {
 }
 
 const STORE = 'chats';
+/** Bound the history so IDB doesn't grow without limit on heavy users.
+ * Eviction is by `updatedAt` (oldest-touched first), preserving recent chats. */
+const MAX_CHATS = 100;
 
 /** A short title from the first user message (or a default). */
 export function deriveTitle(items: TranscriptItem[]): string {
@@ -47,6 +50,24 @@ export function trimItems(items: TranscriptItem[]): TranscriptItem[] {
 export async function saveConversation(conv: Conversation): Promise<void> {
   const db = await getDB();
   await db.put(STORE, { ...conv, items: trimItems(conv.items) });
+  await evictOldestChats(db);
+}
+
+/** Drop the oldest-updatedAt chats once the store grows past MAX_CHATS. Pure
+ * housekeeping — exported for tests + can be called manually if needed. */
+export async function evictOldestChats(
+  db?: Awaited<ReturnType<typeof getDB>>,
+): Promise<number> {
+  const d = db ?? (await getDB());
+  const all = (await d.getAll(STORE)) as Conversation[];
+  if (all.length <= MAX_CHATS) return 0;
+  // Sort oldest-first by updatedAt and drop the excess.
+  all.sort((a, b) => a.updatedAt - b.updatedAt);
+  const toDrop = all.length - MAX_CHATS;
+  const tx = d.transaction(STORE, 'readwrite');
+  for (let i = 0; i < toDrop; i++) await tx.store.delete(all[i].id);
+  await tx.done;
+  return toDrop;
 }
 
 export async function listConversations(): Promise<Conversation[]> {

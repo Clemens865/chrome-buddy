@@ -1,13 +1,22 @@
 // PanelApp — the shared panel shell (theme + view routing + BuddyPanel),
 // reused by both the side panel and the in-page content-script overlay.
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { THEMES, applyTheme, type ThemeName } from './theme';
 import { BuddyPanel, type View } from '../panel/BuddyPanel';
 import { ChatView } from '../views/ChatView';
 import { AppsView, type AppId } from '../views/AppsView';
-import { ConsoleApp } from '../views/apps/ConsoleApp';
-import { ImageApp } from '../views/apps/ImageApp';
-import { TranscriberApp } from '../views/apps/TranscriberApp';
+// Heavy apps are code-split — each one ships in its own Vite chunk and is
+// only fetched when the user opens it. Drops first-paint bundle weight for
+// the dominant case (user opens the side panel to chat, not to inspect).
+const ConsoleApp = lazy(() =>
+  import('../views/apps/ConsoleApp').then((m) => ({ default: m.ConsoleApp })),
+);
+const ImageApp = lazy(() =>
+  import('../views/apps/ImageApp').then((m) => ({ default: m.ImageApp })),
+);
+const TranscriberApp = lazy(() =>
+  import('../views/apps/TranscriberApp').then((m) => ({ default: m.TranscriberApp })),
+);
 import { SkillsView, FlowsView, HistoryView } from '../views/StubViews';
 import { SettingsView } from '../views/SettingsView';
 import { Onboarding } from '../views/Onboarding';
@@ -81,9 +90,9 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
 
   let content;
   if (view === 'apps') {
-    if (openApp === 'console') content = <ConsoleApp onBack={() => setOpenApp(null)} onHandoff={runPreset} />;
-    else if (openApp === 'image') content = <ImageApp onBack={() => setOpenApp(null)} />;
-    else if (openApp === 'transcriber') content = <TranscriberApp onBack={() => setOpenApp(null)} />;
+    if (openApp === 'console') content = lazyApp(<ConsoleApp onBack={() => setOpenApp(null)} onHandoff={runPreset} />);
+    else if (openApp === 'image') content = lazyApp(<ImageApp onBack={() => setOpenApp(null)} />);
+    else if (openApp === 'transcriber') content = lazyApp(<TranscriberApp onBack={() => setOpenApp(null)} />);
     else content = <AppsView onOpenApp={setOpenApp} onPreset={runPreset} />;
   } else if (view === 'skills') content = <SkillsView onRunSkill={runSkill} />;
   else if (view === 'flows') content = <FlowsView onRunWorkflow={runWorkflow} />;
@@ -131,5 +140,22 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
         {content}
       </BuddyPanel>
     </div>
+  );
+}
+
+/** Wrap a lazy-loaded App in a Suspense boundary with a minimal loader. The
+ * lazy chunk arrives quickly on the local extension; this fallback only
+ * flashes on first open of each app per session. */
+function lazyApp(node: ReactNode): ReactNode {
+  return (
+    <Suspense
+      fallback={
+        <div className="micro" style={{ padding: 24, color: 'var(--panel-muted)', fontSize: 13 }}>
+          Loading…
+        </div>
+      }
+    >
+      {node}
+    </Suspense>
   );
 }
