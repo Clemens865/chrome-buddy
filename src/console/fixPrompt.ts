@@ -247,6 +247,97 @@ export function buildFindingsPrompt(
   return lines.join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// Master prompt — built from the composeHealth output for the HealthPanel
+// ---------------------------------------------------------------------------
+
+/** Single-panel-mastered findings grouped by the analyser they came from. */
+export interface MasterFinding extends Finding {
+  /** Category label used for the section header in the master prompt. */
+  category: string;
+}
+
+/**
+ * Build ONE comprehensive bug-fix prompt that spans every analytical surface.
+ * Sections appear in category order with severity-sorted findings inside each.
+ * The Health Score lands at the top so the reader (and IDE agent) knows what
+ * "good" looks like as a measurable target after the fixes ship.
+ */
+export function buildMasterPrompt(
+  score: number,
+  findings: ReadonlyArray<MasterFinding>,
+  context?: FixPromptContext,
+): string {
+  const lines: string[] = [];
+  lines.push('# Site-health fix request — captured by Chrome Buddy console inspector');
+  lines.push('');
+  lines.push(`**Health Score:** ${score} / 100`);
+  lines.push('');
+  lines.push('I ran a full audit across console errors, security, accessibility, SEO,');
+  lines.push('privacy (leaked secrets), and Web Vitals. Findings are listed below grouped');
+  lines.push('by category, severity-sorted within each. Please locate the offending code in');
+  lines.push('this repository and apply each fix.');
+  lines.push('');
+  if (context && (context.url || context.title || context.techStack?.length)) {
+    lines.push('## Context');
+    if (context.url) lines.push(`- **Page URL:** ${context.url}`);
+    if (context.title) lines.push(`- **Page title:** ${context.title}`);
+    if (context.techStack?.length) lines.push(`- **Detected stack:** ${context.techStack.join(', ')}`);
+    lines.push('');
+  }
+  // Group by category for stable section headers.
+  const byCategory = new Map<string, MasterFinding[]>();
+  for (const f of findings) {
+    if (!byCategory.has(f.category)) byCategory.set(f.category, []);
+    byCategory.get(f.category)!.push(f);
+  }
+  if (findings.length === 0) {
+    lines.push('_No issues found — Health Score is 100. Nothing to fix._');
+    return lines.join('\n');
+  }
+  for (const [cat, items] of byCategory) {
+    lines.push(`## ${labelFor(cat)} (${items.length})`);
+    lines.push('');
+    items.forEach((f, i) => {
+      lines.push(`### ${i + 1}. ${f.rule} — \`${f.severity}\``);
+      if (typeof f.count === 'number' && f.count > 1) {
+        lines.push(`_${f.count} element(s) triggered this rule._`);
+      }
+      if (f.detail) lines.push(`_Measured: ${f.detail}_`);
+      lines.push('');
+      lines.push(`**Issue:** ${f.description}`);
+      lines.push('');
+      lines.push(`**Fix:** ${f.suggestion}`);
+      if (f.docUrl) {
+        lines.push('');
+        lines.push(`**Reference:** ${f.docUrl}`);
+      }
+      lines.push('');
+    });
+  }
+  lines.push('## Your task');
+  lines.push('');
+  lines.push('1. For each finding above, locate the offending code in this repository.');
+  lines.push('2. Apply the suggested fix using the framework-idiomatic pattern.');
+  lines.push('3. Add or update a test so the regression cannot recur silently.');
+  lines.push('4. Re-run Chrome Buddy\'s Health audit on the page and confirm the score');
+  lines.push(`   improves beyond ${score} / 100.`);
+  lines.push('');
+  lines.push('Treat `critical` and `high` as P0; `medium` as P1; `low` as polish.');
+  return lines.join('\n');
+}
+
+function labelFor(cat: string): string {
+  return {
+    errors: 'Console Errors',
+    security: 'Security',
+    a11y: 'Accessibility',
+    seo: 'SEO',
+    privacy: 'Privacy / Leaked secrets',
+    performance: 'Performance (Web Vitals)',
+  }[cat] ?? cat;
+}
+
 /** Compact "Send to Buddy" prompt — shared shape across panels. */
 export function buildBuddyFindingsPrompt(
   topic: string,

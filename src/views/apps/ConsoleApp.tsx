@@ -19,11 +19,13 @@ import {
   TechStackPanel,
   A11yPanel,
   SeoPanel,
+  HealthPanel,
   type OnHandoff,
 } from './consolePanels';
 
 type Filter = 'all' | LogLevel;
 type Mode =
+  | 'health'
   | 'console'
   | 'errors'
   | 'network'
@@ -36,6 +38,7 @@ type Mode =
   | 'seo';
 const TABS: Filter[] = ['all', 'error', 'warn', 'log', 'net'];
 const MODES: { id: Mode; label: string }[] = [
+  { id: 'health', label: 'Health' },
   { id: 'console', label: 'Console' },
   { id: 'errors', label: 'Errors' },
   { id: 'network', label: 'Network' },
@@ -58,7 +61,7 @@ export function ConsoleApp({
   const app = appById('console');
   const controllerRef = useRef(consoleController());
 
-  const [mode, setMode] = useState<Mode>('console');
+  const [mode, setMode] = useState<Mode>('health');
   const [filter, setFilter] = useState<Filter>('all');
   const [capturing, setCapturing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -157,6 +160,7 @@ export function ConsoleApp({
       {mode === 'tech' && <TechStackPanel />}
       {mode === 'a11y' && <A11yPanel onHandoff={onHandoff} />}
       {mode === 'seo' && <SeoPanel onHandoff={onHandoff} />}
+      {mode === 'health' && <HealthPanel onHandoff={onHandoff} />}
 
       {mode === 'console' && (
         <>

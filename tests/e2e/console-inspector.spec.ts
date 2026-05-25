@@ -20,6 +20,9 @@ test('Console Inspector can start capturing (debugger permission present)', asyn
   // Open the Console Inspector and start capturing against the real tab.
   await panel.getByRole('button', { name: 'Apps', exact: true }).click();
   await panel.getByText('Console Inspector').first().click();
+  // Health is the default mode in the hybrid build — switch to Console to
+  // find the Start button.
+  await panel.getByTestId('ci-mode-console').click();
   await site.bringToFront(); // make the http page the active tab to attach to
   await panel.getByRole('button', { name: 'Start', exact: true }).click();
 

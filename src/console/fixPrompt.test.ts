@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFixPrompt, buildSingleFixPrompt, buildBuddyChatPrompt, buildFindingsPrompt, buildBuddyFindingsPrompt, type Finding } from './fixPrompt';
+import { buildFixPrompt, buildSingleFixPrompt, buildBuddyChatPrompt, buildFindingsPrompt, buildBuddyFindingsPrompt, buildMasterPrompt, type Finding, type MasterFinding } from './fixPrompt';
 import type { ErrorMatch } from './errorPatterns';
 
 const REACT_CRIT: ErrorMatch = {
@@ -149,6 +149,49 @@ describe('buildBuddyFindingsPrompt', () => {
     expect(bullets).toHaveLength(5);
     expect(md).toContain('list_files');
     expect(md).toContain('write_file');
+  });
+});
+
+describe('buildMasterPrompt', () => {
+  const ERROR_FIND: MasterFinding = {
+    category: 'errors', rule: 'React · Null Reference', severity: 'critical',
+    description: 'Cannot read x of undefined', suggestion: 'Add optional chaining', count: 2,
+  };
+  const A11Y_FIND: MasterFinding = {
+    category: 'a11y', rule: 'Images must have alt text', severity: 'serious',
+    description: '1 image missing alt', suggestion: 'Add alt="…"',
+  };
+  const SEO_FIND: MasterFinding = {
+    category: 'seo', rule: 'Meta description', severity: 'high',
+    description: 'No description', suggestion: 'Add 50-160 char description',
+  };
+
+  it('headlines the prompt with the Health Score', () => {
+    const md = buildMasterPrompt(72, [ERROR_FIND]);
+    expect(md).toContain('# Site-health fix request');
+    expect(md).toContain('**Health Score:** 72 / 100');
+  });
+
+  it('groups findings into category sections in stable insertion order', () => {
+    const md = buildMasterPrompt(60, [ERROR_FIND, A11Y_FIND, SEO_FIND]);
+    expect(md.indexOf('## Console Errors')).toBeLessThan(md.indexOf('## Accessibility'));
+    expect(md.indexOf('## Accessibility')).toBeLessThan(md.indexOf('## SEO'));
+  });
+
+  it('emits a "nothing to fix" line for a clean audit', () => {
+    const md = buildMasterPrompt(100, []);
+    expect(md).toContain('Nothing to fix');
+  });
+
+  it('references the current score in the success criterion of the task block', () => {
+    const md = buildMasterPrompt(43, [ERROR_FIND]);
+    expect(md).toContain('improves beyond 43 / 100');
+  });
+
+  it('threads URL + tech stack into the Context block', () => {
+    const md = buildMasterPrompt(80, [SEO_FIND], { url: 'https://x.test', techStack: ['React'] });
+    expect(md).toContain('Page URL:** https://x.test');
+    expect(md).toContain('Detected stack:** React');
   });
 });
 
