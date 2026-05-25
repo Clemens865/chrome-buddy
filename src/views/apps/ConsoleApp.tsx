@@ -9,14 +9,24 @@ import {
   type LogEntry,
   type LogLevel,
 } from '../../console';
+import { ErrorsPanel, NetworkPanel, VitalsPanel, SecurityPanel } from './consolePanels';
 
 type Filter = 'all' | LogLevel;
+type Mode = 'console' | 'errors' | 'network' | 'vitals' | 'security';
 const TABS: Filter[] = ['all', 'error', 'warn', 'log', 'net'];
+const MODES: { id: Mode; label: string }[] = [
+  { id: 'console', label: 'Console' },
+  { id: 'errors', label: 'Errors' },
+  { id: 'network', label: 'Network' },
+  { id: 'vitals', label: 'Vitals' },
+  { id: 'security', label: 'Security' },
+];
 
 export function ConsoleApp({ onBack }: { onBack: () => void }) {
   const app = appById('console');
   const controllerRef = useRef(consoleController());
 
+  const [mode, setMode] = useState<Mode>('console');
   const [filter, setFilter] = useState<Filter>('all');
   const [capturing, setCapturing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -90,6 +100,29 @@ export function ConsoleApp({ onBack }: { onBack: () => void }) {
     <div className="micro">
       <AppHeader app={app} onBack={onBack} />
 
+      <div className="ci-modes" role="tablist">
+        {MODES.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            role="tab"
+            aria-selected={mode === m.id}
+            className={'ci-mode' + (mode === m.id ? ' is-on' : '')}
+            onClick={() => setMode(m.id)}
+            data-testid={`ci-mode-${m.id}`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'errors' && <ErrorsPanel capturing={capturing} />}
+      {mode === 'network' && <NetworkPanel capturing={capturing} />}
+      {mode === 'vitals' && <VitalsPanel />}
+      {mode === 'security' && <SecurityPanel />}
+
+      {mode === 'console' && (
+        <>
       <div className="console-bar">
         {TABS.map((k) => (
           <button
@@ -187,6 +220,8 @@ export function ConsoleApp({ onBack }: { onBack: () => void }) {
             </button>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

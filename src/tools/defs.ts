@@ -480,6 +480,76 @@ export const writeFileTool: ToolDefinition = {
   handler: notWired('write_file'),
 };
 
+// --- analyze_errors (Console-Buddy parity, Tier 1) -------------------------
+export const analyzeErrorsTool: ToolDefinition = {
+  name: 'analyze_errors',
+  description:
+    'Scan the recent console-capture buffer for the active page and return a ' +
+    'framework-aware diagnosis of any errors found (React / Vue / Angular / ' +
+    'Network / CORS / Security / Type / Syntax / Reference / Performance). Each ' +
+    'match includes a description and a fix suggestion. Use this when the user ' +
+    'asks "what is broken on this page?" or to triage console output.',
+  paramsSchema: objectSchema(
+    {
+      limit: {
+        type: 'number',
+        description: 'Max number of recent console entries to scan (default 200).',
+      },
+    },
+    [],
+  ),
+  consequential: false,
+  handler: notWired('analyze_errors'),
+};
+
+// --- web_vitals (Console-Buddy parity, Tier 1) -----------------------------
+export const webVitalsTool: ToolDefinition = {
+  name: 'web_vitals',
+  description:
+    'Measure the Core Web Vitals (LCP, FID, CLS, FCP, TTFB) of the active web ' +
+    'page using PerformanceObserver. Returns each metric with the captured value ' +
+    'and a verdict (good / needs-improvement / poor) based on Google thresholds.',
+  paramsSchema: objectSchema({}, []),
+  consequential: false,
+  handler: notWired('web_vitals'),
+};
+
+// --- read_network (Console-Buddy parity, Tier 1) ---------------------------
+export const readNetworkTool: ToolDefinition = {
+  name: 'read_network',
+  description:
+    'Return the recent network requests captured by the console inspector on ' +
+    'the active page (status, URL, type). Use to investigate failed requests, ' +
+    'slow endpoints, or CORS issues. Pass filter="failed" to surface only 4xx/5xx.',
+  paramsSchema: objectSchema(
+    {
+      filter: {
+        type: 'string',
+        description: 'Optional filter: "failed" (4xx/5xx only) or "errors".',
+      },
+      limit: {
+        type: 'number',
+        description: 'Max number of requests to return (default 50).',
+      },
+    },
+    [],
+  ),
+  consequential: false,
+  handler: notWired('read_network'),
+};
+
+// --- scan_security (Console-Buddy parity, Tier 1) --------------------------
+export const scanSecurityTool: ToolDefinition = {
+  name: 'scan_security',
+  description:
+    'Run a quick security inspection of the active page: HTTPS / mixed content, ' +
+    'Content-Security-Policy meta tag, and cookies flagged for missing Secure / ' +
+    'HttpOnly / SameSite attributes.',
+  paramsSchema: objectSchema({}, []),
+  consequential: false,
+  handler: notWired('scan_security'),
+};
+
 // --- ask_user (FR-TOOLS-11) ------------------------------------------------
 export const askUserTool: ToolDefinition = {
   name: 'ask_user',
@@ -528,5 +598,9 @@ export const stubToolDefs: ToolDefinition[] = [
   listFilesTool,
   readFileTool,
   writeFileTool,
+  analyzeErrorsTool,
+  webVitalsTool,
+  readNetworkTool,
+  scanSecurityTool,
   askUserTool,
 ];

@@ -35,6 +35,12 @@ import { executeFileSearch } from './fileSearch';
 import { executeGithubWrite, executeGithubRead, executeGithubList } from './github';
 import { executeVisionTurn, executeVisionAction, captureActiveTabPNG } from './vision';
 import { executeFileWrite } from './fileWrite';
+import {
+  executeWebVitals,
+  executeReadNetwork,
+  executeScanSecurity,
+  executeAnalyzeErrors,
+} from './inspector';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
 import { saveWorkflow, listWorkflows, deleteWorkflow } from '../workflows/store';
@@ -308,6 +314,19 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         // write_file is consequential — only reaches here after HITL approval.
         if (message.tool === 'write_file') {
           return { type: 'TOOL_EXEC', ok: true, result: await executeFileWrite(message.args) };
+        }
+        // Console Inspector Tier-1 tools — all SW-side, no HITL.
+        if (message.tool === 'analyze_errors') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeAnalyzeErrors(message.args) };
+        }
+        if (message.tool === 'web_vitals') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeWebVitals() };
+        }
+        if (message.tool === 'read_network') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeReadNetwork(message.args) };
+        }
+        if (message.tool === 'scan_security') {
+          return { type: 'TOOL_EXEC', ok: true, result: await executeScanSecurity() };
         }
         // DOM-first: run page read/act tools in the SW against the active tab.
         // Restricted URLs are refused inside executePageTool with a structured error.

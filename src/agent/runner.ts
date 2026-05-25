@@ -66,6 +66,10 @@ const AGENT_TOOLS = new Set([
   'note_save',
   'note_get',
   'note_list',
+  'analyze_errors',
+  'web_vitals',
+  'read_network',
+  'scan_security',
   'ask_user',
 ]);
 
