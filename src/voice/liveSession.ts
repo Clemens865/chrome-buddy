@@ -24,7 +24,10 @@ export type VoiceEvent =
   | { kind: 'function-call'; name: string; args: Record<string, unknown> }
   | { kind: 'function-result'; name: string; ok: boolean }
   | { kind: 'error'; message: string }
-  | { kind: 'closed'; reason?: string };
+  | { kind: 'closed'; reason?: string }
+  /** Fired ~every audio chunk so the UI can show "X sent / Y received /
+   *  Z played" counters. Cheap visibility into whether bytes are flowing. */
+  | { kind: 'flow'; sentChunks: number; sentBytes: number; recvChunks: number; recvBytes: number; playedChunks: number };
 
 export interface VoiceSessionOptions {
   onEvent: (e: VoiceEvent) => void;
@@ -54,6 +57,17 @@ export class VoiceSession {
    *  appended at max(currentTime, this cursor) so chunks queue properly. */
   private playCursor = 0;
   private stopped = false;
+  /** Bidirectional flow counters — surfaced via the 'flow' VoiceEvent so
+   *  the UI can render real-time numbers and the user can confirm audio
+   *  is actually moving. */
+  private sentChunks = 0;
+  private sentBytes = 0;
+  private recvChunks = 0;
+  private recvBytes = 0;
+  private playedChunks = 0;
+  /** Throttle 'flow' emissions to ~every 250ms so we don't drown the UI
+   *  with re-renders during continuous capture. */
+  private lastFlowEmit = 0;
 
   constructor(opts: VoiceSessionOptions) {
     this.opts = opts;
@@ -98,6 +112,11 @@ export class VoiceSession {
       const samples = new Float32Array(ev.inputBuffer.getChannelData(0));
       const b64 = floatToBase64Pcm16(samples);
       this.port?.postMessage({ type: 'AUDIO_IN', b64 });
+      this.sentChunks += 1;
+      // Base64 is ~4/3 the size of the raw PCM; counting the wire bytes
+      // (b64 length) is what the user actually pays in egress.
+      this.sentBytes += b64.length;
+      this.maybeEmitFlow();
     };
     this.source.connect(this.processor);
     // ScriptProcessor needs a destination to fire onaudioprocess in some
@@ -139,7 +158,10 @@ export class VoiceSession {
     if (t === 'OPEN') {
       this.opts.onEvent({ kind: 'open' });
     } else if (t === 'AUDIO_OUT' && typeof msg.b64 === 'string') {
+      this.recvChunks += 1;
+      this.recvBytes += msg.b64.length;
       this.playAudioChunk(msg.b64);
+      this.maybeEmitFlow();
     } else if (t === 'TRANSCRIPT') {
       const role = msg.role === 'user' ? 'user' : 'model';
       const text = typeof msg.text === 'string' ? msg.text : '';
@@ -182,6 +204,24 @@ export class VoiceSession {
     const startAt = Math.max(this.outCtx.currentTime, this.playCursor);
     src.start(startAt);
     this.playCursor = startAt + buf.duration;
+    this.playedChunks += 1;
+  }
+
+  /** Throttled emitter for the 'flow' event. Fires immediately on the first
+   *  byte of each direction (so the UI shows "1 sent" right away) and then
+   *  at most every 250 ms during sustained activity. */
+  private maybeEmitFlow(): void {
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (now - this.lastFlowEmit < 250 && this.sentChunks > 1 && this.recvChunks > 1) return;
+    this.lastFlowEmit = now;
+    this.opts.onEvent({
+      kind: 'flow',
+      sentChunks: this.sentChunks,
+      sentBytes: this.sentBytes,
+      recvChunks: this.recvChunks,
+      recvBytes: this.recvBytes,
+      playedChunks: this.playedChunks,
+    });
   }
 }
 

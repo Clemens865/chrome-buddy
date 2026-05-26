@@ -199,7 +199,8 @@ describe('sanitizeForOpenApi', () => {
     };
     const out = sanitizeForOpenApi(input);
     expect('additionalProperties' in out).toBe(false);
-    expect('additionalProperties' in (out.properties as Record<string, unknown>).nested as Record<string, unknown>).toBe(false);
+    const nested = (out.properties as Record<string, Record<string, unknown>>).nested;
+    expect('additionalProperties' in nested).toBe(false);
     // Preserves the rest unchanged.
     expect(out.type).toBe('object');
     expect(out.required).toEqual(['q']);

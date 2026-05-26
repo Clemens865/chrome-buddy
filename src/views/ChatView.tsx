@@ -176,6 +176,11 @@ export function ChatView({
   const voiceRef = useRef<VoiceSession | null>(null);
   const [voiceState, setVoiceState] = useState<'idle' | 'connecting' | 'live' | 'error'>('idle');
   const [voiceError, setVoiceError] = useState<string | undefined>();
+  /** Real-time bidirectional flow counters surfaced from VoiceSession. The
+   *  user clicks "Start voice" and immediately sees "Sent 3 · Received 0"
+   *  ticking — concrete proof audio is reaching the SW. Once Gemini starts
+   *  responding, the received counter ticks too. */
+  const [voiceFlow, setVoiceFlow] = useState<{ sent: number; sentB: number; recv: number; recvB: number; played: number } | undefined>();
   /** When the model is streaming a reply, we accumulate the partial text in
    *  this item id so each TRANSCRIPT chunk replaces (not appends) the bubble. */
   const voiceTurnIdRef = useRef<string>('');
@@ -252,6 +257,7 @@ export function ChatView({
     if (voiceRef.current) return;
     setVoiceError(undefined);
     setVoiceState('connecting');
+    setVoiceFlow({ sent: 0, sentB: 0, recv: 0, recvB: 0, played: 0 });
     const onEvent = (e: VoiceEvent) => {
       switch (e.kind) {
         case 'open':
@@ -293,6 +299,9 @@ export function ChatView({
           // Drop the current bubble id so the next chunk starts fresh.
           voiceTurnIdRef.current = '';
           break;
+        case 'flow':
+          setVoiceFlow({ sent: e.sentChunks, sentB: e.sentBytes, recv: e.recvChunks, recvB: e.recvBytes, played: e.playedChunks });
+          break;
         case 'error':
           setVoiceError(e.message);
           setVoiceState('error');
@@ -302,6 +311,7 @@ export function ChatView({
           voiceRef.current = null;
           voiceTurnIdRef.current = '';
           voiceUserTurnIdRef.current = '';
+          setVoiceFlow(undefined);
           break;
       }
     };
@@ -922,6 +932,7 @@ export function ChatView({
         <VoiceControls
           state={voiceState}
           error={voiceError}
+          flow={voiceFlow}
           onStart={() => void startVoice()}
           onStop={() => void stopVoice()}
         />
@@ -1085,11 +1096,13 @@ function deriveSaveTitle(text: string): string {
 function VoiceControls({
   state,
   error,
+  flow,
   onStart,
   onStop,
 }: {
   state: 'idle' | 'connecting' | 'live' | 'error';
   error?: string;
+  flow?: { sent: number; sentB: number; recv: number; recvB: number; played: number };
   onStart: () => void;
   onStop: () => void;
 }) {
@@ -1125,6 +1138,12 @@ function VoiceControls({
                 ? error ?? 'Voice error'
                 : 'Idle'}
       </span>
+      {isOn && flow && (
+        <span className="voice-flow" data-testid="voice-flow" title="Live audio counters — proves bytes are flowing in both directions.">
+          <span className="voice-flow-up" title={`${flow.sentB} bytes sent`}>↑ {flow.sent}</span>
+          <span className="voice-flow-down" title={`${flow.recvB} bytes received · ${flow.played} chunks played`}>↓ {flow.recv}</span>
+        </span>
+      )}
     </div>
   );
 }

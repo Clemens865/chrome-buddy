@@ -495,6 +495,11 @@ html, body {
 .theme-graphite .voice-state-live { color: #6EE7B7; }
 .voice-state-connecting { color: var(--panel-muted); }
 .voice-state-error { color: #B91C1C; }
+.voice-flow { display: inline-flex; gap: 8px; font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--panel-muted); margin-left: auto; }
+.voice-flow-up { color: #6366F1; }
+.theme-graphite .voice-flow-up { color: #A5B4FC; }
+.voice-flow-down { color: #047857; }
+.theme-graphite .voice-flow-down { color: #6EE7B7; }
 
 /* Live Transcriber app */
 .live-bar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--panel-border-soft); flex-wrap: wrap; }

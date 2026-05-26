@@ -21,16 +21,21 @@ test('live: open a real Gemini Live WebSocket and verify the setup is accepted',
 
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
 
-  // Stub getUserMedia so we don't trip the mic permission chooser in
-  // headless. The WebSocket path is REAL — that's what we're verifying.
+  // Stub getUserMedia with a SYNTHESIZED voice-band tone (440 Hz / -6 dB)
+  // so we don't trip the mic permission chooser AND we send audible-shaped
+  // bytes through the wire. With pure silence the server's VAD never
+  // triggers — using a tone exercises the flow counter path realistically.
   await panel.evaluate(() => {
     // @ts-expect-error stub the typed handle
     navigator.mediaDevices.getUserMedia = async () => {
       const ctx = new AudioContext();
       const dst = ctx.createMediaStreamDestination();
       const osc = ctx.createOscillator();
-      osc.frequency.value = 0;
-      osc.connect(dst);
+      osc.frequency.value = 440;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.5;
+      osc.connect(gain);
+      gain.connect(dst);
       osc.start();
       return dst.stream;
     };
@@ -70,15 +75,24 @@ test('live: open a real Gemini Live WebSocket and verify the setup is accepted',
   await expect(panel.getByTestId('voice-controls')).toBeVisible({ timeout: 5_000 });
   await panel.getByTestId('voice-start').click();
 
-  // Wait 15s for the SW to either OPEN or ERROR; dump the log REGARDLESS
-  // of what happened so debugging a regression is one read of stdout.
-  await panel.waitForTimeout(15_000);
+  // Wait 8s for the SW to either OPEN or ERROR. Then inspect the SW's
+  // AUDIO_IN counter — the mic-stub feeds 440 Hz continuously, so chunks
+  // MUST be flowing if our capture path is healthy.
+  await panel.waitForTimeout(8_000);
   const earlyLog = await panel.evaluate(
     () => (globalThis as unknown as { __voiceLog: Array<{ type?: string; [k: string]: unknown }> }).__voiceLog,
   );
   // eslint-disable-next-line no-console
-  console.log('EARLY LOG (first 15s):', JSON.stringify(earlyLog, null, 2));
-  expect(earlyLog.some((m) => m.type === 'OPEN'), `No OPEN within 15s — log: ${JSON.stringify(earlyLog)}`).toBe(true);
+  console.log('EARLY LOG (first 8s):', JSON.stringify(earlyLog, null, 2).slice(0, 600));
+  expect(earlyLog.some((m) => m.type === 'OPEN'), `No OPEN within 8s — log: ${JSON.stringify(earlyLog)}`).toBe(true);
+
+  // Audio upload check: the voice-flow chip in the UI must be ticking. If
+  // the user sees 'Sent 0' frozen, audio capture is broken.
+  const flowText = await panel.getByTestId('voice-flow').textContent({ timeout: 5_000 });
+  // eslint-disable-next-line no-console
+  console.log('VOICE FLOW (UI):', flowText);
+  // Match "↑ N" where N >= 1 — at least one chunk made it through.
+  expect(flowText).toMatch(/↑\s*[1-9]/);
 
   // Now send a TEXT_IN through the SAME Port so we can verify a full
   // round-trip without needing real mic audio. The Live SW handler accepts
