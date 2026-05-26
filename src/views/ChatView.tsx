@@ -155,6 +155,9 @@ export function ChatView({
     void addSpend(amount).then(setSpentToday);
   }, []);
   const pendingRef = useRef<PendingConfirm | null>(null);
+  /** Active AbortController for the in-flight run. Cleared back to null when
+   *  the run resolves so the Stop button only shows during real work. */
+  const abortRef = useRef<AbortController | null>(null);
   // Mirror items so the (memoised) submit closure can read the latest transcript.
   const itemsRef = useRef<TranscriptItem[]>(items);
   itemsRef.current = items;
@@ -318,6 +321,10 @@ export function ChatView({
       setInput('');
       setNoKey(false);
       setBusy(true);
+      // Fresh AbortController per run. The Stop button calls
+      // abortRef.current?.abort(); the runtime + plain-chat both honor it.
+      const aborter = new AbortController();
+      abortRef.current = aborter;
       const startedAt = Date.now();
       const uid = `user_${seqRef.current++}`;
       setItems((prev) => [...prev, userItem(uid, prompt)]);
@@ -460,6 +467,7 @@ export function ChatView({
             context,
             model: activeModel,
             preferNano,
+            signal: aborter.signal,
             onDelta: (text) => {
               setItems((prev) =>
                 prev.map((it) =>
@@ -472,6 +480,12 @@ export function ChatView({
             setNoKey(true);
             // Remove the empty placeholder.
             setItems((prev) => prev.filter((it) => !(it.kind === 'agent' && it.id === placeholderId)));
+          } else if (r.outcome === 'aborted') {
+            // User clicked Stop: keep whatever streamed so far, append a marker.
+            if (!r.text) {
+              setItems((prev) => prev.filter((it) => !(it.kind === 'agent' && it.id === placeholderId)));
+            }
+            setItems((prev) => [...prev, agentItem(`stop_${seqRef.current++}`, '_Stopped by user._')]);
           } else if (r.text) {
             recordCost(r.cost ?? 0);
             // Final state of the bubble (in case onDelta missed the last frame).
@@ -499,9 +513,14 @@ export function ChatView({
             stepBudget,
             history: recentHistory(itemsRef.current),
             thinkHarder,
+            signal: aborter.signal,
           });
           if (result.outcome === 'no-key') setNoKey(true);
-          else if (result.state) {
+          else if (result.outcome === 'cancelled') {
+            // User clicked Stop mid-agent-run. The runtime returns the partial
+            // state; we surface the stop marker but don't persist as a run.
+            setItems((prev) => [...prev, agentItem(`stop_${seqRef.current++}`, '_Stopped by user._')]);
+          } else if (result.state) {
             recordCost(result.state?.costUsed ?? 0);
             const sp = result.state.scratchpad;
             void persistRun(
@@ -523,6 +542,8 @@ export function ChatView({
         setItems((prev) => [...prev, { kind: 'error', id: `err_${seqRef.current++}`, text: message }]);
       } finally {
         pendingRef.current = null;
+        // Discard the controller; the Stop button will hide again as busy clears.
+        abortRef.current = null;
         setBusy(false);
         // H2: reset the per-turn "Think harder" toggle.
         setThinkHarder(false);
@@ -786,6 +807,7 @@ export function ChatView({
         input={input}
         onChange={setInput}
         onSend={() => void submit(input)}
+        onStop={() => abortRef.current?.abort()}
         busy={busy}
         mode={mode}
         onMode={setMode}
@@ -1175,6 +1197,7 @@ function ChatComposer({
   input,
   onChange,
   onSend,
+  onStop,
   busy,
   mode,
   onMode,
@@ -1187,6 +1210,7 @@ function ChatComposer({
   input: string;
   onChange: (v: string) => void;
   onSend: () => void;
+  onStop?: () => void;
   busy: boolean;
   mode: ChatMode;
   onMode: (m: ChatMode) => void;
@@ -1252,15 +1276,28 @@ function ChatComposer({
         >
           <span className="ic">{Ic.mic}</span>
         </button>
-        <button
-          type="button"
-          className="composer-send"
-          aria-label="Send"
-          disabled={!input.trim() || busy}
-          onClick={onSend}
-        >
-          <span className="ic">{Ic.send}</span>
-        </button>
+        {busy ? (
+          <button
+            type="button"
+            className="composer-send composer-stop"
+            aria-label="Stop"
+            data-testid="chat-stop"
+            onClick={onStop}
+            title="Stop generating"
+          >
+            <span className="ic">{Ic.stop}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="composer-send"
+            aria-label="Send"
+            disabled={!input.trim()}
+            onClick={onSend}
+          >
+            <span className="ic">{Ic.send}</span>
+          </button>
+        )}
       </div>
       <div className="composer-foot">
         <div className="seg seg-sm" role="group" aria-label="Chat mode">

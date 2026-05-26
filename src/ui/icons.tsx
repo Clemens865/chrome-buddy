@@ -37,6 +37,7 @@ export const Ic: Icons = {
   scrape: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="14" height="14" rx="2" /><path d="M7 9h6M7 13h4M17 8l4 4-4 4" /></svg>,
   watch: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>,
   library: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4v16M4 4h12a3 3 0 0 1 3 3v13M4 20h12a3 3 0 0 0 3-3" /><path d="M8 8h8M8 12h8M8 16h6" /></svg>,
+  stop: <svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>,
 };
 
 interface BuddyMarkProps {

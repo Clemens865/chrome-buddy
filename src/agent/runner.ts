@@ -487,7 +487,9 @@ const PLAIN_CHAT_SYSTEM =
   'on the current web page, say it can be run in Agent mode.';
 
 export interface PlainChatResult {
-  outcome: 'ok' | 'no-key';
+  /** 'aborted' is set when the caller's AbortSignal fired mid-stream;
+   *  partial `text` from before the abort is preserved. */
+  outcome: 'ok' | 'no-key' | 'aborted';
   text?: string;
   /** Dollar cost of this call (FR-LLM-10), 0 when unavailable. */
   cost?: number;
@@ -509,6 +511,13 @@ export async function runPlainChat(
      *  ACCUMULATED text after each chunk (so callers can replace their bubble
      *  text directly). Falls back to one-shot generate when omitted. */
     onDelta?: (text: string) => void;
+    /** Cancellation signal. On abort:
+     *   - Streaming path: the Port is disconnected; whatever text was already
+     *     streamed is returned (outcome 'aborted'). Partial state isn't lost.
+     *   - Non-streaming fallback: outcome 'aborted' as soon as the in-flight
+     *     LLM_GENERATE resolves; we can't cancel the SW fetch from here.
+     */
+    signal?: AbortSignal;
   } = {},
 ): Promise<PlainChatResult> {
   const send = options.send ?? defaultSend;
@@ -522,6 +531,9 @@ export async function runPlainChat(
   }
 
   if (!(await hasKey(send))) return { outcome: 'no-key' };
+
+  // Fast-path: already aborted before we got going.
+  if (options.signal?.aborted) return { outcome: 'aborted', text: '', cost: 0 };
 
   const messages: LlmGenerateMessage['messages'] = [{ role: 'system', content: PLAIN_CHAT_SYSTEM }];
   // Page content / user profile attached by the UI (FR: chat sees the page
@@ -545,21 +557,41 @@ export async function runPlainChat(
       const port = chrome.runtime.connect({ name: 'chat-stream' });
       let accum = '';
       let cost = 0;
+      let aborted = false;
+      // Hook the AbortSignal — when fired, close the port; whatever already
+      // streamed is kept and surfaced as `outcome: 'aborted'`.
+      const onAbort = () => {
+        if (aborted) return;
+        aborted = true;
+        try { port.disconnect(); } catch { /* already gone */ }
+        resolve({ outcome: 'aborted', text: accum, cost });
+      };
+      if (options.signal) {
+        if (options.signal.aborted) { onAbort(); return; }
+        options.signal.addEventListener('abort', onAbort, { once: true });
+      }
       port.onMessage.addListener((msg: { type?: string; text?: string; cost?: number; error?: string; noKey?: boolean }) => {
+        if (aborted) return;
         if (msg?.type === 'DELTA' && typeof msg.text === 'string') {
           accum += msg.text;
           options.onDelta!(accum);
         } else if (msg?.type === 'DONE') {
           cost = msg.cost ?? 0;
           try { port.disconnect(); } catch { /* already gone */ }
+          options.signal?.removeEventListener('abort', onAbort);
           resolve({ outcome: 'ok', text: accum || msg.text || '', cost });
         } else if (msg?.type === 'ERROR') {
           try { port.disconnect(); } catch { /* already gone */ }
+          options.signal?.removeEventListener('abort', onAbort);
           if (msg.noKey) resolve({ outcome: 'no-key' });
           else reject(new Error(msg.error ?? 'Stream failed.'));
         }
       });
-      port.onDisconnect.addListener(() => resolve({ outcome: 'ok', text: accum, cost }));
+      port.onDisconnect.addListener(() => {
+        if (aborted) return;
+        options.signal?.removeEventListener('abort', onAbort);
+        resolve({ outcome: 'ok', text: accum, cost });
+      });
       port.postMessage({ type: 'START', request });
     });
   }

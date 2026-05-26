@@ -446,6 +446,9 @@ html, body {
 .composer-send { width: 30px; height: 30px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 30px; }
 .composer-send:disabled { background: var(--panel-elev-2); color: var(--panel-muted-soft); cursor: default; }
 .composer-send .ic { width: 16px; height: 16px; }
+.composer-stop { background: #EF4444; }
+.composer-stop:hover { background: #DC2626; }
+.theme-graphite .composer-stop { background: #DC2626; }
 .theme-graphite .composer-send { color: #0F1115; }
 .composer-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 11px; color: var(--panel-muted); }
 .composer-foot-r { display: inline-flex; align-items: center; gap: 8px; }
