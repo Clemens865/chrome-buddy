@@ -9,6 +9,11 @@
 import { test, expect } from './fixtures';
 
 test('Voice mode declares page tools and dispatches navigate', async ({ context, extensionId }) => {
+  // resolveActiveTabId needs an http(s) tab to operate on. Without it,
+  // executePageTool returns 'undriveable' before navigate is even called.
+  const site = await context.newPage();
+  await site.goto('https://example.com/', { waitUntil: 'load' });
+
   const panel = await context.newPage();
   await panel.setViewportSize({ width: 440, height: 980 });
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
@@ -39,11 +44,26 @@ test('Voice mode declares page tools and dispatches navigate', async ({ context,
     }
     // @ts-expect-error override
     globalThis.WebSocket = FakeWS;
-    // Capture chrome.tabs.update so we can prove the navigate call resolves.
+    // Track onUpdated listeners so the stubbed update can dispatch to them.
+    // (Required after the fix that makes navigate await chrome.tabs.onUpdated.)
+    type Listener = (id: number, info: chrome.tabs.TabChangeInfo) => void;
+    const updatedListeners: Listener[] = [];
+    const originalAdd = chrome.tabs.onUpdated.addListener.bind(chrome.tabs.onUpdated);
+    // @ts-expect-error override
+    chrome.tabs.onUpdated.addListener = (fn: Listener) => {
+      updatedListeners.push(fn);
+      originalAdd(fn);
+    };
+    // Capture chrome.tabs.update so we can prove the navigate call resolves,
+    // AND fire a 'complete' event so waitForTabComplete (in browserControl.ts)
+    // doesn't hang to its 10s timeout.
     const realUpdate = chrome.tabs.update.bind(chrome.tabs);
     // @ts-expect-error override
     chrome.tabs.update = (id: number, opts: { url?: string }) => {
       (globalThis as unknown as { __voiceCapture: { tabUpdates: Array<unknown> } }).__voiceCapture.tabUpdates.push({ id, opts });
+      setTimeout(() => {
+        for (const fn of updatedListeners) fn(id, { status: 'complete' });
+      }, 5);
       return realUpdate(id, opts);
     };
   });
@@ -103,5 +123,5 @@ test('Voice mode declares page tools and dispatches navigate', async ({ context,
     expect(responseFrame).toContain('"navigate"');
     // And NOT contain the 'not available in voice mode' message.
     expect(responseFrame).not.toContain('not available in voice mode');
-  }).toPass({ timeout: 10_000 });
+  }).toPass({ timeout: 20_000 });
 });

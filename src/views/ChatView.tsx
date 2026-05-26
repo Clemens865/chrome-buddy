@@ -833,6 +833,22 @@ export function ChatView({
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [items, noKey, busy]);
 
+  // Stronger guarantee: whenever a confirm card lands in items, scroll IT
+  // into view explicitly. The end-sentinel scroll above usually does this,
+  // but a tall trace block above the confirm card has been seen to push it
+  // below the fold without us realising. Fixing the user-reported "stuck —
+  // no confirm card" symptom.
+  const pendingConfirm = items.find(
+    (it) => it.kind === 'confirm' && it.resolution === undefined,
+  );
+  useEffect(() => {
+    if (!pendingConfirm) return;
+    const el = scrollerRef.current?.querySelector('.hitl');
+    if (el && 'scrollIntoView' in el) {
+      (el as HTMLElement).scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, [pendingConfirm?.id]);
+
   return (
     <div className="chat">
       {artifact && <ArtifactView artifact={artifact} onClose={() => setArtifact(null)} />}
@@ -950,6 +966,24 @@ export function ChatView({
           onStart={() => void startVoice()}
           onStop={() => void stopVoice()}
         />
+      )}
+      {pendingConfirm && (
+        <button
+          type="button"
+          className="pending-confirm-bar"
+          data-testid="pending-confirm-banner"
+          onClick={() => {
+            const el = scrollerRef.current?.querySelector('.hitl');
+            if (el && 'scrollIntoView' in el) {
+              (el as HTMLElement).scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+          }}
+          aria-label="Buddy is waiting for your confirmation — scroll to the confirm card"
+        >
+          <span className="ic">{Ic.warn}</span>
+          <span>Buddy is waiting for you to approve a {pendingConfirm.kind === 'confirm' ? pendingConfirm.call.name : 'action'} call</span>
+          <span className="pending-confirm-bar-cta">↑ Scroll</span>
+        </button>
       )}
       <ChatComposer
         input={input}
