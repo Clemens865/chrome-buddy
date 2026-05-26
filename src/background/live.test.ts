@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { __testing } from './live';
 import { ok, err } from '../types';
 
-const { routeServerFrame, dispatchFunctionCalls } = __testing;
+const { routeServerFrame, dispatchFunctionCalls, sanitizeForOpenApi } = __testing;
 
 describe('Gemini Live — server frame parser', () => {
   it('emits AUDIO_OUT for inlineData with an audio/* mime type', () => {
@@ -179,5 +179,48 @@ describe('dispatchFunctionCalls', () => {
       send,
     );
     expect((ws as unknown as { send: ReturnType<typeof vi.fn> }).send).not.toHaveBeenCalled();
+  });
+});
+
+describe('sanitizeForOpenApi', () => {
+  it('strips additionalProperties at any depth', () => {
+    const input = {
+      type: 'object',
+      properties: {
+        q: { type: 'string', description: 'query' },
+        nested: {
+          type: 'object',
+          properties: { k: { type: 'number' } },
+          additionalProperties: false,
+        },
+      },
+      required: ['q'],
+      additionalProperties: false,
+    };
+    const out = sanitizeForOpenApi(input);
+    expect('additionalProperties' in out).toBe(false);
+    expect('additionalProperties' in (out.properties as Record<string, unknown>).nested as Record<string, unknown>).toBe(false);
+    // Preserves the rest unchanged.
+    expect(out.type).toBe('object');
+    expect(out.required).toEqual(['q']);
+  });
+
+  it('drops $schema, $ref, patternProperties', () => {
+    const out = sanitizeForOpenApi({
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $ref: '#/definitions/x',
+      patternProperties: { '^foo': { type: 'string' } },
+      type: 'string',
+    } as Record<string, unknown>);
+    expect(out).toEqual({ type: 'string' });
+  });
+
+  it('handles arrays of object items recursively', () => {
+    const out = sanitizeForOpenApi({
+      type: 'array',
+      items: { type: 'object', additionalProperties: false, properties: { a: { type: 'number' } } },
+    } as Record<string, unknown>);
+    expect((out.items as Record<string, unknown>).additionalProperties).toBeUndefined();
+    expect((out.items as Record<string, unknown>).properties).toBeTruthy();
   });
 });

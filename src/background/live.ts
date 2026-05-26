@@ -22,7 +22,11 @@
 
 const LIVE_HOST = 'generativelanguage.googleapis.com';
 const LIVE_PATH = '/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
-const DEFAULT_MODEL = 'gemini-2.5-flash-live-preview';
+// Current 2.5-lineage live model. Earlier doc snapshots referenced
+// 'gemini-2.5-flash-live-preview'; the maintained id is
+// 'gemini-2.5-flash-native-audio-preview-12-2025' (the older alias 404s
+// silently — connection opens but generation never fires).
+const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
 
 type Port = chrome.runtime.Port;
 
@@ -146,7 +150,14 @@ async function onPortConnected(
             inputAudioTranscription: {},
             outputAudioTranscription: {},
             ...(tools && tools.declarations.length > 0
-              ? { tools: [{ functionDeclarations: tools.declarations }] }
+              ? {
+                  tools: [{
+                    functionDeclarations: tools.declarations.map((d) => ({
+                      ...d,
+                      parameters: d.parameters ? sanitizeForOpenApi(d.parameters) : undefined,
+                    })),
+                  }],
+                }
               : {}),
           },
         };
@@ -177,7 +188,15 @@ async function onPortConnected(
       ws.onerror = () => {
         send({ type: 'ERROR', message: 'Live WebSocket error.' });
       };
-      ws.onclose = () => closeWith('ws-close');
+      ws.onclose = (ev) => {
+        // Code 1007 = invalid payload. We surface server-side rejection
+        // reasons (model name issues, schema validation failures) to the
+        // panel so the user sees a real error instead of a silent close.
+        if (ev.code === 1007 && ev.reason) {
+          send({ type: 'ERROR', message: `Gemini Live rejected the request: ${ev.reason}` });
+        }
+        closeWith('ws-close');
+      };
       return;
     }
 
@@ -191,7 +210,16 @@ async function onPortConnected(
           },
         }));
       } else if (t === 'TEXT_IN' && typeof msg.text === 'string') {
-        session.ws.send(JSON.stringify({ realtimeInput: { text: msg.text } }));
+        // Discrete text turn — clientContent with turnComplete:true is what
+        // triggers the model to generate a response. `realtimeInput.text`
+        // exists but does NOT itself trigger generation; using it leaves
+        // the conversation hanging until audio arrives.
+        session.ws.send(JSON.stringify({
+          clientContent: {
+            turns: [{ role: 'user', parts: [{ text: msg.text }] }],
+            turnComplete: true,
+          },
+        }));
       } else if (t === 'AUDIO_END') {
         session.ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
       } else if (t === 'STOP') {
@@ -307,6 +335,33 @@ async function dispatchFunctionCalls(
   }
 }
 
+/**
+ * Strip JSON-Schema-only fields that Gemini Live's OpenAPI Schema parser
+ * rejects. The Live server returns close-code 1007 with
+ *   "Unknown name 'additionalProperties' at 'setup.tools[0].function_declarations[0].parameters'"
+ * if we pass them through. Recursively drops `additionalProperties`,
+ * `$schema`, and `$ref`; preserves `type`, `description`, `properties`,
+ * `required`, `enum`, `items`, `format`, `nullable`. Pure.
+ */
+export function sanitizeForOpenApi<T extends Record<string, unknown>>(input: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (k === 'additionalProperties' || k === '$schema' || k === '$ref' || k === 'patternProperties') continue;
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      out[k] = sanitizeForOpenApi(v as Record<string, unknown>);
+    } else if (Array.isArray(v)) {
+      out[k] = v.map((item) =>
+        item && typeof item === 'object' && !Array.isArray(item)
+          ? sanitizeForOpenApi(item as Record<string, unknown>)
+          : item,
+      );
+    } else {
+      out[k] = v;
+    }
+  }
+  return out as T;
+}
+
 /** Test-only export — routeServerFrame is the pure parser; exposing it
  * lets the unit tests verify parsing behaviour without a real WS. */
-export const __testing = { routeServerFrame, dispatchFunctionCalls };
+export const __testing = { routeServerFrame, dispatchFunctionCalls, sanitizeForOpenApi };
