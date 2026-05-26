@@ -4,7 +4,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 export const DB_NAME = 'chrome-buddy';
-const VERSION = 10;
+const VERSION = 11;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -59,6 +59,17 @@ export function getDB(): Promise<IDBPDatabase> {
         // the HITL gate ALWAYS fires regardless of saved/named status.
         if (!d.objectStoreNames.contains('webhooks')) {
           d.createObjectStore('webhooks', { keyPath: 'id' }).createIndex('name', 'name', { unique: true });
+        }
+        // Webhook flows (v11) — saved one-tap automations from the
+        // WebhookBuddy port. Each flow references a saved webhook by `name`
+        // (so URL/headers stay in the address book, never duplicated) and
+        // describes WHAT to snapshot from the current page before POSTing.
+        // Categories are derived from the flow row's `categoryName` string —
+        // no separate categories store so deletes can never orphan one.
+        if (!d.objectStoreNames.contains('webhookFlows')) {
+          const flows = d.createObjectStore('webhookFlows', { keyPath: 'id' });
+          flows.createIndex('updatedAt', 'updatedAt');
+          flows.createIndex('categoryName', 'categoryName');
         }
       },
     });

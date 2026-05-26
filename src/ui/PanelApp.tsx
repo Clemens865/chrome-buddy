@@ -20,6 +20,9 @@ const TranscriberApp = lazy(() =>
 const LiveTranscriberApp = lazy(() =>
   import('../views/apps/LiveTranscriberApp').then((m) => ({ default: m.LiveTranscriberApp })),
 );
+const WebhookFlowsApp = lazy(() =>
+  import('../views/apps/WebhookFlowsApp').then((m) => ({ default: m.WebhookFlowsApp })),
+);
 import { SkillsView, FlowsView, HistoryView } from '../views/StubViews';
 import { LibraryView } from '../views/LibraryView';
 import { SettingsView } from '../views/SettingsView';
@@ -98,6 +101,7 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
     else if (openApp === 'image') content = lazyApp(<ImageApp onBack={() => setOpenApp(null)} />);
     else if (openApp === 'transcriber') content = lazyApp(<TranscriberApp onBack={() => setOpenApp(null)} />);
     else if (openApp === 'livescribe') content = lazyApp(<LiveTranscriberApp onBack={() => setOpenApp(null)} />);
+    else if (openApp === 'webhooks') content = lazyApp(<WebhookFlowsApp onBack={() => setOpenApp(null)} />);
     else content = <AppsView onOpenApp={setOpenApp} onPreset={runPreset} />;
   } else if (view === 'skills') content = <SkillsView onRunSkill={runSkill} />;
   else if (view === 'flows') content = <FlowsView onRunWorkflow={runWorkflow} />;
