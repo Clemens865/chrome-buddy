@@ -46,7 +46,7 @@ import {
   executeAnalyzeA11y,
   executeAnalyzeSeo,
 } from './inspector';
-import { executeSearchLibrary, executeIndexDoc } from './library';
+import { executeSearchLibrary, executeIndexDoc, executeLibraryBackfill } from './library';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
 import { saveWorkflow, listWorkflows, deleteWorkflow } from '../workflows/store';
@@ -456,6 +456,12 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
           getStoredKey,
         );
         return { type: 'LIBRARY_INDEX', ok: true, result };
+      }
+
+      case 'LIBRARY_BACKFILL': {
+        // One-time walk over existing chats + notes; idempotent on re-run.
+        const r = await executeLibraryBackfill(getStoredKey);
+        return { type: 'LIBRARY_BACKFILL', ok: true, ...r };
       }
 
       case 'IMAGE_GENERATE': {

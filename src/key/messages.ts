@@ -179,6 +179,13 @@ export interface LibraryIndexMessage {
   content: string;
 }
 
+/** Library v1 — one-time backfill. Walks IDB chats + notes and indexes any
+ * that aren't yet in the library (or whose contentHash changed). Returns
+ * counts so the UI can render a progress notice. */
+export interface LibraryBackfillMessage {
+  type: 'LIBRARY_BACKFILL';
+}
+
 /** Vision Mode (Computer Use) — one model turn. Stateless: caller passes the
  *  full `contents` array each turn (the SW only adds the system instruction +
  *  the computer_use tool config). Returns the model's text + function calls. */
@@ -226,7 +233,8 @@ export type BuddyMessage =
   | AppSaveMessage
   | AppListMessage
   | AppDeleteMessage
-  | LibraryIndexMessage;
+  | LibraryIndexMessage
+  | LibraryBackfillMessage;
 
 // ---- Responses --------------------------------------------------------------
 
@@ -348,6 +356,19 @@ export interface LibraryIndexResponse {
   result: ToolResult;
 }
 
+export interface LibraryBackfillResponse {
+  type: 'LIBRARY_BACKFILL';
+  ok: true;
+  /** How many docs were freshly indexed (skipped/unchanged not counted). */
+  indexed: number;
+  /** How many were skipped because contentHash was unchanged. */
+  skipped: number;
+  /** How many failed (couldn't embed, etc.). */
+  failed: number;
+  /** Total docs considered (chats + notes). */
+  total: number;
+}
+
 /** Uniform error envelope returned for any failed message handling. */
 export interface ErrorResponse {
   type: 'ERROR';
@@ -433,6 +454,7 @@ export type BuddyResponse =
   | AppListResponse
   | AppDeleteResponse
   | LibraryIndexResponse
+  | LibraryBackfillResponse
   | ErrorResponse;
 
 /** Type guard: is this an inbound message the SW should handle? */
@@ -463,6 +485,7 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'VISION_TURN' ||
     t === 'VISION_ACTION' ||
     t === 'VISION_CAPTURE' ||
-    t === 'LIBRARY_INDEX'
+    t === 'LIBRARY_INDEX' ||
+    t === 'LIBRARY_BACKFILL'
   );
 }

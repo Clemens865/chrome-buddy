@@ -229,6 +229,16 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
       </div>
 
       <div className="settings-section">
+        <div className="settings-section-h">Library</div>
+        <SettingsRow
+          t="Index existing chats + notes"
+          s="Adds saved chats + notes to the Library RAG. Idempotent — safe to re-run."
+        >
+          <LibraryBackfillControl />
+        </SettingsRow>
+      </div>
+
+      <div className="settings-section">
         <div className="settings-section-h">File Search Stores</div>
         <div className="settings-row settings-row-block">
           <div className="settings-row-l">
@@ -685,5 +695,48 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
     <button type="button" className={'toggle' + (on ? ' is-on' : '')} onClick={() => onChange(!on)} aria-pressed={on} aria-label="Toggle">
       <span className="toggle-thumb" />
     </button>
+  );
+}
+
+/** Backfill control — runs LIBRARY_BACKFILL and surfaces a small status line.
+ * Idempotent on re-run (the pipeline skips unchanged contentHashes), so the
+ * button stays enabled and the user can refresh the index whenever. */
+function LibraryBackfillControl() {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | undefined>();
+  const [error, setError] = useState<string | undefined>();
+  const onClick = async () => {
+    setBusy(true);
+    setError(undefined);
+    setStatus('Walking chats + notes…');
+    try {
+      const r = (await chrome.runtime.sendMessage({ type: 'LIBRARY_BACKFILL' })) as
+        | { type: 'LIBRARY_BACKFILL'; ok: true; total: number; indexed: number; skipped: number; failed: number }
+        | undefined;
+      if (!r || !r.ok) {
+        setError('No response from background.');
+      } else {
+        const parts = [`${r.indexed} indexed`, `${r.skipped} skipped`];
+        if (r.failed > 0) parts.push(`${r.failed} failed`);
+        setStatus(`${parts.join(' · ')} (of ${r.total} total)`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <button type="button" className="btn btn-sm btn-primary" onClick={onClick} disabled={busy} data-testid="library-backfill">
+        {busy ? 'Indexing…' : 'Run backfill'}
+      </button>
+      {status && !error && (
+        <span className="settings-row-s" data-testid="library-backfill-status">{status}</span>
+      )}
+      {error && (
+        <span className="settings-row-s" style={{ color: '#B91C1C' }} data-testid="library-backfill-error">{error}</span>
+      )}
+    </div>
   );
 }

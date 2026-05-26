@@ -31,6 +31,7 @@ import type { ToolDefinition } from '../tools/types';
 import { ok, err, type ToolResult } from '../types';
 import { getRootHandle, readFromRoot, writeToRoot, listRoot } from '../fs/root';
 import { saveNote, getNote, listNotes, snippet } from '../notes/store';
+import { mirrorNote } from '../library/mirror';
 import { saveCheckpoint, clearCheckpoint } from './checkpoint';
 import { nanoPrompt } from '../llm/nano';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
@@ -130,6 +131,8 @@ function noteToolHandler(name: string) {
       // note_save
       const content = typeof args.content === 'string' ? args.content : '';
       const saved = await saveNote(key, content);
+      // Mirror into the library RAG index (fire-and-forget; idempotent).
+      mirrorNote(saved);
       return ok({ key: saved.key, bytes: content.length, target: 'notes' });
     } catch (e) {
       return err('runtime-error', e instanceof Error ? e.message : String(e));

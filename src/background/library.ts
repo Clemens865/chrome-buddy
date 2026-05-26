@@ -4,6 +4,10 @@
 
 import { ok, err, type ToolResult } from '../types';
 import { indexDoc, searchLibrary, type SearchHit, type LibrarySource } from '../library';
+import { renderConversationAsMarkdown } from '../library/mirror';
+import { getDB } from '../db';
+import type { Conversation } from '../chat/store';
+import type { Note } from '../notes/store';
 
 type GetKey = (provider: string) => Promise<string | undefined>;
 
@@ -61,4 +65,62 @@ export async function executeIndexDoc(
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
   }
+}
+
+export interface BackfillResult {
+  total: number;
+  indexed: number;
+  skipped: number;
+  failed: number;
+}
+
+/**
+ * One-time backfill: walk every chat + note in IDB and index it. The library
+ * pipeline is idempotent (skip on unchanged contentHash), so this is safe to
+ * run repeatedly; subsequent runs only embed new / changed content.
+ *
+ * Errors on individual docs are counted, not thrown — the user may have one
+ * bad doc; we still want the other 99 to land.
+ */
+export async function executeLibraryBackfill(getKey: GetKey): Promise<BackfillResult> {
+  const db = await getDB();
+  const chats = (await db.getAll('chats')) as Conversation[];
+  const notes = (await db.getAll('notes')) as Note[];
+  const out: BackfillResult = { total: chats.length + notes.length, indexed: 0, skipped: 0, failed: 0 };
+  const key = geminiKey(getKey);
+
+  for (const c of chats) {
+    const content = renderConversationAsMarkdown(c);
+    if (!content.trim()) {
+      out.skipped += 1;
+      continue;
+    }
+    try {
+      const r = await indexDoc(
+        { source: 'chat', sourceRef: c.id, title: c.title || 'Untitled chat', content },
+        key,
+      );
+      if (r.reindexed) out.indexed += 1;
+      else out.skipped += 1;
+    } catch {
+      out.failed += 1;
+    }
+  }
+  for (const n of notes) {
+    if (!n.content?.trim()) {
+      out.skipped += 1;
+      continue;
+    }
+    try {
+      const r = await indexDoc(
+        { source: 'note', sourceRef: n.key, title: n.key, content: n.content },
+        key,
+      );
+      if (r.reindexed) out.indexed += 1;
+      else out.skipped += 1;
+    } catch {
+      out.failed += 1;
+    }
+  }
+  return out;
 }

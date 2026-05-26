@@ -29,6 +29,7 @@ import {
   deriveTitle,
   type Conversation,
 } from '../chat/store';
+import { mirrorChat } from '../library/mirror';
 import {
   BUDGET_KEYS,
   BUDGET_DEFAULTS,
@@ -196,13 +197,17 @@ export function ChatView({
       loadedIdRef.current = id;
       setActiveChatId(id);
     }
-    void saveConversation({
+    const conv: Conversation = {
       id,
       title: deriveTitle(items),
       items,
       createdAt: chatCreatedRef.current || Date.now(),
       updatedAt: Date.now(),
-    });
+    };
+    void saveConversation(conv);
+    // Mirror into the library RAG index (fire-and-forget; idempotent on
+    // unchanged content via contentHash so this is cheap on every save).
+    mirrorChat(conv);
   }, [busy, items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startNewChat = useCallback(() => {
