@@ -75,7 +75,11 @@ export async function act(
   return actViaScripting(tabId, action);
 }
 
-/** Open or navigate a tab (FR-TOOLS-2). */
+/** Open or navigate a tab (FR-TOOLS-2). Waits for the new page to finish
+ *  loading (status === 'complete') before resolving, so subsequent
+ *  read_dom / click / extract calls land on the new page, not the old one.
+ *  Falls back to a 10s timeout so a slow-loading page doesn't hang the
+ *  agent loop or voice turn indefinitely. */
 async function navigate(
   tabId: number,
   url: string,
@@ -89,15 +93,54 @@ async function navigate(
     return { undriveable: true, reason, url, message: describeUndriveable(reason) };
   }
   try {
+    let targetTabId: number = tabId;
     if (newTab) {
-      await chrome.tabs.create({ url });
+      const created = await chrome.tabs.create({ url });
+      if (typeof created?.id === 'number') targetTabId = created.id;
     } else {
       await chrome.tabs.update(tabId, { url });
     }
-    return { ok: true, engine: 'scripting', note: newTab ? 'opened new tab' : 'navigated' };
+    // Wait for the page to actually load before reporting success. Without
+    // this, the model's NEXT tool call (read_dom etc.) races the in-flight
+    // navigation and reads the stale page.
+    const loaded = await waitForTabComplete(targetTabId, 10_000);
+    return {
+      ok: true,
+      engine: 'scripting',
+      note: `${newTab ? 'opened new tab' : 'navigated'}${loaded ? '' : ' (load timed out — page may be slow)'}`,
+    };
   } catch (e) {
     return { ok: false, reason: 'error', message: String(e) };
   }
+}
+
+/** Resolve once the given tab fires `status: 'complete'` via chrome.tabs.onUpdated,
+ *  or when `timeoutMs` elapses. Tolerant of test contexts where the API is mocked. */
+async function waitForTabComplete(targetTabId: number, timeoutMs: number): Promise<boolean> {
+  if (typeof chrome === 'undefined' || !chrome.tabs?.onUpdated?.addListener) return true;
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (loaded: boolean) => {
+      if (settled) return;
+      settled = true;
+      try { chrome.tabs.onUpdated.removeListener(listener); } catch { /* ignore */ }
+      clearTimeout(timer);
+      resolve(loaded);
+    };
+    const listener = (id: number, info: chrome.tabs.TabChangeInfo) => {
+      if (id === targetTabId && info.status === 'complete') finish(true);
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    // Edge: the tab may already be complete by the time we get here.
+    try {
+      void chrome.tabs.get(targetTabId).then((t) => {
+        if (t?.status === 'complete') finish(true);
+      }).catch(() => undefined);
+    } catch {
+      /* ignore */
+    }
+  });
 }
 
 // --- scripting (synthetic events) engine -----------------------------------
