@@ -109,13 +109,16 @@ async function onPortConnected(
       const systemText = typeof msg.systemInstruction === 'string'
         ? msg.systemInstruction
         : 'You are Buddy, a concise, helpful voice assistant. Keep replies short and conversational.';
+      // Output modality — 'AUDIO' for voice chat, 'TEXT' for the Live
+      // Transcriber (no synthesised replies; cheaper + faster).
+      const responseModality = msg.responseModalities === 'TEXT' ? 'TEXT' : 'AUDIO';
 
       ws.onopen = () => {
         // Setup frame must be the first message.
         const setup = {
           setup: {
             model: `models/${model}`,
-            generationConfig: { responseModalities: ['AUDIO'] },
+            generationConfig: { responseModalities: [responseModality] },
             systemInstruction: { parts: [{ text: systemText }] },
             // Ask the server for both sides' transcripts so we can render them.
             inputAudioTranscription: {},

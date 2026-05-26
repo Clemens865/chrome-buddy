@@ -30,6 +30,10 @@ export interface VoiceSessionOptions {
   systemInstruction?: string;
   /** Override the model (default: gemini-2.5-flash-live-preview). */
   model?: string;
+  /** Output modality — 'AUDIO' (default, for voice chat) or 'TEXT' (for the
+   *  Live Transcriber, which only consumes the inputTranscription events
+   *  and doesn't need synthesised audio replies). */
+  responseModalities?: 'AUDIO' | 'TEXT';
 }
 
 const INPUT_SAMPLE_RATE = 16_000;
@@ -64,6 +68,7 @@ export class VoiceSession {
       type: 'START',
       model: this.opts.model,
       systemInstruction: this.opts.systemInstruction,
+      responseModalities: this.opts.responseModalities,
     });
 
     // 2) Ask for the mic. If the user denies, surface a clean error.

@@ -495,6 +495,16 @@ html, body {
 .theme-graphite .voice-state-live { color: #6EE7B7; }
 .voice-state-connecting { color: var(--panel-muted); }
 .voice-state-error { color: #B91C1C; }
+
+/* Live Transcriber app */
+.live-bar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--panel-border-soft); flex-wrap: wrap; }
+.live-bar-spacer { flex: 1; }
+.live-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; scrollbar-width: thin; scrollbar-color: var(--panel-border) transparent; }
+.live-body { display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.5; color: var(--panel-fg); }
+.live-line { display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: baseline; }
+.live-line-partial .live-text { color: var(--panel-muted); font-style: italic; }
+.live-stamp { font-size: 10.5px; color: var(--panel-muted-soft); font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; padding-top: 2px; }
+.live-text { word-break: break-word; }
 .theme-graphite .composer-send { color: #0F1115; }
 .composer-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 11px; color: var(--panel-muted); }
 .composer-foot-r { display: inline-flex; align-items: center; gap: 8px; }
