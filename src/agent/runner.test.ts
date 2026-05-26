@@ -2,7 +2,7 @@
 // A mock `send` stands in for chrome.runtime.sendMessage so no real SW is hit.
 
 import { describe, it, expect, vi } from 'vitest';
-import { runAgentTask, buildCallSkillTool, askUserToolHandler, buildVisionFallback } from './runner';
+import { runAgentTask, buildCallSkillTool, askUserToolHandler, buildVisionFallback, classifyFileError } from './runner';
 import type { AgentEvent } from './types';
 import type { Skill } from '../skills/types';
 
@@ -166,5 +166,22 @@ describe('buildVisionFallback', () => {
     const send = vi.fn(async () => ({ type: 'TOOL_EXEC', ok: true, result: { ok: false, error: { code: 'undriveable', message: 'no' } } }));
     const res = await buildVisionFallback(send, 'm')({ runId: 'r', step: 1, intent: 'x' });
     expect(res.ok).toBe(false);
+  });
+});
+
+describe('classifyFileError', () => {
+  // Locks the rule that prevents the agent from infinitely retrying
+  // missing-config errors. 'not-found' → validator returns 'failed' → no
+  // retry. 'runtime-error' → validator returns 'needs-retry' → retry.
+  it('maps "No root folder set" to not-found (no retry)', () => {
+    expect(classifyFileError('No root folder set. Choose one in Settings.')).toBe('not-found');
+  });
+  it('maps "access expired" (any phrasing) to not-found (no retry)', () => {
+    expect(classifyFileError('Folder access expired. Open Settings and reconnect.')).toBe('not-found');
+    expect(classifyFileError('ACCESS EXPIRED — re-approve.')).toBe('not-found');
+  });
+  it('falls back to runtime-error for genuinely transient failures', () => {
+    expect(classifyFileError('Network timeout while reading file')).toBe('runtime-error');
+    expect(classifyFileError('TypeError: x is undefined')).toBe('runtime-error');
   });
 });

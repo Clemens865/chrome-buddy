@@ -68,4 +68,11 @@ test('Pending HITL confirmation surfaces a sticky banner above the composer', as
   await expect(banner).toBeVisible();
   await expect(banner).toContainText(/Buddy is waiting/i);
   await expect(banner).toContainText(/send_webhook/);
+
+  // Regression — the Approve / Cancel buttons used to be clipped behind
+  // the fixed banner + composer. block:'end' + scroll-margin-bottom:160px
+  // on .hitl keeps the buttons fully in the viewport so the user can
+  // actually click them.
+  await expect(panel.getByRole('button', { name: 'Approve action' })).toBeInViewport();
+  await expect(panel.getByRole('button', { name: 'Cancel action' })).toBeInViewport();
 });

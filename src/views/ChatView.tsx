@@ -845,7 +845,11 @@ export function ChatView({
     if (!pendingConfirm) return;
     const el = scrollerRef.current?.querySelector('.hitl');
     if (el && 'scrollIntoView' in el) {
-      (el as HTMLElement).scrollIntoView({ block: 'center', behavior: 'smooth' });
+      // block:'end' combined with scroll-margin-bottom:160px on .hitl lands
+      // the BOTTOM of the card (where Approve / Cancel live) above the
+      // pending-confirm banner + composer footer. Earlier center+smooth
+      // could leave the buttons clipped behind the fixed footer UI.
+      (el as HTMLElement).scrollIntoView({ block: 'end', behavior: 'smooth' });
     }
   }, [pendingConfirm?.id]);
 
@@ -975,7 +979,9 @@ export function ChatView({
           onClick={() => {
             const el = scrollerRef.current?.querySelector('.hitl');
             if (el && 'scrollIntoView' in el) {
-              (el as HTMLElement).scrollIntoView({ block: 'center', behavior: 'smooth' });
+              // block:'end' lands the Approve/Cancel row above the banner
+              // itself (scroll-margin-bottom on .hitl handles the offset).
+              (el as HTMLElement).scrollIntoView({ block: 'end', behavior: 'smooth' });
             }
           }}
           aria-label="Buddy is waiting for your confirmation — scroll to the confirm card"

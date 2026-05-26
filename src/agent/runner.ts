@@ -84,6 +84,19 @@ const AGENT_TOOLS = new Set([
 /** Resolver the agent awaits when it calls ask_user (FR-TOOLS-11). */
 export type AskUserHandler = (req: { question: string; choices?: string[] }) => Promise<string>;
 
+/**
+ * Map a tool-handler error message to the right ToolErrorCode. User-config
+ * errors (no folder picked, FSA permission expired) MUST NOT be classified
+ * as 'runtime-error' — the runtime validator treats that as transient and
+ * the agent burns retry budget bouncing off the same impossible action.
+ * Returning 'not-found' makes the validator return 'failed' → no retry.
+ * Exported so the rule is unit-testable.
+ */
+export function classifyFileError(message: string): 'not-found' | 'runtime-error' {
+  if (/No root folder set|access expired/i.test(message)) return 'not-found';
+  return 'runtime-error';
+}
+
 /** File tools run in the UI (they hold the File System Access handle, which the
  * SW can't). read_file requires a root folder; write_file uses the root folder
  * when set, else falls back to the SW download path. */
@@ -108,7 +121,10 @@ function fileToolHandler(name: string, send: (m: unknown) => Promise<unknown>) {
       // No root folder chosen — fall back to a Downloads save (SW).
       return execPageTool(send, 'write_file', args);
     } catch (e) {
-      return err('runtime-error', e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      // User-configuration errors (no root folder picked / FSA permission
+      // expired) MUST return a non-retryable code. See classifyFileError.
+      return err(classifyFileError(message), message);
     }
   };
 }
