@@ -1039,11 +1039,19 @@ button.ctx-chip.is-on { color: var(--accent); background: var(--accent-soft); }
 .wf-form { padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .wf-field { display: flex; flex-direction: column; gap: 4px; }
 .wf-field-label { font-size: 11.5px; color: var(--panel-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-.wf-field input, .wf-field select, .wf-field textarea { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--panel-border); background: var(--panel-bg); color: var(--panel-fg); font-size: 13px; font-family: inherit; }
+/* Text-like inputs only — radios / checkboxes must keep their intrinsic size,
+   otherwise width:100% stretches them across the row and pushes the label
+   off to the right edge. */
+.wf-field input:not([type='radio']):not([type='checkbox']),
+.wf-field select,
+.wf-field textarea { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--panel-border); background: var(--panel-bg); color: var(--panel-fg); font-size: 13px; font-family: inherit; }
 .wf-field textarea { resize: vertical; min-height: 56px; }
 .wf-radios { display: flex; flex-direction: column; gap: 4px; }
-.wf-radio { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; padding: 4px 0; }
-.wf-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.wf-radio { display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; padding: 4px 0; }
+.wf-radio input[type='radio'] { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.wf-radio span { flex: 1; }
+.wf-toggle { display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; padding: 4px 0; }
+.wf-toggle input[type='checkbox'] { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 .wf-warn { font-size: 12px; color: #F59E0B; padding: 8px; background: rgba(245,158,11,0.1); border-radius: 6px; }
 .wf-disclose { display: flex; align-items: center; gap: 6px; background: none; border: 0; padding: 4px 0; color: var(--panel-fg); cursor: pointer; font-size: 13px; font-weight: 500; }
 .wf-prompt { display: flex; flex-direction: column; gap: 12px; padding-left: 18px; border-left: 2px solid var(--panel-border); }
