@@ -266,16 +266,28 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
 };
 
 /**
- * Voice-mode tool subset. Hand-picked read/search/analytical tools — NO
- * consequential ones (no send_webhook, no write_file, no github_write). The
- * agent runner's HITL gate doesn't exist on the voice path; until we wire a
- * verbal/visual confirmation flow, consequential tools stay out of voice.
+ * Voice-mode tool subset. Includes:
+ *  - Page driving (navigate / click / type / scroll / read_dom / extract /
+ *    screenshot / summarize) so Buddy can actually browse on voice commands.
+ *  - Read/search/analytical tools (library, vitals, errors, SEO, etc.).
+ *  - Excludes ALL consequential tools (send_webhook, write_file, github_write):
+ *    the voice path has no HITL gate; until we wire verbal/inline confirmation,
+ *    only non-consequential tools are voice-callable.
  *
- * This is also smaller than AGENT_TOOLS for token-efficiency reasons — Live
- * sends the full tool registry on every setup, and voice users care about a
- * different (more read-only) subset than agent users.
+ * The model still respects restricted-URL guards inside executePageTool, so
+ * "navigate to chrome://" etc. fail cleanly with a structured error.
  */
 const VOICE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  // Page driving (DOM-first via executePageTool).
+  'navigate',
+  'click',
+  'type',
+  'scroll',
+  'read_dom',
+  'extract',
+  'screenshot',
+  'summarize',
+  // Analysis + search (already wired in TOOL_HANDLERS).
   'search_library',
   'list_webhooks',
   'web_vitals',
@@ -290,6 +302,13 @@ const VOICE_TOOL_NAMES: ReadonlySet<string> = new Set([
   'fetch_url',
   'search_web',
   'file_search',
+]);
+
+/** PAGE_TOOLS fall through to executePageTool rather than living in
+ *  TOOL_HANDLERS. We synthesise voice handlers for them so the Live dispatch
+ *  loop can resolve them by name. */
+const PAGE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'navigate', 'click', 'type', 'scroll', 'read_dom', 'extract', 'screenshot', 'summarize',
 ]);
 
 /** Default model for audio transcription (audio-understanding capable). */
@@ -693,8 +712,14 @@ const voiceDeclarations: LiveFunctionDeclaration[] = stubToolDefs
   }));
 const voiceHandlers: Record<string, (a: Record<string, unknown>, k: typeof getStoredKey) => Promise<import('../types').ToolResult>> = {};
 for (const name of VOICE_TOOL_NAMES) {
-  const h = TOOL_HANDLERS[name];
-  if (h) voiceHandlers[name] = h;
+  if (PAGE_TOOL_NAMES.has(name)) {
+    // Page tools route through executePageTool — wrap to match the
+    // (args, getKey) signature the Live dispatcher expects.
+    voiceHandlers[name] = (a) => executePageTool(name, a);
+  } else {
+    const h = TOOL_HANDLERS[name];
+    if (h) voiceHandlers[name] = h;
+  }
 }
 registerVoiceStreamPort(getStoredKey, { handlers: voiceHandlers, declarations: voiceDeclarations });
 

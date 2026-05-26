@@ -133,7 +133,21 @@ async function onPortConnected(
       const model = typeof msg.model === 'string' ? msg.model : DEFAULT_MODEL;
       const systemText = typeof msg.systemInstruction === 'string'
         ? msg.systemInstruction
-        : 'You are Buddy, a concise, helpful voice assistant. Keep replies short and conversational.';
+        : (
+          'You are Buddy, a real-time voice browser assistant. Keep spoken replies short and conversational. ' +
+          'You have TOOLS available — call them when the user asks for something concrete; do NOT say "I can\'t". ' +
+          'Tools you can use:\n' +
+          '  • navigate({ url }) — open a URL in the active tab.\n' +
+          '  • click({ selector }) / type({ selector, text }) / scroll({ to }) — drive the current page.\n' +
+          '  • read_dom() / extract({ schema }) / summarize() / screenshot() — read the active page.\n' +
+          '  • fetch_url({ url, instruction? }) — read any public URL without leaving.\n' +
+          '  • search_web({ query }) — search the open web.\n' +
+          '  • search_library({ query }) — semantic search of the user\'s saved notes / chats / imports.\n' +
+          '  • web_vitals / scan_security / detect_tech_stack / analyze_a11y / analyze_seo / analyze_errors / read_network / read_storage / scan_sensitive_data — analyse the active page.\n' +
+          '  • list_webhooks() — discover saved webhook NAMES (you cannot send to them in voice mode yet).\n' +
+          'Rules: prefer the right tool over describing limits. When the user says "go to X" or "open X", call navigate. ' +
+          'After a tool runs, summarise the result briefly in your spoken reply.'
+        );
       // Output modality — 'AUDIO' for voice chat, 'TEXT' for the Live
       // Transcriber (no synthesised replies; cheaper + faster).
       const responseModality = msg.responseModalities === 'TEXT' ? 'TEXT' : 'AUDIO';
