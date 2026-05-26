@@ -181,10 +181,12 @@ export function ChatView({
    *  ticking — concrete proof audio is reaching the SW. Once Gemini starts
    *  responding, the received counter ticks too. */
   const [voiceFlow, setVoiceFlow] = useState<{ sent: number; sentB: number; recv: number; recvB: number; played: number } | undefined>();
-  /** When the model is streaming a reply, we accumulate the partial text in
-   *  this item id so each TRANSCRIPT chunk replaces (not appends) the bubble. */
-  const voiceTurnIdRef = useRef<string>('');
-  const voiceUserTurnIdRef = useRef<string>('');
+  /** Live-API TRANSCRIPT chunks arrive as DELTAS (small fragments), each
+   *  often flagged finished:true. Each role gets one bubble per turn; we
+   *  CONCATENATE chunks into it and only close the bubble when the OTHER
+   *  role's chunk arrives (turn boundary) or on TURN_DONE. */
+  const voiceUserBubbleRef = useRef<{ id: string; text: string } | null>(null);
+  const voiceModelBubbleRef = useRef<{ id: string; text: string } | null>(null);
   // Mirror items so the (memoised) submit closure can read the latest transcript.
   const itemsRef = useRef<TranscriptItem[]>(items);
   itemsRef.current = items;
@@ -264,40 +266,52 @@ export function ChatView({
           setVoiceState('live');
           break;
         case 'transcript': {
-          // Accumulate user vs. model turns into bubbles. New `final` chunks
-          // close out the current bubble id so the next transcript starts a
-          // fresh one.
+          // CONCATENATE chunks into the role's current bubble. The Live API
+          // sends deltas, often with finished:true on EVERY chunk — treating
+          // finished as "close the bubble" produced the fragmentation bug
+          // (one bubble per word). Bubbles close when the opposite role
+          // speaks or on turn-done.
           if (e.role === 'user') {
-            if (!voiceUserTurnIdRef.current) {
-              voiceUserTurnIdRef.current = `vu_${seqRef.current++}`;
-              setItems((prev) => [...prev, userItem(voiceUserTurnIdRef.current, e.text)]);
+            // Model's turn ended — drop its bubble ref so the next model
+            // chunk starts fresh.
+            if (voiceModelBubbleRef.current) voiceModelBubbleRef.current = null;
+            const cur = voiceUserBubbleRef.current;
+            if (!cur) {
+              const id = `vu_${seqRef.current++}`;
+              voiceUserBubbleRef.current = { id, text: e.text };
+              setItems((prev) => [...prev, userItem(id, e.text)]);
             } else {
-              const id = voiceUserTurnIdRef.current;
+              const text = cur.text + e.text;
+              voiceUserBubbleRef.current = { id: cur.id, text };
               setItems((prev) =>
-                prev.map((it) => (it.kind === 'user' && it.id === id ? { ...it, text: e.text } : it)),
+                prev.map((it) => (it.kind === 'user' && it.id === cur.id ? { ...it, text } : it)),
               );
             }
-            if (e.isFinal) voiceUserTurnIdRef.current = '';
           } else {
-            if (!voiceTurnIdRef.current) {
-              voiceTurnIdRef.current = `va_${seqRef.current++}`;
-              setItems((prev) => [...prev, agentItem(voiceTurnIdRef.current, e.text)]);
+            if (voiceUserBubbleRef.current) voiceUserBubbleRef.current = null;
+            const cur = voiceModelBubbleRef.current;
+            if (!cur) {
+              const id = `va_${seqRef.current++}`;
+              voiceModelBubbleRef.current = { id, text: e.text };
+              setItems((prev) => [...prev, agentItem(id, e.text)]);
             } else {
-              const id = voiceTurnIdRef.current;
+              const text = cur.text + e.text;
+              voiceModelBubbleRef.current = { id: cur.id, text };
               setItems((prev) =>
-                prev.map((it) => (it.kind === 'agent' && it.id === id ? { ...it, text: e.text } : it)),
+                prev.map((it) => (it.kind === 'agent' && it.id === cur.id ? { ...it, text } : it)),
               );
             }
-            if (e.isFinal) voiceTurnIdRef.current = '';
           }
           break;
         }
         case 'turn-done':
-          voiceTurnIdRef.current = '';
+          voiceUserBubbleRef.current = null;
+          voiceModelBubbleRef.current = null;
           break;
         case 'interrupted':
-          // Drop the current bubble id so the next chunk starts fresh.
-          voiceTurnIdRef.current = '';
+          // Drop both refs so any post-interrupt chunks start fresh bubbles.
+          voiceUserBubbleRef.current = null;
+          voiceModelBubbleRef.current = null;
           break;
         case 'flow':
           setVoiceFlow({ sent: e.sentChunks, sentB: e.sentBytes, recv: e.recvChunks, recvB: e.recvBytes, played: e.playedChunks });
@@ -309,8 +323,8 @@ export function ChatView({
         case 'closed':
           setVoiceState('idle');
           voiceRef.current = null;
-          voiceTurnIdRef.current = '';
-          voiceUserTurnIdRef.current = '';
+          voiceUserBubbleRef.current = null;
+          voiceModelBubbleRef.current = null;
           setVoiceFlow(undefined);
           break;
       }
@@ -331,8 +345,8 @@ export function ChatView({
     voiceRef.current = null;
     setVoiceState('idle');
     setVoiceError(undefined);
-    voiceTurnIdRef.current = '';
-    voiceUserTurnIdRef.current = '';
+    voiceUserBubbleRef.current = null;
+    voiceModelBubbleRef.current = null;
     if (session) await session.stop();
   }, []);
 
