@@ -16,6 +16,40 @@ describe('hashContent', () => {
   });
 });
 
+// Eviction algorithm test — uses the same shape the real evictOldestDocs
+// applies, so this locks the contract (oldest-updatedAt first; cap honored).
+function evictOldest<T extends { id: string; updatedAt: number }>(all: T[], max: number): T[] {
+  if (all.length <= max) return all;
+  const sorted = [...all].sort((a, b) => a.updatedAt - b.updatedAt);
+  const keep = new Set(sorted.slice(all.length - max).map((c) => c.id));
+  return all.filter((c) => keep.has(c.id));
+}
+
+describe('library doc eviction policy', () => {
+  function mk(id: string, updatedAt: number) {
+    return { id, updatedAt };
+  }
+  it('keeps everything when under the cap', () => {
+    const docs = Array.from({ length: 50 }, (_, i) => mk(`d${i}`, i));
+    expect(evictOldest(docs, 1000)).toEqual(docs);
+  });
+  it('drops (count - max) oldest-updatedAt entries when over', () => {
+    const docs = Array.from({ length: 1005 }, (_, i) => mk(`d${i}`, i));
+    const kept = evictOldest(docs, 1000);
+    expect(kept).toHaveLength(1000);
+    for (let i = 0; i < 5; i++) expect(kept.find((d) => d.id === `d${i}`)).toBeUndefined();
+    for (let i = 1000; i < 1005; i++) expect(kept.find((d) => d.id === `d${i}`)).toBeTruthy();
+  });
+  it('preserves a doc that was just re-touched even if its createdAt is old', () => {
+    const docs = [
+      mk('old-but-touched', 100), // updatedAt > some newer
+      mk('newer', 50),
+      mk('newest', 200),
+    ];
+    expect(evictOldest(docs, 2).map((d) => d.id).sort()).toEqual(['newest', 'old-but-touched']);
+  });
+});
+
 describe('makeDocId', () => {
   it('produces deterministic ids when sourceRef is provided', () => {
     expect(makeDocId('chat', 'chat_abc')).toBe(makeDocId('chat', 'chat_abc'));

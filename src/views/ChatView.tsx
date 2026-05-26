@@ -73,6 +73,12 @@ const SUGGESTIONS = [
 ];
 
 /** A pending HITL gate awaiting the user's Approve/Cancel. */
+interface LibraryAutoContextHit {
+  title: string;
+  source: string;
+  snippet: string;
+}
+
 interface PendingConfirm {
   step: number;
   callId: string;
@@ -158,6 +164,11 @@ export function ChatView({
   /** Active AbortController for the in-flight run. Cleared back to null when
    *  the run resolves so the Stop button only shows during real work. */
   const abortRef = useRef<AbortController | null>(null);
+  /** When auto-context fires, we stash the snippets that got injected,
+   *  keyed by the user-message id that triggered them. The transcript then
+   *  renders a collapsible "From your Library" card right after that
+   *  user message so the user can audit what the model actually saw. */
+  const [libraryHits, setLibraryHits] = useState<Record<string, LibraryAutoContextHit[]>>({});
   // Mirror items so the (memoised) submit closure can read the latest transcript.
   const itemsRef = useRef<TranscriptItem[]>(items);
   itemsRef.current = items;
@@ -444,15 +455,15 @@ export function ChatView({
                 args: { query: prompt, k: 3, threshold: 0.65 },
               })) as { ok: boolean; result: { ok: boolean; data?: { hits: { title: string; source: string; snippet: string }[] } } } | undefined;
               if (r?.ok && r.result.ok && r.result.data?.hits?.length) {
-                const block = ['## From your Library:', ...r.result.data.hits.map(
+                const hits = r.result.data.hits;
+                const block = ['## From your Library:', ...hits.map(
                   (h) => `- **${h.title}** (${h.source}): ${h.snippet.slice(0, 280)}`,
                 )].join('\n');
                 context = context ? `${block}\n\n${context}` : block;
-                // Transparency: surface what we used so the user can audit it.
-                setItems((prev) => [
-                  ...prev,
-                  agentItem(`lib_${seqRef.current++}`, `_Used ${r.result.data!.hits.length} snippet(s) from your Library._`),
-                ]);
+                // Stash the snippets keyed by the user-message id so the
+                // transcript can render the collapsible audit card right
+                // beneath the prompt that pulled them in.
+                setLibraryHits((prev) => ({ ...prev, [uid]: hits }));
               }
             } catch {
               // Silent — don't block the chat on library hiccups.
@@ -719,9 +730,13 @@ export function ChatView({
           <Greeting onPick={setInput} />
         ) : (
           <>
-            {items.map((it) => (
-              <TranscriptRow key={it.id} item={it} onDecide={decide} onOpenArtifact={setArtifact} />
-            ))}
+            {items.flatMap((it) => {
+              const out = [<TranscriptRow key={it.id} item={it} onDecide={decide} onOpenArtifact={setArtifact} />];
+              if (it.kind === 'user' && libraryHits[it.id]?.length) {
+                out.push(<LibraryHitsCard key={`${it.id}-lib`} hits={libraryHits[it.id]} />);
+              }
+              return out;
+            })}
             {noKey && <NoKeyNotice />}
             <div ref={bottomRef} aria-hidden="true" />
           </>
@@ -845,6 +860,117 @@ function Greeting({ onPick }: { onPick: (v: string) => void }) {
   );
 }
 
+/** Collapsible "From your Library" card — surfaced when auto-context
+ *  injected snippets into the current chat turn. Folds closed by default;
+ *  expand to read the actual chunks that went into the LLM prompt. */
+function LibraryHitsCard({ hits }: { hits: LibraryAutoContextHit[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="lib-ctx-card" data-testid="lib-ctx-card">
+      <button
+        type="button"
+        className="lib-ctx-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="ic" style={{ width: 12, height: 12 }}>{Ic.library}</span>
+        <span className="lib-ctx-label">
+          Used {hits.length} snippet{hits.length === 1 ? '' : 's'} from your Library
+        </span>
+        <span className="lib-ctx-caret">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="lib-ctx-list">
+          {hits.map((h, i) => (
+            <div key={i} className="lib-ctx-hit">
+              <div className="lib-ctx-hit-hd">
+                <span className={'library-source library-source-' + h.source}>{h.source}</span>
+                <span className="lib-ctx-hit-title" title={h.title}>{h.title}</span>
+              </div>
+              <div className="lib-ctx-hit-snippet">{h.snippet}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "+ Library" button on a Buddy reply. Opens an inline title input; on
+ *  Save, sends LIBRARY_INDEX (source 'manual') and flips to "Saved ✓". */
+function SaveToLibraryButton({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState(() => deriveSaveTitle(text));
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  if (!text?.trim()) return null;
+  const onSave = async () => {
+    setError(undefined);
+    setSaving(true);
+    try {
+      const r = (await chrome.runtime.sendMessage({
+        type: 'LIBRARY_INDEX',
+        source: 'manual',
+        sourceRef: `chat-save-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        title: title.trim() || 'Saved reply',
+        content: text,
+      })) as { ok: boolean; result: { ok: boolean; error?: { message: string } } } | undefined;
+      if (r?.ok && r.result.ok) {
+        setSaved(true);
+        window.setTimeout(() => { setOpen(false); setSaved(false); }, 1400);
+      } else {
+        setError(r?.result.error?.message ?? 'Save failed.');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="msg-action-btn"
+        title="Save this reply to your Library so you can search it later."
+        data-testid="msg-save-library"
+        onClick={() => setOpen(true)}
+      >
+        <span className="ic" style={{ width: 12, height: 12 }}>{Ic.library}</span>
+        <span>+ Library</span>
+      </button>
+    );
+  }
+  return (
+    <div className="msg-save-form" data-testid="msg-save-form">
+      <input
+        type="text"
+        className="settings-input msg-save-title"
+        placeholder="Title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') void onSave(); if (e.key === 'Escape') setOpen(false); }}
+        aria-label="Title for the saved Library entry"
+        autoFocus
+      />
+      <button type="button" className="btn btn-sm btn-primary" onClick={onSave} disabled={saving || !title.trim()} data-testid="msg-save-confirm">
+        {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save'}
+      </button>
+      <button type="button" className="btn btn-sm" onClick={() => setOpen(false)} disabled={saving}>
+        Cancel
+      </button>
+      {error && <span className="msg-save-err">{error}</span>}
+    </div>
+  );
+}
+
+/** Derive a default save-title from the first non-empty line of the reply. */
+function deriveSaveTitle(text: string): string {
+  const first = (text ?? '').split('\n').map((l) => l.trim()).find((l) => l.length > 0) ?? 'Saved reply';
+  return first.replace(/^#+\s*/, '').slice(0, 80);
+}
+
 function NoKeyNotice() {
   return (
     <div className="hitl" role="alert">
@@ -931,7 +1057,10 @@ function TranscriptRow({
           </div>
           <div className="msg-body">
             <AgentBody text={item.text} onOpenArtifact={onOpenArtifact} />
-            <SpeakButton text={item.text} />
+            <div className="msg-actions">
+              <SpeakButton text={item.text} />
+              <SaveToLibraryButton text={item.text} />
+            </div>
           </div>
         </div>
       );

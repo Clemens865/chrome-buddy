@@ -41,6 +41,10 @@ export interface LibraryChunk {
 
 const DOCS = 'libraryDocs';
 const CHUNKS = 'libraryChunks';
+/** Bound the library so a power user importing everything doesn't blow IDB.
+ * Matches the chats(100) / runs(500) pattern: oldest-updatedAt evicted first
+ * once the count exceeds the cap. Configurable via Settings. */
+export const DEFAULT_MAX_DOCS = 1000;
 
 // --- Doc CRUD --------------------------------------------------------------
 
@@ -106,6 +110,30 @@ export async function clearLibrary(): Promise<void> {
   await tx.objectStore(DOCS).clear();
   await tx.objectStore(CHUNKS).clear();
   await tx.done;
+}
+
+/**
+ * Drop the oldest-updatedAt docs (and their chunks) once the library grows
+ * past `max`. Pure housekeeping — exported for tests + the indexer to call
+ * after each saveDoc. Returns how many docs were evicted.
+ */
+export async function evictOldestDocs(max: number = DEFAULT_MAX_DOCS): Promise<number> {
+  if (!Number.isFinite(max) || max <= 0) return 0;
+  const db = await getDB();
+  const all = (await db.getAll(DOCS)) as LibraryDoc[];
+  if (all.length <= max) return 0;
+  all.sort((a, b) => a.updatedAt - b.updatedAt);
+  const toDrop = all.slice(0, all.length - max);
+  const tx = db.transaction([DOCS, CHUNKS], 'readwrite');
+  const docStore = tx.objectStore(DOCS);
+  const chunkStore = tx.objectStore(CHUNKS);
+  for (const d of toDrop) {
+    const chunks = (await chunkStore.index('docId').getAll(d.id)) as LibraryChunk[];
+    for (const c of chunks) await chunkStore.delete(c.id);
+    await docStore.delete(d.id);
+  }
+  await tx.done;
+  return toDrop.length;
 }
 
 // --- Utilities -------------------------------------------------------------

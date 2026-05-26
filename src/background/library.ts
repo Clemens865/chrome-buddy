@@ -60,10 +60,23 @@ export async function executeIndexDoc(
   getKey: GetKey,
 ): Promise<ToolResult> {
   try {
-    const r = await indexDoc(args, geminiKey(getKey));
+    const maxDocs = await readMaxDocsSetting();
+    const r = await indexDoc(args, geminiKey(getKey), { maxDocs });
     return ok(r);
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Read the user's configured Library doc cap from chrome.storage.local.
+ * Defaults to undefined (→ indexDoc falls back to DEFAULT_MAX_DOCS). */
+async function readMaxDocsSetting(): Promise<number | undefined> {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return undefined;
+    const r = (await chrome.storage.local.get('libraryMaxDocs')) as { libraryMaxDocs?: number };
+    return typeof r.libraryMaxDocs === 'number' && r.libraryMaxDocs > 0 ? r.libraryMaxDocs : undefined;
+  } catch {
+    return undefined;
   }
 }
 

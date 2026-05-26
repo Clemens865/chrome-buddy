@@ -16,8 +16,10 @@ import {
   getDoc,
   replaceChunks,
   getAllChunks,
+  evictOldestDocs,
   hashContent,
   makeDocId,
+  DEFAULT_MAX_DOCS,
   type LibraryDoc,
   type LibraryChunk,
   type LibrarySource,
@@ -68,7 +70,7 @@ export interface SearchOptions {
 export async function indexDoc(
   input: IndexInput,
   getKey: () => Promise<string | undefined>,
-  opts: { chunk?: ChunkOptions; concurrency?: number } = {},
+  opts: { chunk?: ChunkOptions; concurrency?: number; maxDocs?: number } = {},
 ): Promise<IndexResult> {
   if (!input.content?.trim()) {
     throw new Error('indexDoc: empty content');
@@ -123,6 +125,9 @@ export async function indexDoc(
     }));
     await replaceChunks(id, chunks);
     await saveDoc({ ...placeholder, status: 'indexed', chunkCount: chunks.length });
+    // Enforce the doc cap AFTER saving so the just-indexed doc isn't itself
+    // evicted; older docs (by updatedAt) get dropped first.
+    await evictOldestDocs(opts.maxDocs ?? DEFAULT_MAX_DOCS);
     return { docId: id, reindexed: true, chunkCount: chunks.length };
   } catch (e) {
     await saveDoc({ ...placeholder, status: 'failed' });

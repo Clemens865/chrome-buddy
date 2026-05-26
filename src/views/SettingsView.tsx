@@ -52,6 +52,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   const [githubDefaultRepo, setGithubDefaultRepo] = usePersistedState<string>('githubDefaultRepo', '');
   const [preferNano, setPreferNano] = usePersistedState<boolean>('preferNano', false);
   const [libraryAutoContext, setLibraryAutoContext] = usePersistedState<boolean>('libraryAutoContext', false);
+  const [libraryMaxDocs, setLibraryMaxDocs] = usePersistedState<number>('libraryMaxDocs', 1000);
   const current: UserProfile = profiles[activeProfile] ?? {};
   const updateProfile = (patch: Partial<UserProfile>) =>
     setProfiles({ ...profiles, [activeProfile]: { ...current, ...patch } });
@@ -242,6 +243,26 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
           s="When on, every message is embedded and the top 3 Library snippets are prepended to the LLM prompt. Off by default."
         >
           <Toggle on={libraryAutoContext} onChange={setLibraryAutoContext} />
+        </SettingsRow>
+        <SettingsRow
+          t="Max docs"
+          s="Once the library exceeds this, the oldest-touched docs are evicted (with their chunks). Matches the chats / runs eviction pattern."
+        >
+          <input
+            type="number"
+            className="settings-input"
+            style={{ width: 100 }}
+            min={50}
+            max={50000}
+            step={50}
+            value={libraryMaxDocs}
+            onChange={(e) => {
+              const n = Math.max(50, Math.min(50000, parseInt(e.target.value, 10) || 1000));
+              setLibraryMaxDocs(n);
+            }}
+            aria-label="Max library docs"
+            data-testid="library-max-docs"
+          />
         </SettingsRow>
       </div>
 
