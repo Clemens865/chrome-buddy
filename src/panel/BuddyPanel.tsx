@@ -6,13 +6,14 @@ import { Ic, BuddyMark } from '../ui/icons';
 import { IconBtn } from '../ui/primitives';
 import { modelLabel, useActiveModel } from '../llm/modelPref';
 
-export type View = 'chat' | 'apps' | 'skills' | 'flows' | 'history' | 'settings';
+export type View = 'chat' | 'apps' | 'skills' | 'flows' | 'history' | 'library' | 'settings';
 
 const RAIL_ITEMS: { id: View; icon: ReactElement; label: string }[] = [
   { id: 'chat', icon: Ic.chat, label: 'Chat' },
   { id: 'apps', icon: Ic.apps, label: 'Apps' },
   { id: 'skills', icon: Ic.skill, label: 'Skills' },
   { id: 'flows', icon: Ic.flow, label: 'Workflows' },
+  { id: 'library', icon: Ic.library, label: 'Library' },
   { id: 'history', icon: Ic.history, label: 'History' },
 ];
 
@@ -22,6 +23,7 @@ const TITLES: Record<View, { title: string; sub: string }> = {
   skills: { title: 'Skills', sub: 'Saved, parameterized actions' },
   flows: { title: 'Workflows', sub: 'Multi-step automations' },
   history: { title: 'History', sub: 'Past agent runs' },
+  library: { title: 'Library', sub: 'Your indexed knowledge — searchable' },
   settings: { title: 'Settings', sub: '' },
 };
 

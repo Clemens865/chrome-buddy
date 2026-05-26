@@ -18,6 +18,7 @@ const TranscriberApp = lazy(() =>
   import('../views/apps/TranscriberApp').then((m) => ({ default: m.TranscriberApp })),
 );
 import { SkillsView, FlowsView, HistoryView } from '../views/StubViews';
+import { LibraryView } from '../views/LibraryView';
 import { SettingsView } from '../views/SettingsView';
 import { Onboarding } from '../views/Onboarding';
 import { usePersistedState } from '../sidepanel/usePersistedState';
@@ -97,6 +98,7 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
   } else if (view === 'skills') content = <SkillsView onRunSkill={runSkill} />;
   else if (view === 'flows') content = <FlowsView onRunWorkflow={runWorkflow} />;
   else if (view === 'history') content = <HistoryView />;
+  else if (view === 'library') content = <LibraryView />;
   else if (view === 'settings')
     content = (
       <SettingsView themeName={themeName} accent={accent} onThemeChange={setThemeName} onAccentChange={setAccent} />

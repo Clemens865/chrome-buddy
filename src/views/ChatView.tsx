@@ -133,6 +133,7 @@ export function ChatView({
   const [spentToday, setSpentToday] = useState(0);
   const [askBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
   const [preferNano] = usePersistedState<boolean>('preferNano', false);
+  const [libraryAutoContext] = usePersistedState<boolean>('libraryAutoContext', false);
   const [planReview, setPlanReview] = useState<{ plan: PlanStep[]; resolve: (d: PlanDecision) => void } | null>(null);
   const [askUser, setAskUser] = useState<{ question: string; choices?: string[]; resolve: (a: string) => void } | null>(null);
   const [humanGate, setHumanGate] = useState<{ kind: 'captcha' | 'login'; resolve: () => void } | null>(null);
@@ -423,7 +424,33 @@ export function ChatView({
           const active = profiles[activeProfile];
           const useProfile = attachProfile && hasProfile(active);
           const page = attachPage ? await requestPageContext() : null;
-          const context = buildContextBlock(page, useProfile ? active : null, activeProfile);
+          let context = buildContextBlock(page, useProfile ? active : null, activeProfile);
+          // Library auto-context (opt-in via Settings). Embed the user message,
+          // retrieve top-3 snippets above cosine 0.65, prepend to context so
+          // the chat model can use them. Failures are silent — the chat still
+          // sends without library context if embedding hiccups.
+          if (libraryAutoContext) {
+            try {
+              const r = (await chrome.runtime.sendMessage({
+                type: 'TOOL_EXEC',
+                tool: 'search_library',
+                args: { query: prompt, k: 3, threshold: 0.65 },
+              })) as { ok: boolean; result: { ok: boolean; data?: { hits: { title: string; source: string; snippet: string }[] } } } | undefined;
+              if (r?.ok && r.result.ok && r.result.data?.hits?.length) {
+                const block = ['## From your Library:', ...r.result.data.hits.map(
+                  (h) => `- **${h.title}** (${h.source}): ${h.snippet.slice(0, 280)}`,
+                )].join('\n');
+                context = context ? `${block}\n\n${context}` : block;
+                // Transparency: surface what we used so the user can audit it.
+                setItems((prev) => [
+                  ...prev,
+                  agentItem(`lib_${seqRef.current++}`, `_Used ${r.result.data!.hits.length} snippet(s) from your Library._`),
+                ]);
+              }
+            } catch {
+              // Silent — don't block the chat on library hiccups.
+            }
+          }
           // H4 — stream the reply into a growing bubble. The placeholder agent
           // item is pushed first; each onDelta replaces its text. Falls back to
           // one-shot when chrome.runtime.connect is missing (e.g. unit tests).

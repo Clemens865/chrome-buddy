@@ -51,6 +51,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   const [fileSearchStores, setFileSearchStores] = usePersistedState<string[]>('fileSearchStores', []);
   const [githubDefaultRepo, setGithubDefaultRepo] = usePersistedState<string>('githubDefaultRepo', '');
   const [preferNano, setPreferNano] = usePersistedState<boolean>('preferNano', false);
+  const [libraryAutoContext, setLibraryAutoContext] = usePersistedState<boolean>('libraryAutoContext', false);
   const current: UserProfile = profiles[activeProfile] ?? {};
   const updateProfile = (patch: Partial<UserProfile>) =>
     setProfiles({ ...profiles, [activeProfile]: { ...current, ...patch } });
@@ -235,6 +236,12 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
           s="Adds saved chats + notes to the Library RAG. Idempotent — safe to re-run."
         >
           <LibraryBackfillControl />
+        </SettingsRow>
+        <SettingsRow
+          t="Auto-context on every chat turn"
+          s="When on, every message is embedded and the top 3 Library snippets are prepended to the LLM prompt. Off by default."
+        >
+          <Toggle on={libraryAutoContext} onChange={setLibraryAutoContext} />
         </SettingsRow>
       </div>
 
