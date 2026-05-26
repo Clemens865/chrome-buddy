@@ -6,7 +6,7 @@
 // intent runs the agent. 'ask' / 'agent' force a lane. The composer exposes all
 // three so the user can override a misroute.
 
-export type ChatMode = 'auto' | 'ask' | 'agent' | 'vision';
+export type ChatMode = 'auto' | 'ask' | 'agent' | 'vision' | 'voice';
 export type Intent = 'chat' | 'agent';
 
 // Signals the user wants Buddy to ACT (not just read) or run a multi-step /

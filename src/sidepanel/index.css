@@ -481,6 +481,20 @@ html, body {
 .webhooks-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .webhooks-add .settings-input { flex: 1; min-width: 130px; }
 .webhooks-err { font-size: 11px; color: #B91C1C; }
+
+/* Voice mode control strip (Gemini Live) */
+.voice-controls { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--panel-border-soft); background: var(--panel-elev); }
+.voice-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--panel-border); border-radius: 999px; background: var(--accent); color: #fff; cursor: pointer; font-size: 12px; }
+.voice-btn:hover { filter: brightness(1.08); }
+.voice-btn:disabled { background: var(--panel-elev-2); color: var(--panel-muted-soft); border-color: var(--panel-border-soft); cursor: default; }
+.voice-btn.is-on { background: #EF4444; border-color: transparent; }
+.voice-btn.is-on:hover { background: #DC2626; }
+.voice-btn .ic { width: 14px; height: 14px; }
+.voice-state { font-size: 11.5px; color: var(--panel-muted); }
+.voice-state-live { color: #047857; font-weight: 500; }
+.theme-graphite .voice-state-live { color: #6EE7B7; }
+.voice-state-connecting { color: var(--panel-muted); }
+.voice-state-error { color: #B91C1C; }
 .theme-graphite .composer-send { color: #0F1115; }
 .composer-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 11px; color: var(--panel-muted); }
 .composer-foot-r { display: inline-flex; align-items: center; gap: 8px; }

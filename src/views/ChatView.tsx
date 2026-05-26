@@ -46,6 +46,7 @@ import {
   stopSpeaking,
   type Recognizer,
 } from '../voice/speech';
+import { VoiceSession, isVoiceSupported, type VoiceEvent } from '../voice/liveSession';
 import {
   runAgentTask,
   runPlainChat,
@@ -169,6 +170,16 @@ export function ChatView({
    *  renders a collapsible "From your Library" card right after that
    *  user message so the user can audit what the model actually saw. */
   const [libraryHits, setLibraryHits] = useState<Record<string, LibraryAutoContextHit[]>>({});
+  /** Live voice session (Gemini Live). Null when idle; populated while a
+   *  WebSocket session is open. The session emits transcript + open / close
+   *  events; we mirror them into the existing items[] transcript. */
+  const voiceRef = useRef<VoiceSession | null>(null);
+  const [voiceState, setVoiceState] = useState<'idle' | 'connecting' | 'live' | 'error'>('idle');
+  const [voiceError, setVoiceError] = useState<string | undefined>();
+  /** When the model is streaming a reply, we accumulate the partial text in
+   *  this item id so each TRANSCRIPT chunk replaces (not appends) the bubble. */
+  const voiceTurnIdRef = useRef<string>('');
+  const voiceUserTurnIdRef = useRef<string>('');
   // Mirror items so the (memoised) submit closure can read the latest transcript.
   const itemsRef = useRef<TranscriptItem[]>(items);
   itemsRef.current = items;
@@ -233,6 +244,95 @@ export function ChatView({
     chatCreatedRef.current = 0;
     setActiveChatId('');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Voice session — start the Gemini Live socket + mic capture. Transcripts
+   *  flow into the existing items[] state. The model's audio replies play
+   *  automatically; we render the spoken text as it arrives. */
+  const startVoice = useCallback(async () => {
+    if (voiceRef.current) return;
+    setVoiceError(undefined);
+    setVoiceState('connecting');
+    const onEvent = (e: VoiceEvent) => {
+      switch (e.kind) {
+        case 'open':
+          setVoiceState('live');
+          break;
+        case 'transcript': {
+          // Accumulate user vs. model turns into bubbles. New `final` chunks
+          // close out the current bubble id so the next transcript starts a
+          // fresh one.
+          if (e.role === 'user') {
+            if (!voiceUserTurnIdRef.current) {
+              voiceUserTurnIdRef.current = `vu_${seqRef.current++}`;
+              setItems((prev) => [...prev, userItem(voiceUserTurnIdRef.current, e.text)]);
+            } else {
+              const id = voiceUserTurnIdRef.current;
+              setItems((prev) =>
+                prev.map((it) => (it.kind === 'user' && it.id === id ? { ...it, text: e.text } : it)),
+              );
+            }
+            if (e.isFinal) voiceUserTurnIdRef.current = '';
+          } else {
+            if (!voiceTurnIdRef.current) {
+              voiceTurnIdRef.current = `va_${seqRef.current++}`;
+              setItems((prev) => [...prev, agentItem(voiceTurnIdRef.current, e.text)]);
+            } else {
+              const id = voiceTurnIdRef.current;
+              setItems((prev) =>
+                prev.map((it) => (it.kind === 'agent' && it.id === id ? { ...it, text: e.text } : it)),
+              );
+            }
+            if (e.isFinal) voiceTurnIdRef.current = '';
+          }
+          break;
+        }
+        case 'turn-done':
+          voiceTurnIdRef.current = '';
+          break;
+        case 'interrupted':
+          // Drop the current bubble id so the next chunk starts fresh.
+          voiceTurnIdRef.current = '';
+          break;
+        case 'error':
+          setVoiceError(e.message);
+          setVoiceState('error');
+          break;
+        case 'closed':
+          setVoiceState('idle');
+          voiceRef.current = null;
+          voiceTurnIdRef.current = '';
+          voiceUserTurnIdRef.current = '';
+          break;
+      }
+    };
+    const session = new VoiceSession({ onEvent });
+    voiceRef.current = session;
+    try {
+      await session.start();
+    } catch (e) {
+      setVoiceError(e instanceof Error ? e.message : 'Voice session failed to start.');
+      setVoiceState('error');
+      voiceRef.current = null;
+    }
+  }, []);
+
+  const stopVoice = useCallback(async () => {
+    const session = voiceRef.current;
+    voiceRef.current = null;
+    setVoiceState('idle');
+    setVoiceError(undefined);
+    voiceTurnIdRef.current = '';
+    voiceUserTurnIdRef.current = '';
+    if (session) await session.stop();
+  }, []);
+
+  // Auto-stop voice when the user switches away from 'voice' mode.
+  useEffect(() => {
+    if (mode !== 'voice' && voiceRef.current) void stopVoice();
+  }, [mode, stopVoice]);
+
+  // Cleanup on unmount.
+  useEffect(() => () => { void voiceRef.current?.stop(); }, []);
 
   const openConversation = useCallback((c: Conversation) => {
     loadedIdRef.current = c.id;
@@ -818,6 +918,14 @@ export function ChatView({
           <span className="recall-chip-txt">Reuse: {recall.run.task}</span>
         </button>
       )}
+      {mode === 'voice' && (
+        <VoiceControls
+          state={voiceState}
+          error={voiceError}
+          onStart={() => void startVoice()}
+          onStop={() => void stopVoice()}
+        />
+      )}
       <ChatComposer
         input={input}
         onChange={setInput}
@@ -969,6 +1077,56 @@ function SaveToLibraryButton({ text }: { text: string }) {
 function deriveSaveTitle(text: string): string {
   const first = (text ?? '').split('\n').map((l) => l.trim()).find((l) => l.length > 0) ?? 'Saved reply';
   return first.replace(/^#+\s*/, '').slice(0, 80);
+}
+
+/** Voice mode control strip — sits above the composer when mode === 'voice'.
+ *  Owns the start/stop button + state pill; the actual mic + WebSocket are
+ *  in src/voice/liveSession.ts (panel side) and src/background/live.ts (SW). */
+function VoiceControls({
+  state,
+  error,
+  onStart,
+  onStop,
+}: {
+  state: 'idle' | 'connecting' | 'live' | 'error';
+  error?: string;
+  onStart: () => void;
+  onStop: () => void;
+}) {
+  const supported = isVoiceSupported();
+  const isOn = state === 'live' || state === 'connecting';
+  return (
+    <div className="voice-controls" data-testid="voice-controls">
+      <button
+        type="button"
+        className={'voice-btn' + (isOn ? ' is-on' : '')}
+        onClick={isOn ? onStop : onStart}
+        disabled={!supported}
+        data-testid={isOn ? 'voice-stop' : 'voice-start'}
+        title={
+          !supported
+            ? 'Voice mode requires getUserMedia + WebSocket (unavailable in this context).'
+            : isOn
+              ? 'Stop the voice session.'
+              : 'Start a voice session — Buddy listens and talks back.'
+        }
+      >
+        <span className="ic">{isOn ? Ic.stop : Ic.mic}</span>
+        <span>{isOn ? 'Stop voice' : 'Start voice'}</span>
+      </button>
+      <span className={'voice-state voice-state-' + state}>
+        {!supported
+          ? 'Voice unavailable'
+          : state === 'connecting'
+            ? 'Connecting…'
+            : state === 'live'
+              ? '● Live — speak naturally'
+              : state === 'error'
+                ? error ?? 'Voice error'
+                : 'Idle'}
+      </span>
+    </div>
+  );
 }
 
 function NoKeyNotice() {
@@ -1214,6 +1372,7 @@ const MODES: { v: ChatMode; l: string; title: string }[] = [
   { v: 'ask', l: 'Ask', title: 'Ask: plain chat only — no tools, cheapest' },
   { v: 'agent', l: 'Agent', title: 'Agent: always plan and use tools' },
   { v: 'vision', l: 'Vision', title: "Vision: Buddy SEES the active tab and drives it click-by-click (Gemini Computer Use). Slower + costlier — use for visual tasks our DOM agent can't handle." },
+  { v: 'voice', l: 'Voice', title: 'Voice: real-time bidirectional voice chat with Buddy via Gemini Live (mic + speaker).' },
 ];
 
 // Inline prompt for the ask_user tool: choice buttons or a free-text answer.

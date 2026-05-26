@@ -47,6 +47,7 @@ import {
   executeAnalyzeSeo,
 } from './inspector';
 import { executeSearchLibrary, executeIndexDoc, executeLibraryBackfill } from './library';
+import { registerVoiceStreamPort } from './live';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
 import { saveWorkflow, listWorkflows, deleteWorkflow } from '../workflows/store';
@@ -647,5 +648,10 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   );
   return true; // keep the message channel open for the async response
 });
+
+// Voice mode (Gemini Live, WSS BidiGenerateContent). The Port name is
+// 'voice-stream'; the SW owns the WebSocket so the API key never leaves
+// the service worker (NFR-SEC-1).
+registerVoiceStreamPort(getStoredKey);
 
 export {};
