@@ -252,23 +252,47 @@ export const callSkillTool: ToolDefinition = {
 export const sendWebhookTool: ToolDefinition = {
   name: 'send_webhook',
   description:
-    'POST a payload to an external system within declared host permissions.',
+    'POST a payload to an external system. Prefer the saved address book: ' +
+    'call with `{name, payload}` where `name` matches a webhook the user ' +
+    'configured in Settings → Webhooks (use list_webhooks to discover names). ' +
+    'For ad-hoc one-offs, pass `{url, payload}` directly. The user always ' +
+    'confirms before the request lands, regardless of saved status.',
   paramsSchema: objectSchema(
     {
-      url: { type: 'string', description: 'Target webhook URL.' },
+      name: {
+        type: 'string',
+        description: 'Friendly name of a saved webhook (preferred when available).',
+      },
+      url: {
+        type: 'string',
+        description: 'Target webhook URL (used only when no `name` is provided).',
+      },
       payload: {
         type: 'object',
         description: 'JSON body to POST.',
       },
       headers: {
         type: 'object',
-        description: 'Optional HTTP headers.',
+        description: 'Optional HTTP headers (merge on top of saved defaults).',
       },
     },
-    ['url', 'payload'],
+    ['payload'],
   ),
   consequential: true,
   handler: notWired('send_webhook'),
+};
+
+// --- list_webhooks (paired with send_webhook, NOT consequential) ----------
+export const listWebhooksTool: ToolDefinition = {
+  name: 'list_webhooks',
+  description:
+    "Discover the user's saved webhook NAMES (Settings → Webhooks). Returns " +
+    'only names + hosts + optional notes; the URLs stay private. Call this ' +
+    'first when the user asks to "send to Slack" / "post to Zapier" / etc. — ' +
+    'then call send_webhook({ name: "..." }).',
+  paramsSchema: objectSchema({}, []),
+  consequential: false,
+  handler: notWired('list_webhooks'),
 };
 
 // --- notes (private IndexedDB scratchpad — first sink in the save router) --
@@ -708,5 +732,6 @@ export const stubToolDefs: ToolDefinition[] = [
   analyzeA11yTool,
   analyzeSeoTool,
   searchLibraryTool,
+  listWebhooksTool,
   askUserTool,
 ];

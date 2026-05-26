@@ -231,6 +231,24 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
       </div>
 
       <div className="settings-section">
+        <div className="settings-section-h">Webhooks</div>
+        <div className="settings-row settings-row-block">
+          <div className="settings-row-l">
+            <div>
+              <div className="settings-row-t">Saved endpoints</div>
+              <div className="settings-row-s">
+                Name your webhooks so the agent can send to them by name (<code>send_webhook(&#123;name&#125;)</code>).
+                URLs are masked on screen; the user always confirms before any POST.
+              </div>
+            </div>
+          </div>
+          <div style={{ width: '100%', marginTop: 10 }}>
+            <WebhooksEditor />
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-section">
         <div className="settings-section-h">Library</div>
         <SettingsRow
           t="Index existing chats + notes"
@@ -724,6 +742,155 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
       <span className="toggle-thumb" />
     </button>
   );
+}
+
+/** Saved webhook list with add / edit / delete. URLs are masked on display
+ *  (Slack/Zapier paths carry secrets). The HITL gate fires on send_webhook
+ *  regardless of saved status, so this UI is purely about reducing typing. */
+function WebhooksEditor() {
+  const [items, setItems] = useState<WebhookEntry[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [name, setName] = useState('');
+  const [url, setUrl] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  const [revealId, setRevealId] = useState<string | undefined>();
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const { listWebhooks } = await import('../webhooks/store');
+      const r = await listWebhooks();
+      if (active) setItems(r);
+    })();
+    return () => { active = false; };
+  }, [refreshKey]);
+
+  const refresh = () => setRefreshKey((k) => k + 1);
+
+  const onAdd = async () => {
+    setError(undefined);
+    if (!name.trim()) { setError('Name is required.'); return; }
+    if (!/^https?:\/\//i.test(url)) { setError('URL must start with http:// or https://'); return; }
+    setBusy(true);
+    try {
+      const { saveWebhook } = await import('../webhooks/store');
+      await saveWebhook({ name: name.trim(), url: url.trim(), note: note.trim() || undefined });
+      setName('');
+      setUrl('');
+      setNote('');
+      refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDelete = async (id: string) => {
+    const { deleteWebhook } = await import('../webhooks/store');
+    await deleteWebhook(id);
+    refresh();
+  };
+
+  return (
+    <div className="webhooks-editor" data-testid="webhooks-editor">
+      {items.length > 0 && (
+        <div className="webhooks-list">
+          {items.map((w) => (
+            <div key={w.id} className="webhooks-row" data-testid={`webhook-row-${w.id}`}>
+              <span className="webhooks-name">{w.name}</span>
+              <code className="webhooks-url" title={revealId === w.id ? w.url : 'Click to reveal'}>
+                {revealId === w.id ? w.url : maskUrl(w.url)}
+              </code>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setRevealId((cur) => (cur === w.id ? undefined : w.id))}
+                title={revealId === w.id ? 'Hide URL' : 'Reveal URL'}
+                aria-label="Toggle URL visibility"
+              >
+                {revealId === w.id ? 'Hide' : 'Reveal'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => onDelete(w.id)}
+                aria-label={`Delete ${w.name}`}
+                title="Remove this webhook"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="webhooks-add">
+        <input
+          type="text"
+          className="settings-input"
+          placeholder="Name (e.g. Slack — design)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          aria-label="Webhook name"
+          data-testid="webhook-name"
+        />
+        <input
+          type="url"
+          className="settings-input"
+          placeholder="https://hooks.slack.com/..."
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          aria-label="Webhook URL"
+          data-testid="webhook-url"
+        />
+        <input
+          type="text"
+          className="settings-input"
+          placeholder="Note (optional)"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          aria-label="Webhook note"
+        />
+        <button
+          type="button"
+          className="btn btn-sm btn-primary"
+          onClick={onAdd}
+          disabled={busy || !name.trim() || !url.trim()}
+          data-testid="webhook-add"
+        >
+          {busy ? 'Saving…' : 'Add'}
+        </button>
+      </div>
+      {error && <div className="webhooks-err" data-testid="webhook-error">{error}</div>}
+    </div>
+  );
+}
+
+/** Mirror of webhooks/store#maskWebhookUrl — re-declared here so the Settings
+ *  bundle can mask synchronously without an extra dynamic-import round-trip. */
+function maskUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const segs = u.pathname.split('/').filter(Boolean);
+    if (segs.length === 0) return `${u.origin}/`;
+    const masked = segs.map((s, i) =>
+      i === 0 || s.length <= 4 ? s : `${s.slice(0, 3)}${'*'.repeat(Math.max(3, s.length - 3))}`,
+    );
+    return `${u.origin}/${masked.join('/')}`;
+  } catch {
+    return url.length > 32 ? `${url.slice(0, 24)}…` : url;
+  }
+}
+
+interface WebhookEntry {
+  id: string;
+  name: string;
+  url: string;
+  note?: string;
+  createdAt: number;
+  lastUsedAt?: number;
 }
 
 /** Backfill control — runs LIBRARY_BACKFILL and surfaces a small status line.

@@ -4,7 +4,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 export const DB_NAME = 'chrome-buddy';
-const VERSION = 9;
+const VERSION = 10;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -53,6 +53,12 @@ export function getDB(): Promise<IDBPDatabase> {
         }
         if (!d.objectStoreNames.contains('libraryChunks')) {
           d.createObjectStore('libraryChunks', { keyPath: 'id' }).createIndex('docId', 'docId');
+        }
+        // Webhook address book (v10) — friendly names → URL + default headers.
+        // The agent uses send_webhook(name) to POST without re-typing the URL;
+        // the HITL gate ALWAYS fires regardless of saved/named status.
+        if (!d.objectStoreNames.contains('webhooks')) {
+          d.createObjectStore('webhooks', { keyPath: 'id' }).createIndex('name', 'name', { unique: true });
         }
       },
     });

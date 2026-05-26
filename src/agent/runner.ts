@@ -77,6 +77,7 @@ const AGENT_TOOLS = new Set([
   'analyze_a11y',
   'analyze_seo',
   'search_library',
+  'list_webhooks',
   'ask_user',
 ]);
 

@@ -28,7 +28,7 @@ import { safetySettingsForNative } from '../llm/safety';
 import { BUDDY_UA } from '../llm/ua';
 import { retryFetch } from '../llm/retry';
 import { executePageTool, capturePageContext, resolveActiveTabId } from './pageTools';
-import { executeWebhook } from './webhook';
+import { executeWebhook, executeListWebhooks } from './webhook';
 import { executeWebSearch } from './search';
 import { executeFetchUrl } from './urlContext';
 import { executeFileSearch } from './fileSearch';
@@ -258,6 +258,9 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
   analyze_seo: () => executeAnalyzeSeo(),
   // Library RAG (local IDB index, Gemini embeddings).
   search_library: (a, k) => executeSearchLibrary(a, k),
+  // Webhook address book — paired with send_webhook (consequential, already
+  // in the map above as a 'consequential / HITL-gated upstream' entry).
+  list_webhooks: () => executeListWebhooks(),
 };
 
 /** Default model for audio transcription (audio-understanding capable). */
