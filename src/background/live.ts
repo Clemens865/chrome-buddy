@@ -26,6 +26,17 @@ const DEFAULT_MODEL = 'gemini-2.5-flash-live-preview';
 
 type Port = chrome.runtime.Port;
 
+export type LiveToolHandler = (
+  args: Record<string, unknown>,
+  getKey: (provider: string) => Promise<string | undefined>,
+) => Promise<import('../types').ToolResult>;
+
+export interface LiveFunctionDeclaration {
+  name: string;
+  description: string;
+  parameters?: Record<string, unknown>;
+}
+
 interface LiveSession {
   ws: WebSocket;
   port: Port;
@@ -39,14 +50,23 @@ interface LiveSession {
  *
  * `getKey()` is the SW's existing key reader (chrome.storage.session fallback
  * to import.meta.env.VITE_GEMINI_API_KEY in dev / e2e).
+ *
+ * `tools` is optional — when provided, the SW will:
+ *   1. Include the function declarations in the setup payload so the model
+ *      can call them mid-conversation.
+ *   2. Route incoming functionCall frames to `tools.handlers[name]`,
+ *      then send back a functionResponse with the tool's result.
  */
-export function registerVoiceStreamPort(getKey: (provider: string) => Promise<string | undefined>): () => void {
+export function registerVoiceStreamPort(
+  getKey: (provider: string) => Promise<string | undefined>,
+  tools?: { handlers: Record<string, LiveToolHandler>; declarations: LiveFunctionDeclaration[] },
+): () => void {
   if (typeof chrome === 'undefined' || !chrome.runtime?.onConnect) {
     return () => undefined;
   }
   const listener = (port: Port) => {
     if (port.name !== 'voice-stream') return;
-    void onPortConnected(port, getKey);
+    void onPortConnected(port, getKey, tools);
   };
   chrome.runtime.onConnect.addListener(listener);
   return () => chrome.runtime.onConnect.removeListener(listener);
@@ -55,6 +75,7 @@ export function registerVoiceStreamPort(getKey: (provider: string) => Promise<st
 async function onPortConnected(
   port: Port,
   getKey: (provider: string) => Promise<string | undefined>,
+  tools?: { handlers: Record<string, LiveToolHandler>; declarations: LiveFunctionDeclaration[] },
 ): Promise<void> {
   const session: LiveSession = { ws: null as unknown as WebSocket, port, closed: false };
 
@@ -114,8 +135,9 @@ async function onPortConnected(
       const responseModality = msg.responseModalities === 'TEXT' ? 'TEXT' : 'AUDIO';
 
       ws.onopen = () => {
-        // Setup frame must be the first message.
-        const setup = {
+        // Setup frame must be the first message. When `tools` are wired,
+        // surface the function declarations so the model can call them.
+        const setup: Record<string, unknown> = {
           setup: {
             model: `models/${model}`,
             generationConfig: { responseModalities: [responseModality] },
@@ -123,6 +145,9 @@ async function onPortConnected(
             // Ask the server for both sides' transcripts so we can render them.
             inputAudioTranscription: {},
             outputAudioTranscription: {},
+            ...(tools && tools.declarations.length > 0
+              ? { tools: [{ functionDeclarations: tools.declarations }] }
+              : {}),
           },
         };
         try {
@@ -136,7 +161,14 @@ async function onPortConnected(
 
       ws.onmessage = (ev) => {
         // The server may send text frames OR Blob frames. We coerce to JSON.
-        const handle = (text: string) => routeServerFrame(text, send);
+        const handle = (text: string) => {
+          // Surface server frames to the panel AND extract function calls
+          // for the SW-side dispatch loop.
+          const calls = routeServerFrame(text, send);
+          if (calls && calls.length > 0 && tools) {
+            void dispatchFunctionCalls(calls, tools, getKey, ws, send);
+          }
+        };
         if (typeof ev.data === 'string') handle(ev.data);
         else if (ev.data instanceof Blob) void ev.data.text().then(handle);
         else if (ev.data instanceof ArrayBuffer) handle(new TextDecoder().decode(ev.data));
@@ -172,12 +204,20 @@ async function onPortConnected(
   });
 }
 
-/** Parse one server-text frame and emit panel-side messages. Pure-ish: only
- * touches `send` which the caller provides. */
-function routeServerFrame(text: string, send: (m: Record<string, unknown>) => void): void {
+export interface LiveFunctionCall {
+  id?: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+/** Parse one server-text frame and emit panel-side messages. Also returns
+ *  any function calls the model issued so the caller can dispatch them and
+ *  send a functionResponse back over the same WebSocket. Pure-ish: only
+ *  touches `send` which the caller provides. */
+function routeServerFrame(text: string, send: (m: Record<string, unknown>) => void): LiveFunctionCall[] {
   let frame: unknown;
-  try { frame = JSON.parse(text); } catch { return; }
-  if (!frame || typeof frame !== 'object') return;
+  try { frame = JSON.parse(text); } catch { return []; }
+  if (!frame || typeof frame !== 'object') return [];
   const f = frame as {
     serverContent?: {
       modelTurn?: { parts?: Array<{ inlineData?: { data?: string; mimeType?: string } }> };
@@ -186,38 +226,87 @@ function routeServerFrame(text: string, send: (m: Record<string, unknown>) => vo
       turnComplete?: boolean;
       interrupted?: boolean;
     };
+    toolCall?: { functionCalls?: Array<{ id?: string; name?: string; args?: Record<string, unknown> }> };
   };
   const sc = f.serverContent;
-  if (!sc) return;
-  // Audio output chunks.
-  const parts = sc.modelTurn?.parts ?? [];
-  for (const p of parts) {
-    if (p.inlineData?.data && p.inlineData.mimeType?.startsWith('audio/')) {
-      send({ type: 'AUDIO_OUT', b64: p.inlineData.data });
+  if (sc) {
+    // Audio output chunks.
+    const parts = sc.modelTurn?.parts ?? [];
+    for (const p of parts) {
+      if (p.inlineData?.data && p.inlineData.mimeType?.startsWith('audio/')) {
+        send({ type: 'AUDIO_OUT', b64: p.inlineData.data });
+      }
+    }
+    if (sc.inputTranscription?.text) {
+      send({
+        type: 'TRANSCRIPT',
+        role: 'user',
+        text: sc.inputTranscription.text,
+        isFinal: sc.inputTranscription.finished === true,
+      });
+    }
+    if (sc.outputTranscription?.text) {
+      send({
+        type: 'TRANSCRIPT',
+        role: 'model',
+        text: sc.outputTranscription.text,
+        isFinal: sc.outputTranscription.finished === true,
+      });
+    }
+    if (sc.interrupted) send({ type: 'INTERRUPTED' });
+    if (sc.turnComplete) send({ type: 'TURN_DONE' });
+  }
+  // Function calls live in a sibling field (`toolCall.functionCalls`).
+  const calls: LiveFunctionCall[] = [];
+  for (const c of f.toolCall?.functionCalls ?? []) {
+    if (typeof c.name === 'string') {
+      calls.push({ id: c.id, name: c.name, args: c.args ?? {} });
+      send({ type: 'FUNCTION_CALL', name: c.name, args: c.args ?? {} });
     }
   }
-  // Transcripts (paired by role; the server sends incremental text + a
-  // `finished:true` marker per chunk).
-  if (sc.inputTranscription?.text) {
-    send({
-      type: 'TRANSCRIPT',
-      role: 'user',
-      text: sc.inputTranscription.text,
-      isFinal: sc.inputTranscription.finished === true,
-    });
+  return calls;
+}
+
+/**
+ * Dispatch function calls the Live model issued and send a `toolResponse`
+ * back over the same WebSocket. Each call is matched against the registered
+ * handlers; unknown names produce a 'not-found' error response so the model
+ * can recover (rather than the conversation silently dropping).
+ */
+async function dispatchFunctionCalls(
+  calls: LiveFunctionCall[],
+  tools: { handlers: Record<string, LiveToolHandler>; declarations: LiveFunctionDeclaration[] },
+  getKey: (provider: string) => Promise<string | undefined>,
+  ws: WebSocket,
+  send: (m: Record<string, unknown>) => void,
+): Promise<void> {
+  const responses: Array<{ id?: string; name: string; response: Record<string, unknown> }> = [];
+  for (const call of calls) {
+    const handler = tools.handlers[call.name];
+    let response: Record<string, unknown>;
+    if (!handler) {
+      response = { error: `Tool "${call.name}" is not available in voice mode.` };
+    } else {
+      try {
+        const result = await handler(call.args, getKey);
+        response = result.ok
+          ? { result: result.data as unknown as Record<string, unknown> }
+          : { error: `${result.error.code}: ${result.error.message}` };
+      } catch (e) {
+        response = { error: e instanceof Error ? e.message : String(e) };
+      }
+    }
+    send({ type: 'FUNCTION_RESULT', name: call.name, ok: !('error' in response) });
+    responses.push({ id: call.id, name: call.name, response });
   }
-  if (sc.outputTranscription?.text) {
-    send({
-      type: 'TRANSCRIPT',
-      role: 'model',
-      text: sc.outputTranscription.text,
-      isFinal: sc.outputTranscription.finished === true,
-    });
+  if (responses.length === 0 || ws.readyState !== WebSocket.OPEN) return;
+  try {
+    ws.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
+  } catch (e) {
+    send({ type: 'ERROR', message: e instanceof Error ? e.message : 'Failed to send toolResponse.' });
   }
-  if (sc.interrupted) send({ type: 'INTERRUPTED' });
-  if (sc.turnComplete) send({ type: 'TURN_DONE' });
 }
 
 /** Test-only export — routeServerFrame is the pure parser; exposing it
  * lets the unit tests verify parsing behaviour without a real WS. */
-export const __testing = { routeServerFrame };
+export const __testing = { routeServerFrame, dispatchFunctionCalls };

@@ -21,6 +21,8 @@ export type VoiceEvent =
   | { kind: 'transcript'; role: 'user' | 'model'; text: string; isFinal: boolean }
   | { kind: 'turn-done' }
   | { kind: 'interrupted' }
+  | { kind: 'function-call'; name: string; args: Record<string, unknown> }
+  | { kind: 'function-result'; name: string; ok: boolean }
   | { kind: 'error'; message: string }
   | { kind: 'closed'; reason?: string };
 
@@ -149,6 +151,14 @@ export class VoiceSession {
       this.opts.onEvent({ kind: 'interrupted' });
       // Drop any pending playback so the user hears the interruption.
       if (this.outCtx) this.playCursor = this.outCtx.currentTime;
+    } else if (t === 'FUNCTION_CALL' && typeof msg.name === 'string') {
+      this.opts.onEvent({
+        kind: 'function-call',
+        name: msg.name,
+        args: (msg.args as Record<string, unknown>) ?? {},
+      });
+    } else if (t === 'FUNCTION_RESULT' && typeof msg.name === 'string') {
+      this.opts.onEvent({ kind: 'function-result', name: msg.name, ok: msg.ok === true });
     } else if (t === 'ERROR') {
       this.opts.onEvent({ kind: 'error', message: String(msg.message ?? 'Live error.') });
     } else if (t === 'CLOSED') {

@@ -47,7 +47,8 @@ import {
   executeAnalyzeSeo,
 } from './inspector';
 import { executeSearchLibrary, executeIndexDoc, executeLibraryBackfill } from './library';
-import { registerVoiceStreamPort } from './live';
+import { registerVoiceStreamPort, type LiveFunctionDeclaration } from './live';
+import { stubToolDefs } from '../tools/defs';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
 import { saveSkill, listSkills, deleteSkill } from '../skills/store';
 import { saveWorkflow, listWorkflows, deleteWorkflow } from '../workflows/store';
@@ -263,6 +264,33 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
   // in the map above as a 'consequential / HITL-gated upstream' entry).
   list_webhooks: () => executeListWebhooks(),
 };
+
+/**
+ * Voice-mode tool subset. Hand-picked read/search/analytical tools — NO
+ * consequential ones (no send_webhook, no write_file, no github_write). The
+ * agent runner's HITL gate doesn't exist on the voice path; until we wire a
+ * verbal/visual confirmation flow, consequential tools stay out of voice.
+ *
+ * This is also smaller than AGENT_TOOLS for token-efficiency reasons — Live
+ * sends the full tool registry on every setup, and voice users care about a
+ * different (more read-only) subset than agent users.
+ */
+const VOICE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'search_library',
+  'list_webhooks',
+  'web_vitals',
+  'scan_security',
+  'detect_tech_stack',
+  'analyze_a11y',
+  'analyze_seo',
+  'analyze_errors',
+  'read_network',
+  'read_storage',
+  'scan_sensitive_data',
+  'fetch_url',
+  'search_web',
+  'file_search',
+]);
 
 /** Default model for audio transcription (audio-understanding capable). */
 const TRANSCRIBE_MODEL = 'gemini-2.5-flash';
@@ -652,6 +680,22 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 // Voice mode (Gemini Live, WSS BidiGenerateContent). The Port name is
 // 'voice-stream'; the SW owns the WebSocket so the API key never leaves
 // the service worker (NFR-SEC-1).
-registerVoiceStreamPort(getStoredKey);
+//
+// Voice gets a curated tool subset (VOICE_TOOL_NAMES) — read/search/analytical
+// only, no consequential surface. Declarations are derived from the existing
+// tool registry so the schemas stay in sync with the chat path.
+const voiceDeclarations: LiveFunctionDeclaration[] = stubToolDefs
+  .filter((d) => VOICE_TOOL_NAMES.has(d.name))
+  .map((d) => ({
+    name: d.name,
+    description: d.description,
+    parameters: d.paramsSchema as unknown as Record<string, unknown>,
+  }));
+const voiceHandlers: Record<string, (a: Record<string, unknown>, k: typeof getStoredKey) => Promise<import('../types').ToolResult>> = {};
+for (const name of VOICE_TOOL_NAMES) {
+  const h = TOOL_HANDLERS[name];
+  if (h) voiceHandlers[name] = h;
+}
+registerVoiceStreamPort(getStoredKey, { handlers: voiceHandlers, declarations: voiceDeclarations });
 
 export {};
