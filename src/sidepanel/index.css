@@ -481,6 +481,11 @@ html, body {
 .webhooks-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .webhooks-add .settings-input { flex: 1; min-width: 130px; }
 .webhooks-err { font-size: 11px; color: #B91C1C; }
+.webhook-test { min-width: 80px; transition: background 120ms ease, color 120ms ease; }
+.webhook-test.is-ok { background: color-mix(in srgb, #10B981 18%, transparent); color: #047857; border-color: rgba(16,185,129,.45); }
+.theme-graphite .webhook-test.is-ok { color: #6EE7B7; }
+.webhook-test.is-err { background: color-mix(in srgb, #EF4444 14%, transparent); color: #B91C1C; border-color: rgba(239,68,68,.45); }
+.theme-graphite .webhook-test.is-err { color: #FCA5A5; }
 
 /* Voice mode control strip (Gemini Live) */
 .voice-controls { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--panel-border-soft); background: var(--panel-elev); }

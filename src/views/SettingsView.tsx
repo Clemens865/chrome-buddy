@@ -799,30 +799,13 @@ function WebhooksEditor() {
       {items.length > 0 && (
         <div className="webhooks-list">
           {items.map((w) => (
-            <div key={w.id} className="webhooks-row" data-testid={`webhook-row-${w.id}`}>
-              <span className="webhooks-name">{w.name}</span>
-              <code className="webhooks-url" title={revealId === w.id ? w.url : 'Click to reveal'}>
-                {revealId === w.id ? w.url : maskUrl(w.url)}
-              </code>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => setRevealId((cur) => (cur === w.id ? undefined : w.id))}
-                title={revealId === w.id ? 'Hide URL' : 'Reveal URL'}
-                aria-label="Toggle URL visibility"
-              >
-                {revealId === w.id ? 'Hide' : 'Reveal'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => onDelete(w.id)}
-                aria-label={`Delete ${w.name}`}
-                title="Remove this webhook"
-              >
-                Remove
-              </button>
-            </div>
+            <WebhookRow
+              key={w.id}
+              w={w}
+              revealed={revealId === w.id}
+              onToggleReveal={() => setRevealId((cur) => (cur === w.id ? undefined : w.id))}
+              onDelete={() => onDelete(w.id)}
+            />
           ))}
         </div>
       )}
@@ -864,6 +847,101 @@ function WebhooksEditor() {
         </button>
       </div>
       {error && <div className="webhooks-err" data-testid="webhook-error">{error}</div>}
+    </div>
+  );
+}
+
+/** One row in the saved-webhooks list. Owns its own Reveal + Test state so
+ *  multiple rows can be tested concurrently without sharing flash timers. */
+function WebhookRow({
+  w,
+  revealed,
+  onToggleReveal,
+  onDelete,
+}: {
+  w: WebhookEntry;
+  revealed: boolean;
+  onToggleReveal: () => void;
+  onDelete: () => void;
+}) {
+  const [testState, setTestState] = useState<'idle' | 'busy' | 'ok' | 'err'>('idle');
+  const [testMessage, setTestMessage] = useState<string | undefined>();
+  const onTest = async () => {
+    setTestState('busy');
+    setTestMessage(undefined);
+    try {
+      const r = (await chrome.runtime.sendMessage({
+        type: 'TOOL_EXEC',
+        tool: 'send_webhook',
+        args: {
+          name: w.name,
+          payload: {
+            text: `Test ping from Chrome Buddy → ${w.name}`,
+            sentAt: new Date().toISOString(),
+          },
+        },
+      })) as
+        | { ok: boolean; result: { ok: boolean; data?: { status: number; ok: boolean }; error?: { message: string } } }
+        | undefined;
+      if (!r || !r.ok) {
+        setTestState('err');
+        setTestMessage('No response from background.');
+      } else if (!r.result.ok) {
+        setTestState('err');
+        setTestMessage(r.result.error?.message ?? 'Send failed.');
+      } else {
+        const status = r.result.data?.status ?? 0;
+        const ok = r.result.data?.ok === true;
+        setTestState(ok ? 'ok' : 'err');
+        setTestMessage(`HTTP ${status}`);
+      }
+    } catch (e) {
+      setTestState('err');
+      setTestMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      window.setTimeout(() => { setTestState('idle'); setTestMessage(undefined); }, 4000);
+    }
+  };
+  return (
+    <div className="webhooks-row" data-testid={`webhook-row-${w.id}`}>
+      <span className="webhooks-name">{w.name}</span>
+      <code className="webhooks-url" title={revealed ? w.url : 'Click Reveal to see the full URL'}>
+        {revealed ? w.url : maskUrl(w.url)}
+      </code>
+      <button
+        type="button"
+        className={'btn btn-sm webhook-test' + (testState === 'ok' ? ' is-ok' : testState === 'err' ? ' is-err' : '')}
+        onClick={onTest}
+        disabled={testState === 'busy'}
+        data-testid={`webhook-test-${w.id}`}
+        title="Send a one-shot test ping to this webhook. No HITL gate — this is an explicit Settings action."
+      >
+        {testState === 'busy'
+          ? 'Testing…'
+          : testState === 'ok'
+            ? `✓ ${testMessage ?? 'sent'}`
+            : testState === 'err'
+              ? `✗ ${testMessage ?? 'failed'}`
+              : 'Test'}
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={onToggleReveal}
+        title={revealed ? 'Hide URL' : 'Reveal URL'}
+        aria-label="Toggle URL visibility"
+      >
+        {revealed ? 'Hide' : 'Reveal'}
+      </button>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={onDelete}
+        aria-label={`Delete ${w.name}`}
+        title="Remove this webhook"
+      >
+        Remove
+      </button>
     </div>
   );
 }
