@@ -33,6 +33,8 @@ import { getRootHandle, readFromRoot, writeToRoot, listRoot } from '../fs/root';
 import { saveNote, getNote, listNotes, snippet } from '../notes/store';
 import { mirrorNote } from '../library/mirror';
 import { saveCheckpoint, clearCheckpoint } from './checkpoint';
+import { listServers as listMcpServers } from '../mcp/store';
+import { collectMcpBindings } from '../mcp/merger';
 import { nanoPrompt } from '../llm/nano';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import type { Skill } from '../skills/types';
@@ -453,6 +455,12 @@ export async function runAgentTask(
     { send, onConfirm: options.onConfirm },
     options.onAskUser,
   );
+  // Phase 2 routing: pull enabled MCP tools off the address-book and register
+  // them with namespaced names so the model can call them via TOOL_EXEC. Only
+  // servers the user has explicitly enabled in Settings contribute — by default,
+  // a newly-added server contributes ZERO tools, which keeps context lean even
+  // when many servers are configured. See src/mcp/merger.ts for the filter.
+  await injectMcpTools(registry, send);
 
   const approve: ApprovalResolver = (request) =>
     options.onConfirm({
@@ -626,3 +634,40 @@ export async function runPlainChat(
 // Re-export the page-tool set so tests and the UI can reason about routing.
 export { PAGE_TOOLS, PLAIN_CHAT_MODEL };
 export type { ToolResult };
+
+/**
+ * Register every enabled MCP tool into the registry as a namespaced
+ * `mcp_<serverId>_<toolName>` ToolDefinition whose handler forwards to the
+ * SW dispatcher (TOOL_EXEC routes prefixed names to executeMcpToolCall in
+ * src/background/mcp.ts).
+ *
+ * Routing gates:
+ *  - Only servers with enabledInAgent=true contribute (default OFF on add).
+ *  - Per-server toolFilter is respected — a deselected tool never registers.
+ *  - Per-(server,tool) trust=='always' marks the tool consequential=false so
+ *    the HITL gate doesn't fire; otherwise the gate runs every call.
+ */
+export async function injectMcpTools(
+  registry: ToolRegistry,
+  send: (m: unknown) => Promise<unknown>,
+): Promise<void> {
+  try {
+    const servers = await listMcpServers();
+    const bindings = collectMcpBindings(servers);
+    for (const b of bindings) {
+      // Skip in the unlikely case a built-in tool already owns this name.
+      if (registry.has(b.declaration.name)) continue;
+      registry.register({
+        name: b.declaration.name,
+        description: b.declaration.description,
+        paramsSchema: b.declaration.parameters,
+        consequential: b.trust !== 'always',
+        handler: (args) => execPageTool(send, b.declaration.name, args),
+      });
+    }
+  } catch {
+    // Registry mutation is best-effort: a missing IDB or a torn server row
+    // must not abort an otherwise valid chat turn. The user still has every
+    // built-in tool — they just won't see MCP tools until the issue clears.
+  }
+}

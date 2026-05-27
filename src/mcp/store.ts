@@ -35,7 +35,17 @@ export interface McpServer {
   lastTestAt?: number;
   lastTestStatus?: 'ok' | 'error';
   lastTestMessage?: string;
-  /** Per-tool trust map (Phase 2 reads this; Phase 1 doesn't write to it). */
+  /** Phase 2 routing: gate between 'connected' and 'visible to the agent'.
+   *  Default false — newly added servers are silent until the user opts in,
+   *  to prevent context bloat from a 50-tool server appearing automatically. */
+  enabledInAgent?: boolean;
+  /** Phase 2 routing: per-tool include map. Default behavior (entry missing
+   *  or true) is to include the tool. Setting false suppresses it from the
+   *  function-declaration list without un-enabling the whole server. */
+  toolFilter?: Record<string, boolean>;
+  /** Per-tool trust map. 'always' = skip HITL confirm for this tool;
+   *  'confirm' (or missing) = require confirm. Per-(server,tool), so trusting
+   *  github.list_issues doesn't trust github.delete_repo. */
   trust?: Record<string, 'always' | 'confirm'>;
   createdAt: number;
   updatedAt: number;
@@ -95,6 +105,48 @@ export async function deleteServer(id: string): Promise<void> {
   await clearKey(id);
   const db = await getDB();
   await db.delete(STORE, id);
+}
+
+/** Flip the server's enabledInAgent flag — exposes (or hides) its tools from
+ *  the agent's function-declaration list on the next chat turn. */
+export async function setServerEnabled(id: string, enabled: boolean): Promise<void> {
+  const db = await getDB();
+  const existing = (await db.get(STORE, id)) as McpServer | undefined;
+  if (!existing) return;
+  await db.put(STORE, { ...existing, enabledInAgent: enabled, updatedAt: Date.now() });
+}
+
+/** Toggle a single tool's inclusion under one server. Falls back to writing
+ *  `false` (and reading absent-or-true as enabled) so the model gets every
+ *  tool by default when a server is freshly enabled. */
+export async function setToolEnabled(
+  id: string,
+  toolName: string,
+  enabled: boolean,
+): Promise<void> {
+  const db = await getDB();
+  const existing = (await db.get(STORE, id)) as McpServer | undefined;
+  if (!existing) return;
+  const filter = { ...(existing.toolFilter ?? {}) };
+  if (enabled) delete filter[toolName];
+  else filter[toolName] = false;
+  await db.put(STORE, { ...existing, toolFilter: filter, updatedAt: Date.now() });
+}
+
+/** Set the trust level for a single (server, tool) pair. 'always' skips the
+ *  HITL confirm; 'confirm' restores the default. */
+export async function setToolTrust(
+  id: string,
+  toolName: string,
+  level: 'always' | 'confirm',
+): Promise<void> {
+  const db = await getDB();
+  const existing = (await db.get(STORE, id)) as McpServer | undefined;
+  if (!existing) return;
+  const trust = { ...(existing.trust ?? {}) };
+  if (level === 'confirm') delete trust[toolName];
+  else trust[toolName] = level;
+  await db.put(STORE, { ...existing, trust, updatedAt: Date.now() });
 }
 
 /** Persist the result of a Test Connection round-trip. */

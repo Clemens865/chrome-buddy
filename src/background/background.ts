@@ -29,7 +29,7 @@ import { BUDDY_UA } from '../llm/ua';
 import { retryFetch } from '../llm/retry';
 import { executePageTool, capturePageContext, resolveActiveTabId } from './pageTools';
 import { executeWebhook, executeListWebhooks } from './webhook';
-import { executeMcpTest, type McpTestRequestMessage } from './mcp';
+import { executeMcpTest, executeMcpToolCall, type McpTestRequestMessage } from './mcp';
 import { executeWebSearch } from './search';
 import { executeFetchUrl } from './urlContext';
 import { executeFileSearch } from './fileSearch';
@@ -386,14 +386,17 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
       }
 
       case 'TOOL_EXEC': {
-        // Look up the handler in the dispatch map; fall back to executePageTool
-        // for DOM-first page tools (navigate, click, type, scroll, read_dom,
-        // extract, screenshot, summarize). Restricted URLs are refused inside
-        // executePageTool with a structured error.
+        // Look up the handler in the dispatch map; for MCP-prefixed names
+        // (mcp_<serverId>_<toolName>) route through the MCP dispatcher; for
+        // everything else fall through to executePageTool (navigate, click,
+        // type, scroll, read_dom, extract, screenshot, summarize). Restricted
+        // URLs are refused inside executePageTool with a structured error.
         const handler = TOOL_HANDLERS[message.tool];
         const result = handler
           ? await handler(message.args, getStoredKey)
-          : await executePageTool(message.tool, message.args);
+          : message.tool.startsWith('mcp__')
+            ? await executeMcpToolCall(message.tool, message.args)
+            : await executePageTool(message.tool, message.args);
         return { type: 'TOOL_EXEC', ok: true, result };
       }
 

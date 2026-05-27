@@ -1087,3 +1087,21 @@ button.ctx-chip.is-on { color: var(--accent); background: var(--accent-soft); }
 .mcp-radio { display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; }
 .mcp-radio input[type='radio'] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); flex: 0 0 auto; }
 .mcp-add-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* --- MCP routing controls (Phase 2) ------------------------------------ */
+.mcp-row.is-enabled { border-color: var(--accent); }
+.mcp-row-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.mcp-enable { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--panel-muted); cursor: pointer; white-space: nowrap; }
+.mcp-enable input[type='checkbox'] { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); flex: 0 0 auto; }
+.mcp-tool-row { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; flex: 1; }
+.mcp-tool-row input[type='checkbox'] { width: 14px; height: 14px; margin: 2px 0 0; accent-color: var(--accent); flex: 0 0 auto; }
+.mcp-tool-row input[type='checkbox']:disabled { opacity: 0.4; }
+.mcp-tool-text { flex: 1; min-width: 0; }
+.mcp-tool-item { display: flex; align-items: center; gap: 8px; }
+.mcp-tool-trust { display: flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--panel-muted); cursor: pointer; padding: 2px 6px; border-radius: 4px; background: var(--panel-bg); white-space: nowrap; }
+.mcp-tool-trust input[type='checkbox'] { width: 12px; height: 12px; margin: 0; accent-color: var(--accent); }
+
+/* --- Tool result trim in chat (Phase 2) -------------------------------- */
+.tool-result-trimmed { display: flex; flex-direction: column; gap: 4px; }
+.tool-result-meta { font-size: 10.5px; color: var(--panel-muted); }
+.tool-result-expand { background: none; border: 0; padding: 2px 0; color: var(--accent); cursor: pointer; font-size: 11.5px; text-align: left; align-self: flex-start; }

@@ -1,13 +1,16 @@
-// Settings → MCP Servers section. Add / list / test / delete MCP server
-// connections. Phase 1: tool list is preview-only (the agent doesn't call
-// MCP tools yet — that's Phase 2). Keys never enter React state beyond the
-// momentary "Add" form; on Save we hand them to chrome.storage.session via
-// the SW-side keys module.
+// Settings → MCP Servers section. Add / list / test / delete + Phase 2
+// routing controls (per-server enable toggle + per-tool include checkboxes
+// + per-tool 'Always trust' toggle). Keys never enter React state beyond
+// the momentary "Add" form; on Save we hand them to chrome.storage.session
+// via the SW-side keys module.
 import { useEffect, useState } from 'react';
 import {
   listServers,
   saveServer,
   deleteServer,
+  setServerEnabled,
+  setToolEnabled,
+  setToolTrust,
   hostOf,
   isAllowedUrl,
   type AuthKind,
@@ -101,12 +104,38 @@ function McpRow({ server, onChanged }: { server: McpServer; onChanged: () => Pro
     await onChanged();
   };
 
+  const enabled = !!server.enabledInAgent;
+  const toolEnabled = (name: string) => server.toolFilter?.[name] !== false;
+  const isTrusted = (name: string) => server.trust?.[name] === 'always';
+  const enabledCount = (server.tools ?? []).filter((t) => toolEnabled(t.name)).length;
+
   return (
-    <div className="mcp-row" data-testid={`mcp-row-${server.name}`}>
+    <div className={`mcp-row ${enabled ? 'is-enabled' : ''}`} data-testid={`mcp-row-${server.name}`}>
       <div className="mcp-row-l">
-        <div className="mcp-row-name">{server.name}</div>
+        <div className="mcp-row-head">
+          <div className="mcp-row-name">{server.name}</div>
+          <label className="mcp-enable" data-testid={`mcp-enable-${server.name}`}>
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={async (e) => {
+                await setServerEnabled(server.id, e.target.checked);
+                await onChanged();
+              }}
+            />
+            <span>Enable in agent</span>
+          </label>
+        </div>
         <div className="mcp-row-meta">
           {hostOf(server.url)} · {server.authKind === 'bearer' ? 'bearer key' : 'no auth'}
+          {server.tools && server.tools.length > 0 && (
+            <>
+              {' · '}
+              {enabled
+                ? `${enabledCount}/${server.tools.length} tools exposed`
+                : `${server.tools.length} tools (off)`}
+            </>
+          )}
         </div>
         {resultLine && (
           <div className={`mcp-row-result is-${resultKind}`} data-testid={`mcp-row-result-${server.name}`}>
@@ -120,15 +149,43 @@ function McpRow({ server, onChanged }: { server: McpServer; onChanged: () => Pro
             onClick={() => setShowTools((s) => !s)}
             data-testid={`mcp-tools-toggle-${server.name}`}
           >
-            {showTools ? 'Hide' : 'Show'} {server.tools.length} tool{server.tools.length === 1 ? '' : 's'}
+            {showTools ? 'Hide' : 'Manage'} {server.tools.length} tool{server.tools.length === 1 ? '' : 's'}
           </button>
         )}
         {showTools && server.tools && (
           <ul className="mcp-tools-list">
             {server.tools.map((t) => (
-              <li key={t.name} className="mcp-tool-item">
-                <code>{t.name}</code>
-                {t.description && <span className="mcp-tool-desc"> — {t.description}</span>}
+              <li key={t.name} className="mcp-tool-item" data-testid={`mcp-tool-item-${t.name}`}>
+                <label className="mcp-tool-row">
+                  <input
+                    type="checkbox"
+                    checked={toolEnabled(t.name)}
+                    disabled={!enabled}
+                    onChange={async (e) => {
+                      await setToolEnabled(server.id, t.name, e.target.checked);
+                      await onChanged();
+                    }}
+                    data-testid={`mcp-tool-toggle-${t.name}`}
+                  />
+                  <div className="mcp-tool-text">
+                    <code>{t.name}</code>
+                    {t.description && <span className="mcp-tool-desc"> — {t.description}</span>}
+                  </div>
+                </label>
+                {enabled && toolEnabled(t.name) && (
+                  <label className="mcp-tool-trust" title="Skip HITL confirm for this tool">
+                    <input
+                      type="checkbox"
+                      checked={isTrusted(t.name)}
+                      onChange={async (e) => {
+                        await setToolTrust(server.id, t.name, e.target.checked ? 'always' : 'confirm');
+                        await onChanged();
+                      }}
+                      data-testid={`mcp-tool-trust-${t.name}`}
+                    />
+                    <span>Trust</span>
+                  </label>
+                )}
               </li>
             ))}
           </ul>
