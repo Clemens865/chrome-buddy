@@ -852,34 +852,35 @@ export function ChatView({
   const isEmpty = items.length === 0 && !noKey;
 
   // Keep the view pinned to the latest content as items/cards stream in (so a
-  // confirm card's pinned Approve bar lands in view). Scrolling the end sentinel
-  // is more reliable than scrollTop math when a tall card is the last child.
-  useLayoutEffect(() => {
-    if (!stickRef.current) return;
-    const el = scrollerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [items, noKey, busy]);
-
-  // Stronger guarantee: whenever a confirm card lands in items, scroll IT
-  // into view explicitly. The end-sentinel scroll above usually does this,
-  // but a tall trace block above the confirm card has been seen to push it
-  // below the fold without us realising. Fixing the user-reported "stuck —
-  // no confirm card" symptom.
+  // confirm card's pinned Approve bar lands in view). Two scroll targets are
+  // possible: the end sentinel (default — stick to the bottom of the
+  // transcript) or the pending-confirm card itself when one exists. We pick
+  // the latter when a confirm card is unresolved so back-to-back setItems
+  // updates during a live run can't peg the scroll past the card. Earlier,
+  // a separate smooth-scroll-to-confirm useEffect fought with the sync
+  // scroll-to-bottom here and got clobbered on every status tick — leaving
+  // the card rendered behind the fixed banner+composer with empty cream
+  // space where its body should have been.
   const pendingConfirm = items.find(
     (it) => it.kind === 'confirm' && it.resolution === undefined,
   );
-  useEffect(() => {
-    if (!pendingConfirm) return;
-    const el = scrollerRef.current?.querySelector('.hitl');
-    if (el && 'scrollIntoView' in el) {
+  useLayoutEffect(() => {
+    if (!stickRef.current) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    if (pendingConfirm) {
       // block:'end' combined with scroll-margin-bottom:160px on .hitl lands
       // the BOTTOM of the card (where Approve / Cancel live) above the
-      // pending-confirm banner + composer footer. Earlier center+smooth
-      // could leave the buttons clipped behind the fixed footer UI.
-      (el as HTMLElement).scrollIntoView({ block: 'end', behavior: 'smooth' });
+      // pending-confirm banner + composer footer.
+      const card = el.querySelector('.hitl') as HTMLElement | null;
+      if (card) {
+        card.scrollIntoView({ block: 'end' });
+        return;
+      }
     }
-  }, [pendingConfirm?.id]);
+    el.scrollTop = el.scrollHeight;
+    bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [items, noKey, busy, pendingConfirm?.id]);
 
   return (
     <div className="chat">
