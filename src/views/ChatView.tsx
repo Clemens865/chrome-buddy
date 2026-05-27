@@ -12,6 +12,16 @@ import { Ic, BuddyMark } from '../ui/icons';
 import { Markdown } from '../ui/Markdown';
 import { ArtifactCard, ArtifactView } from './Artifacts';
 import { extractArtifacts, type Artifact } from '../artifacts/extract';
+import {
+  classifyFile,
+  formatBytes,
+  formatTextAttachments,
+  imageAttachments,
+  totalBytes,
+  MAX_ATTACHMENTS,
+  MAX_TOTAL_BYTES,
+  type ChatAttachment,
+} from '../chat/attachments';
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { requestPageContext } from '../page/request';
 import { persistRun, fetchRuns } from '../memory/request';
@@ -132,6 +142,11 @@ export function ChatView({
   const [profiles] = usePersistedState<Profiles>('userProfiles', EMPTY_PROFILES);
   const [activeProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile] = usePersistedState<boolean>('attachProfile', false);
+  // Composer file attachments (images + text files). Transient — cleared on
+  // every successful submit. Persisting them across reloads doesn't carry
+  // useful semantics; the user re-picks if they want to send again.
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const [activeModel] = useActiveModel();
   const [sessionCost, setSessionCost] = useState(0);
   const [perRunCap] = usePersistedState<number>(BUDGET_KEYS.perRun, BUDGET_DEFAULTS.perRun);
@@ -454,6 +469,8 @@ export function ChatView({
       }
       const effectiveMode = forceMode ?? mode;
       setInput('');
+      setAttachments([]); // attachments are one-shot per turn
+      setAttachError(null);
       setNoKey(false);
       setBusy(true);
       // Fresh AbortController per run. The Stop button calls
@@ -567,6 +584,12 @@ export function ChatView({
           const useProfile = attachProfile && hasProfile(active);
           const page = attachPage ? await requestPageContext() : null;
           let context = buildContextBlock(page, useProfile ? active : null, activeProfile);
+          // Text-file attachments fold into the system context as fenced blocks;
+          // image attachments stay on the user message as multimodal parts.
+          if (attachments.length > 0) {
+            const textBlock = formatTextAttachments(attachments);
+            if (textBlock) context = context ? `${textBlock}\n\n${context}` : textBlock;
+          }
           // Library auto-context (opt-in via Settings). Embed the user message,
           // retrieve top-3 snippets above cosine 0.65, prepend to context so
           // the chat model can use them. Failures are silent — the chat still
@@ -603,6 +626,11 @@ export function ChatView({
             model: activeModel,
             preferNano,
             signal: aborter.signal,
+            imageAttachments: imageAttachments(attachments).map((a) => ({
+              name: a.name,
+              mime: a.mime,
+              dataUrl: a.kind === 'image' ? a.dataUrl : '',
+            })),
             onDelta: (text) => {
               setItems((prev) =>
                 prev.map((it) =>
@@ -684,7 +712,7 @@ export function ChatView({
         setThinkHarder(false);
       }
     },
-    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano],
+    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -1004,6 +1032,38 @@ export function ChatView({
         thinkHarder={thinkHarder}
         onThinkHarder={() => setThinkHarder((v) => !v)}
         sessionCost={sessionCost}
+        attachments={attachments}
+        attachError={attachError}
+        onPickFiles={async (files) => {
+          setAttachError(null);
+          const picked: ChatAttachment[] = [];
+          for (const f of files) {
+            if (attachments.length + picked.length >= MAX_ATTACHMENTS) {
+              setAttachError(`Up to ${MAX_ATTACHMENTS} attachments per message.`);
+              break;
+            }
+            const klass = classifyFile(f);
+            if (klass.kind === 'reject') {
+              setAttachError(klass.reason);
+              continue;
+            }
+            if (klass.kind === 'image') {
+              const dataUrl = await readAsDataURL(f);
+              picked.push({ kind: 'image', name: f.name, mime: f.type, dataUrl, size: f.size });
+            } else {
+              const text = await readAsText(f);
+              picked.push({ kind: 'text', name: f.name, mime: f.type || 'text/plain', text, size: f.size });
+            }
+          }
+          if (picked.length === 0) return;
+          const next = [...attachments, ...picked];
+          if (totalBytes(next) > MAX_TOTAL_BYTES) {
+            setAttachError(`Total attachment size exceeds ${formatBytes(MAX_TOTAL_BYTES)}.`);
+            return;
+          }
+          setAttachments(next);
+        }}
+        onRemoveAttachment={(i) => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
       />
     </div>
   );
@@ -1567,6 +1627,10 @@ function ChatComposer({
   thinkHarder,
   onThinkHarder,
   sessionCost,
+  attachments,
+  attachError,
+  onPickFiles,
+  onRemoveAttachment,
 }: {
   input: string;
   onChange: (v: string) => void;
@@ -1580,7 +1644,12 @@ function ChatComposer({
   thinkHarder: boolean;
   onThinkHarder: () => void;
   sessionCost: number;
+  attachments: ChatAttachment[];
+  attachError: string | null;
+  onPickFiles: (files: File[]) => Promise<void>;
+  onRemoveAttachment: (index: number) => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -1613,8 +1682,50 @@ function ChatComposer({
 
   return (
     <div className="composer">
+      {(attachments.length > 0 || attachError) && (
+        <div className="composer-attachments" data-testid="composer-attachments">
+          {attachments.map((a, i) => (
+            <span key={i} className={`attach-chip is-${a.kind}`} title={`${a.mime || a.kind} · ${formatBytes(a.size)}`}>
+              <span className="attach-chip-icon">{a.kind === 'image' ? Ic.image : Ic.attach}</span>
+              <span className="attach-chip-name">{a.name}</span>
+              <span className="attach-chip-size">{formatBytes(a.size)}</span>
+              <button
+                type="button"
+                className="attach-chip-x"
+                aria-label={`Remove ${a.name}`}
+                onClick={() => onRemoveAttachment(i)}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          {attachError && <span className="attach-error">{attachError}</span>}
+        </div>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif,.txt,.md,.markdown,.json,.csv,.tsv,.yaml,.yml,.xml,.html,.htm,.log,.ini,.toml,.env,.js,.ts,.tsx,.jsx,.css,.sql,.sh,.py,.rb,.go,.rs,.java,.c,.h,.cpp,.rst,.org,.tex"
+        multiple
+        style={{ display: 'none' }}
+        data-testid="composer-file-input"
+        onChange={async (e) => {
+          const files = Array.from(e.target.files ?? []);
+          // Reset the input so picking the same file twice still fires onChange.
+          e.target.value = '';
+          if (files.length === 0) return;
+          await onPickFiles(files);
+        }}
+      />
       <div className="composer-bar">
-        <button type="button" className="composer-attach" aria-label="Attach">
+        <button
+          type="button"
+          className="composer-attach"
+          aria-label="Attach file"
+          title="Attach an image or text file"
+          onClick={() => fileInputRef.current?.click()}
+          data-testid="composer-attach"
+        >
           <span className="ic">{Ic.attach}</span>
         </button>
         <textarea
@@ -1711,4 +1822,26 @@ function ChatComposer({
       </div>
     </div>
   );
+}
+
+/** Read a File as a base64 data URL (image attachments). The result is the
+ *  raw `data:<mime>;base64,<…>` string that the OpenAI-compat adapter passes
+ *  through unchanged as an image_url part. */
+function readAsDataURL(f: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error ?? new Error('FileReader failed'));
+    r.readAsDataURL(f);
+  });
+}
+
+/** Read a File as UTF-8 text (text-file attachments). */
+function readAsText(f: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error ?? new Error('FileReader failed'));
+    r.readAsText(f);
+  });
 }

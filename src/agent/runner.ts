@@ -543,6 +543,10 @@ export async function runPlainChat(
      *     LLM_GENERATE resolves; we can't cancel the SW fetch from here.
      */
     signal?: AbortSignal;
+    /** Composer attachments — image data URLs become multimodal user-message
+     *  parts; text files are folded into `context` by the caller. Pass only
+     *  the IMAGE entries here so we can build ContentPart[] cleanly. */
+    imageAttachments?: Array<{ name: string; mime: string; dataUrl: string }>;
   } = {},
 ): Promise<PlainChatResult> {
   const send = options.send ?? defaultSend;
@@ -566,7 +570,18 @@ export async function runPlainChat(
   if (options.context && options.context.trim()) {
     messages.push({ role: 'system', content: options.context });
   }
-  messages.push({ role: 'user', content: prompt });
+  // Multimodal user message when image attachments are present (image_url parts
+  // pass through the OpenAI-compatible adapter as ContentPart[]). Otherwise
+  // keep the plain-string form — the adapter handles either shape.
+  const images = options.imageAttachments ?? [];
+  if (images.length > 0) {
+    const parts: Array<{ type: 'text'; text: string } | { type: 'image'; imageUrl: string }> = [];
+    if (prompt) parts.push({ type: 'text', text: prompt });
+    for (const img of images) parts.push({ type: 'image', imageUrl: img.dataUrl });
+    messages.push({ role: 'user', content: parts });
+  } else {
+    messages.push({ role: 'user', content: prompt });
+  }
 
   const request = {
     model: options.model ?? PLAIN_CHAT_MODEL,

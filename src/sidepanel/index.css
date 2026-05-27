@@ -1107,3 +1107,15 @@ button.ctx-chip.is-on { color: var(--accent); background: var(--accent-soft); }
 .tool-result-trimmed { display: flex; flex-direction: column; gap: 4px; }
 .tool-result-meta { font-size: 10.5px; color: var(--panel-muted); }
 .tool-result-expand { background: none; border: 0; padding: 2px 0; color: var(--accent); cursor: pointer; font-size: 11.5px; text-align: left; align-self: flex-start; }
+
+/* --- Composer attachments --------------------------------------------- */
+.composer-attachments { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px 0; }
+.attach-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px 4px 6px; border-radius: 999px; background: var(--panel-elev); border: 1px solid var(--panel-border); font-size: 11.5px; color: var(--panel-fg); max-width: 220px; }
+.attach-chip.is-image { background: var(--panel-elev-2); }
+.attach-chip-icon { display: inline-flex; }
+.attach-chip-icon svg { width: 12px; height: 12px; }
+.attach-chip-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+.attach-chip-size { color: var(--panel-muted); font-size: 10.5px; }
+.attach-chip-x { background: none; border: 0; color: var(--panel-muted); cursor: pointer; padding: 0 2px; font-size: 11px; line-height: 1; }
+.attach-chip-x:hover { color: var(--panel-fg); }
+.attach-error { font-size: 11.5px; color: #EF4444; padding: 4px 0; flex-basis: 100%; }
