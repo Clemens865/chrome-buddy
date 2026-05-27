@@ -450,7 +450,7 @@ html, body {
 .onb-note { font-size: 11px; color: var(--panel-muted-soft); line-height: 1.5; margin-top: 18px; }
 .onb-note-warn { color: var(--panel-muted); background: color-mix(in srgb, #F59E0B 8%, transparent); border-left: 2px solid color-mix(in srgb, #F59E0B 60%, var(--panel-border)); padding: 6px 10px; border-radius: 4px; margin-top: 8px; }
 .onb-note-warn code { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; background: var(--code); padding: 0 4px; border-radius: 3px; }
-.composer-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; resize: none; font: inherit; font-size: 13.5px; color: var(--panel-fg); padding: 8px 4px; max-height: 120px; line-height: 1.4; }
+.composer-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; resize: none; font: inherit; font-size: 13.5px; color: var(--panel-fg); padding: 8px 4px; line-height: 1.4; min-height: 22px; max-height: 50vh; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--panel-border) transparent; }
 .composer-input::placeholder { color: var(--panel-muted-soft); }
 .composer-send { width: 30px; height: 30px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 30px; }
 .composer-send:disabled { background: var(--panel-elev-2); color: var(--panel-muted-soft); cursor: default; }

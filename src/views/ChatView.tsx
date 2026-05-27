@@ -1650,6 +1650,16 @@ function ChatComposer({
   onRemoveAttachment: (index: number) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Auto-grow the textarea as content gets taller, capped by CSS max-height
+  // (50vh). Past the cap the textarea scrolls. Resetting height to 'auto'
+  // first so shrinking after a delete also lays out correctly.
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [input]);
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -1729,6 +1739,7 @@ function ChatComposer({
           <span className="ic">{Ic.attach}</span>
         </button>
         <textarea
+          ref={textareaRef}
           className="composer-input"
           placeholder="Message Buddy…"
           value={input}
