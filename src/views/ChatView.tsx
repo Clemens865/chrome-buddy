@@ -876,12 +876,22 @@ export function ChatView({
     const el = scrollerRef.current;
     if (!el) return;
     if (pendingConfirm) {
-      // block:'end' combined with scroll-margin-bottom:160px on .hitl lands
-      // the BOTTOM of the card (where Approve / Cancel live) above the
-      // pending-confirm banner + composer footer.
+      // Deterministic scroll math instead of scrollIntoView + scroll-margin.
+      // scroll-margin-bottom is honored unevenly by Chrome when the scroller
+      // has padding-bottom + a fixed-positioned footer overlay — the card
+      // would end up rendered BEHIND the banner with the body invisible.
+      // Compute the target scrollTop directly so the card's BOTTOM sits
+      // FIXED_FOOTER_GAP px above the visible bottom edge.
       const card = el.querySelector('.hitl') as HTMLElement | null;
       if (card) {
-        card.scrollIntoView({ block: 'end' });
+        const FIXED_FOOTER_GAP = 160; // banner ~50 + composer ~80 + 30 breathing
+        const cardRect = card.getBoundingClientRect();
+        const scrollerRect = el.getBoundingClientRect();
+        // Where is the card's bottom in the scroller's content coords?
+        const cardBottomInContent = cardRect.bottom - scrollerRect.top + el.scrollTop;
+        // We want it at: el.clientHeight - FIXED_FOOTER_GAP (from the scroller's top).
+        const target = cardBottomInContent - (el.clientHeight - FIXED_FOOTER_GAP);
+        el.scrollTop = Math.max(0, target);
         return;
       }
     }
