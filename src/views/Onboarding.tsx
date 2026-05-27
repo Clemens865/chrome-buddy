@@ -3,7 +3,7 @@
 // Shown by PanelApp until the user finishes or skips (on-device features and
 // browsing can still work without a key).
 import { useState } from 'react';
-import { BuddyMark, Ic } from '../ui/icons';
+import { Ic } from '../ui/icons';
 import { useApiKey } from '../key/useApiKey';
 
 const GEMINI_PROVIDER = 'google-gemini';
@@ -40,7 +40,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   return (
     <div className="onb">
       <div className="onb-card">
-        <div className="onb-mark"><BuddyMark size={34} /></div>
+        <div className="onb-mark onb-mark-logo">
+          <img src="/logo.png" alt="Chrome Buddy" width={140} height={140} />
+        </div>
         <h1 className="onb-title">Welcome to Chrome Buddy</h1>
         <p className="onb-sub">
           Your agentic browser assistant. Bring your own Google&nbsp;Gemini key — Buddy makes all
