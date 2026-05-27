@@ -29,6 +29,7 @@ import { BUDDY_UA } from '../llm/ua';
 import { retryFetch } from '../llm/retry';
 import { executePageTool, capturePageContext, resolveActiveTabId } from './pageTools';
 import { executeWebhook, executeListWebhooks } from './webhook';
+import { executeMcpTest, type McpTestRequestMessage } from './mcp';
 import { executeWebSearch } from './search';
 import { executeFetchUrl } from './urlContext';
 import { executeFileSearch } from './fileSearch';
@@ -399,6 +400,13 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
       case 'PAGE_CONTEXT': {
         const page = await capturePageContext();
         return { type: 'PAGE_CONTEXT', ok: true, page };
+      }
+
+      case 'MCP_TEST': {
+        // Run the MCP handshake + tools/list against a saved server (Phase 1).
+        // Key is read SW-side from chrome.storage.session — never sent through
+        // this message channel except as a one-shot for pre-save verification.
+        return await executeMcpTest(message as McpTestRequestMessage);
       }
 
       case 'VISION_TURN': {

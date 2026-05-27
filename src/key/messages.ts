@@ -208,6 +208,15 @@ export interface VisionCaptureMessage {
   tabId?: number;
 }
 
+/** MCP — run a saved server's handshake + tools/list and return a summary.
+ *  Phase 1 surface; Phase 2 adds MCP_CALL_TOOL for the agent dispatcher. */
+export interface McpTestMessage {
+  type: 'MCP_TEST';
+  serverId: string;
+  /** Optional un-saved key for "Test before Save" in the Add form. */
+  oneShotKey?: string;
+}
+
 /** Discriminated union of every message the background SW understands. */
 export type BuddyMessage =
   | KeySetMessage
@@ -234,7 +243,8 @@ export type BuddyMessage =
   | AppListMessage
   | AppDeleteMessage
   | LibraryIndexMessage
-  | LibraryBackfillMessage;
+  | LibraryBackfillMessage
+  | McpTestMessage;
 
 // ---- Responses --------------------------------------------------------------
 
@@ -429,6 +439,18 @@ export interface VisionCaptureResponse {
   error?: string;
 }
 
+export type McpTestResponse =
+  | {
+      type: 'MCP_TEST';
+      ok: true;
+      serverName: string;
+      serverVersion: string;
+      protocolVersion: string;
+      toolCount: number;
+      tools: { name: string; description?: string }[];
+    }
+  | { type: 'MCP_TEST'; ok: false; error: string };
+
 export type BuddyResponse =
   | KeySetResponse
   | KeyStatusResponse
@@ -455,6 +477,7 @@ export type BuddyResponse =
   | AppDeleteResponse
   | LibraryIndexResponse
   | LibraryBackfillResponse
+  | McpTestResponse
   | ErrorResponse;
 
 /** Type guard: is this an inbound message the SW should handle? */
@@ -486,6 +509,7 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'VISION_ACTION' ||
     t === 'VISION_CAPTURE' ||
     t === 'LIBRARY_INDEX' ||
-    t === 'LIBRARY_BACKFILL'
+    t === 'LIBRARY_BACKFILL' ||
+    t === 'MCP_TEST'
   );
 }

@@ -13,6 +13,7 @@ import { useApiKey } from '../key/useApiKey';
 import { isFsSupported, pickRootFolder, forgetRootFolder, rootFolderName } from '../fs/root';
 import { BUDGET_KEYS, BUDGET_DEFAULTS } from '../cost/budget';
 import { EMPTY_PROFILES, type UserProfile, type Profiles, type ProfileKind } from '../agent';
+import { McpServersSection } from './settings/McpServersSection';
 import { clearHistory } from '../memory/request';
 
 // The bundled registry ships a single Gemini provider; keys are stored per
@@ -228,6 +229,25 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
             aria-label="Default GitHub repo"
           />
         </SettingsRow>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-section-h">MCP Servers</div>
+        <div className="settings-row settings-row-block">
+          <div className="settings-row-l">
+            <div>
+              <div className="settings-row-t">Pluggable tool sources</div>
+              <div className="settings-row-s">
+                Connect Chrome Buddy to any Streamable-HTTP MCP server (Cloudflare,
+                Composio, your own). Keys live only in <code>chrome.storage.session</code>
+                and never reach the model. Tools aren&apos;t agent-callable yet — Phase 2.
+              </div>
+            </div>
+          </div>
+          <div style={{ width: '100%', marginTop: 10 }}>
+            <McpServersSection />
+          </div>
+        </div>
       </div>
 
       <div className="settings-section">

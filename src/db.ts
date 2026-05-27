@@ -4,7 +4,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 export const DB_NAME = 'chrome-buddy';
-const VERSION = 11;
+const VERSION = 12;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -70,6 +70,15 @@ export function getDB(): Promise<IDBPDatabase> {
           const flows = d.createObjectStore('webhookFlows', { keyPath: 'id' });
           flows.createIndex('updatedAt', 'updatedAt');
           flows.createIndex('categoryName', 'categoryName');
+        }
+        // MCP servers (v12) — config only. The bearer token / API key for
+        // each server NEVER lives here; it lives in chrome.storage.session
+        // (see src/mcp/keys.ts) so it's wiped on browser restart and is
+        // unreachable from the panel JS context (NFR-SEC-1).
+        if (!d.objectStoreNames.contains('mcpServers')) {
+          const m = d.createObjectStore('mcpServers', { keyPath: 'id' });
+          m.createIndex('name', 'name', { unique: true });
+          m.createIndex('updatedAt', 'updatedAt');
         }
       },
     });
