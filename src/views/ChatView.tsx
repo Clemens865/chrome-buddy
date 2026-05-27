@@ -156,6 +156,10 @@ export function ChatView({
   const [askBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
   const [preferNano] = usePersistedState<boolean>('preferNano', false);
   const [libraryAutoContext] = usePersistedState<boolean>('libraryAutoContext', false);
+  // Default repo configured in Settings → GitHub. Passed into the agent's
+  // RunOptions.defaults so the planner knows which repo to fill on
+  // github_write / github_read / github_list when the user doesn't name one.
+  const [githubDefaultRepo] = usePersistedState<string>('githubDefaultRepo', '');
   const [planReview, setPlanReview] = useState<{ plan: PlanStep[]; resolve: (d: PlanDecision) => void } | null>(null);
   const [askUser, setAskUser] = useState<{ question: string; choices?: string[]; resolve: (a: string) => void } | null>(null);
   const [humanGate, setHumanGate] = useState<{ kind: 'captcha' | 'login'; resolve: () => void } | null>(null);
@@ -677,6 +681,7 @@ export function ChatView({
             history: recentHistory(itemsRef.current),
             thinkHarder,
             signal: aborter.signal,
+            defaults: { githubRepo: githubDefaultRepo },
           });
           if (result.outcome === 'no-key') setNoKey(true);
           else if (result.outcome === 'cancelled') {
@@ -780,6 +785,7 @@ export function ChatView({
               model: activeModel,
               costBudget: perRunCap,
               stepBudget,
+              defaults: { githubRepo: githubDefaultRepo },
             });
             if (result.outcome === 'no-key') { setNoKey(true); break; }
             recordCost(result.state?.costUsed ?? 0);
@@ -817,6 +823,7 @@ export function ChatView({
           costBudget: perRunCap,
           stepBudget,
           resume: cp.state,
+          defaults: { githubRepo: githubDefaultRepo },
         });
         if (result.outcome === 'no-key') setNoKey(true);
         else recordCost(result.state?.costUsed ?? 0);

@@ -344,21 +344,27 @@ export const noteListTool: ToolDefinition = {
 };
 
 // --- github_* — write / read / list files in a user repo via Contents API --
+//
+// `repo` is OPTIONAL on all three: when omitted, the SW falls back to the
+// Default repo configured in Settings → GitHub. The system prompt also tells
+// the model what that default is, so "save HELLO.md" will resolve cleanly
+// without the user re-typing the repo every time.
 export const githubWriteTool: ToolDefinition = {
   name: 'github_write',
   description:
     "Commit a file to a user's GitHub repo (creates or updates). Use when the " +
-    'user explicitly says "save to GitHub", "commit to my repo", or names a ' +
-    'repo + path. CONSEQUENTIAL — every commit passes through the HITL gate.',
+    'user says "save to GitHub", "commit to my repo", or names a path. Omit ' +
+    '`repo` to use the user-configured default. CONSEQUENTIAL — every commit ' +
+    'passes through the HITL gate.',
   paramsSchema: objectSchema(
     {
-      repo: { type: 'string', description: 'Repo in the form "owner/name" (e.g. "user/buddy-vault").' },
+      repo: { type: 'string', description: 'Optional. Repo in "owner/name" form. Defaults to the user-configured Default repo from Settings.' },
       path: { type: 'string', description: 'Path inside the repo (no leading slash). E.g. "notes/2026-05-25.md".' },
       content: { type: 'string', description: 'File contents to commit (UTF-8 text).' },
       message: { type: 'string', description: 'Optional commit message. Defaults to "chore: update <path> via Chrome Buddy".' },
       branch: { type: 'string', description: 'Optional branch; omitted = default branch.' },
     },
-    ['repo', 'path', 'content'],
+    ['path', 'content'],
   ),
   consequential: true,
   handler: notWired('github_write'),
@@ -366,14 +372,14 @@ export const githubWriteTool: ToolDefinition = {
 
 export const githubReadTool: ToolDefinition = {
   name: 'github_read',
-  description: 'Read the contents of a file from a user GitHub repo. Returns UTF-8 text.',
+  description: 'Read the contents of a file from a user GitHub repo. Returns UTF-8 text. Omit `repo` to use the user-configured default.',
   paramsSchema: objectSchema(
     {
-      repo: { type: 'string', description: 'Repo in "owner/name" form.' },
+      repo: { type: 'string', description: 'Optional. Defaults to the configured Default repo.' },
       path: { type: 'string', description: 'Path inside the repo.' },
       ref: { type: 'string', description: 'Optional branch / tag / SHA; omit for the default branch.' },
     },
-    ['repo', 'path'],
+    ['path'],
   ),
   consequential: false,
   handler: notWired('github_read'),
@@ -381,14 +387,14 @@ export const githubReadTool: ToolDefinition = {
 
 export const githubListTool: ToolDefinition = {
   name: 'github_list',
-  description: 'List files and subdirectories at a path in a user GitHub repo (path omitted = root).',
+  description: 'List files and subdirectories at a path in a user GitHub repo (path omitted = root). Omit `repo` to use the user-configured default.',
   paramsSchema: objectSchema(
     {
-      repo: { type: 'string', description: 'Repo in "owner/name" form.' },
+      repo: { type: 'string', description: 'Optional. Defaults to the configured Default repo.' },
       path: { type: 'string', description: 'Optional subpath; omitted = repo root.' },
       ref: { type: 'string', description: 'Optional branch / tag / SHA.' },
     },
-    ['repo'],
+    [],
   ),
   consequential: false,
   handler: notWired('github_list'),

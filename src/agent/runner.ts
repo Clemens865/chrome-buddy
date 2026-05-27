@@ -206,6 +206,11 @@ export interface RunAgentTaskOptions {
   history?: string;
   /** "Think harder" — synthesis at `thinking: 'high'`. (H2.) */
   thinkHarder?: boolean;
+  /** User-configured defaults to forward into the runtime so the planner can
+   *  fill tool args without asking (e.g. the Default GitHub repo from
+   *  Settings → GitHub). The SW also falls back to these when a tool call
+   *  omits the arg — defense in depth. */
+  defaults?: { githubRepo?: string };
 }
 
 /** Terminal result of a run, plus a clean no-key signal for the UI. */
@@ -494,6 +499,7 @@ export async function runAgentTask(
     history: options.history,
     thinkHarder: options.thinkHarder,
     resume: options.resume,
+    defaults: options.defaults,
   });
 
   // The run reached a terminal state — drop its checkpoint so we don't offer

@@ -47,6 +47,37 @@ async function readToken(): Promise<string | undefined> {
   return typeof r.gh_token === 'string' && r.gh_token.length > 0 ? r.gh_token : undefined;
 }
 
+/** Read the user's preferred default repo from Settings (chrome.storage.local,
+ *  written by usePersistedState('githubDefaultRepo', '')). Used as a fallback
+ *  when the model omits the `repo` argument — the user shouldn't need to
+ *  re-type their repo name on every commit if they've already configured it. */
+export async function readDefaultRepo(): Promise<string | undefined> {
+  try {
+    const r = (await chrome.storage.local.get('githubDefaultRepo')) as { githubDefaultRepo?: unknown };
+    const raw = r.githubDefaultRepo;
+    // usePersistedState may wrap the value in JSON.stringify, so handle both shapes.
+    let v: unknown = raw;
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+        try { v = JSON.parse(trimmed); } catch { /* keep raw */ }
+      }
+    }
+    return typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Resolve the repo string for a tool call: explicit arg wins, otherwise
+ *  fall back to the Settings default. Returns the un-parsed string so the
+ *  caller can produce a uniform `invalid-args` error if neither is set. */
+async function resolveRepo(argRepo: unknown): Promise<string> {
+  const explicit = typeof argRepo === 'string' ? argRepo.trim() : '';
+  if (explicit) return explicit;
+  return (await readDefaultRepo()) ?? '';
+}
+
 function authHeaders(token: string): Record<string, string> {
   return {
     Accept: ACCEPT,
@@ -68,7 +99,7 @@ async function getContents(token: string, owner: string, name: string, path: str
 // ---- github_write ----------------------------------------------------------
 
 export async function executeGithubWrite(args: Record<string, unknown>): Promise<ToolResult> {
-  const repoStr = typeof args.repo === 'string' ? args.repo : '';
+  const repoStr = await resolveRepo(args.repo);
   const path = typeof args.path === 'string' ? args.path.replace(/^\/+/, '') : '';
   const content = typeof args.content === 'string' ? args.content : '';
   const message =
@@ -79,7 +110,14 @@ export async function executeGithubWrite(args: Record<string, unknown>): Promise
 
   if (!path) return err('invalid-args', 'github_write requires `path`.');
   const parsed = parseRepo(repoStr);
-  if (!parsed) return err('invalid-args', 'github_write requires `repo` in the form "owner/name".');
+  if (!parsed) {
+    return err(
+      'invalid-args',
+      repoStr
+        ? `github_write: invalid repo "${repoStr}" — use "owner/name".`
+        : 'github_write needs a repo. Either pass `repo: "owner/name"` or set a Default repo in Settings → GitHub.',
+    );
+  }
 
   const token = await readToken();
   if (!token) return err('runtime-error', 'No GitHub token set. Add one in Settings → GitHub.');
@@ -131,12 +169,19 @@ export async function executeGithubWrite(args: Record<string, unknown>): Promise
 // ---- github_read -----------------------------------------------------------
 
 export async function executeGithubRead(args: Record<string, unknown>): Promise<ToolResult> {
-  const repoStr = typeof args.repo === 'string' ? args.repo : '';
+  const repoStr = await resolveRepo(args.repo);
   const path = typeof args.path === 'string' ? args.path.replace(/^\/+/, '') : '';
   const ref = typeof args.ref === 'string' && args.ref.trim() ? args.ref.trim() : undefined;
   if (!path) return err('invalid-args', 'github_read requires `path`.');
   const parsed = parseRepo(repoStr);
-  if (!parsed) return err('invalid-args', 'github_read requires `repo` in the form "owner/name".');
+  if (!parsed) {
+    return err(
+      'invalid-args',
+      repoStr
+        ? `github_read: invalid repo "${repoStr}" — use "owner/name".`
+        : 'github_read needs a repo. Either pass `repo: "owner/name"` or set a Default repo in Settings → GitHub.',
+    );
+  }
   const token = await readToken();
   if (!token) return err('runtime-error', 'No GitHub token set. Add one in Settings → GitHub.');
   const res = await getContents(token, parsed.owner, parsed.name, path, ref);
@@ -154,11 +199,18 @@ export async function executeGithubRead(args: Record<string, unknown>): Promise<
 // ---- github_list -----------------------------------------------------------
 
 export async function executeGithubList(args: Record<string, unknown>): Promise<ToolResult> {
-  const repoStr = typeof args.repo === 'string' ? args.repo : '';
+  const repoStr = await resolveRepo(args.repo);
   const path = typeof args.path === 'string' ? args.path.replace(/^\/+/, '') : '';
   const ref = typeof args.ref === 'string' && args.ref.trim() ? args.ref.trim() : undefined;
   const parsed = parseRepo(repoStr);
-  if (!parsed) return err('invalid-args', 'github_list requires `repo` in the form "owner/name".');
+  if (!parsed) {
+    return err(
+      'invalid-args',
+      repoStr
+        ? `github_list: invalid repo "${repoStr}" — use "owner/name".`
+        : 'github_list needs a repo. Either pass `repo: "owner/name"` or set a Default repo in Settings → GitHub.',
+    );
+  }
   const token = await readToken();
   if (!token) return err('runtime-error', 'No GitHub token set. Add one in Settings → GitHub.');
   const res = await getContents(token, parsed.owner, parsed.name, path, ref);

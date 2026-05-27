@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ToolRegistry } from '../tools';
 import { ok } from '../types';
 import type { NormalizedResponse, NormalizedToolCall } from '../llm';
-import { AgentRuntime, stepNeedsTool, EXECUTOR_GUIDANCE } from './runtime';
+import { AgentRuntime, stepNeedsTool, EXECUTOR_GUIDANCE, formatDefaults } from './runtime';
 import type { RuntimeLlm } from './runtime';
 import type { ApprovalResolver } from './hitl';
 import type { AgentEvent } from './types';
@@ -461,5 +461,27 @@ describe('stepNeedsTool', () => {
     expect(stepNeedsTool('Search the web for Vienna')).toBe(true);
     expect(stepNeedsTool('Compose the markdown content')).toBe(false);
     expect(stepNeedsTool('Summarize the findings')).toBe(false);
+  });
+});
+
+describe('formatDefaults', () => {
+  it('returns an empty string when no defaults are set', () => {
+    expect(formatDefaults()).toBe('');
+    expect(formatDefaults({})).toBe('');
+    expect(formatDefaults({ githubRepo: '' })).toBe('');
+    expect(formatDefaults({ githubRepo: '   ' })).toBe('');
+  });
+
+  it('emits a GitHub repo line that tells the model to OMIT the repo arg', () => {
+    const out = formatDefaults({ githubRepo: 'Clemens865/Buddy-Knowledge' });
+    expect(out).toContain('GitHub repo: Clemens865/Buddy-Knowledge');
+    // The instruction MUST tell the model to omit `repo` so the SW default
+    // wins — otherwise the planner re-includes the repo and we re-introduce
+    // the original "shouldn't it know which repo?" UX gap.
+    expect(out).toMatch(/OMIT.*repo/);
+  });
+
+  it('trims whitespace around the repo value', () => {
+    expect(formatDefaults({ githubRepo: '  user/repo  ' })).toContain('GitHub repo: user/repo —');
   });
 });

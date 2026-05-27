@@ -136,6 +136,24 @@ export function stepNeedsTool(intent: string): boolean {
   return ACTION_VERB.test(intent);
 }
 
+/** Build a short "Defaults configured by the user" block that goes into the
+ *  planner / replanner prompts so the model fills tool args without re-asking
+ *  ("shouldn't it know which repo?"). Returns '' when no defaults are set so
+ *  the prompt stays lean. */
+export function formatDefaults(defaults?: RunOptions['defaults']): string {
+  if (!defaults) return '';
+  const lines: string[] = [];
+  if (defaults.githubRepo && defaults.githubRepo.trim()) {
+    lines.push(
+      `- GitHub repo: ${defaults.githubRepo.trim()} — when calling github_write / github_read / github_list, ` +
+        'OMIT the `repo` argument so this default is used. Only pass `repo` when ' +
+        'the user explicitly names a different one.',
+    );
+  }
+  if (lines.length === 0) return '';
+  return `Defaults configured by the user:\n${lines.join('\n')}`;
+}
+
 /** Shape the Planner asks the LLM to return as JSON. */
 interface PlannerOutput {
   steps: { intent: string }[];
@@ -301,6 +319,7 @@ export class AgentRuntime {
         role: 'user',
         content:
           (options.history ? `Recent conversation:\n${fenceUntrusted(options.history)}\n\n` : '') +
+          (formatDefaults(options.defaults) ? `${formatDefaults(options.defaults)}\n\n` : '') +
           `Task: ${task}\n\nAvailable tools:\n${toolList}`,
       },
     ];
@@ -358,6 +377,7 @@ export class AgentRuntime {
       {
         role: 'user',
         content:
+          (formatDefaults(options.defaults) ? `${formatDefaults(options.defaults)}\n\n` : '') +
           `Task: ${task}\n\nSteps already executed:\n${done}\n\n` +
           `Results so far:\n${fenceUntrusted(results)}\n\nAvailable tools:\n${this.toolList(options)}`,
       },

@@ -86,6 +86,13 @@ export interface RunOptions {
   /** Resume a previous run from its checkpointed state (FR-AGENT-8): the saved
    *  plan is reused and already-completed steps are skipped. */
   resume?: RunState;
+  /** User-configured defaults to inject into the planner's prompt so the
+   *  model fills in tool args without re-asking (e.g. the default GitHub repo
+   *  from Settings → GitHub). The SW also falls back to these when a tool
+   *  call omits the arg — defense in depth. */
+  defaults?: {
+    githubRepo?: string;
+  };
 }
 
 /** Why a run finished. */
