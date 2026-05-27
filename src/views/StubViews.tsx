@@ -172,7 +172,10 @@ export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void 
 function SkillEditor({ initial, onSave, onCancel }: { initial: Skill | null; onSave: (s: Skill) => void; onCancel: () => void }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
-  const [kind, setKind] = useState<'chat' | 'agent'>(initial?.kind ?? 'agent');
+  // Default new skills to 'chat' — it's the simpler, cheaper kind, matches
+  // the UI ordering (Chat shown first in the seg control), and is what most
+  // saved prompts actually are. Agent skills are an opt-in upgrade.
+  const [kind, setKind] = useState<'chat' | 'agent'>(initial?.kind ?? 'chat');
   const [prompt, setPrompt] = useState(initial?.prompt ?? '');
   const [tools, setTools] = useState((initial?.allowedTools ?? []).join(', '));
   const inputs = detectSkillInputs(prompt);
