@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "typecheck": "tsc --noEmit",
+    "icons": "node scripts/rasterize-icon.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test smoke.spec.ts",
     "test:e2e:live": "playwright test live-chat.spec.ts",

@@ -20,7 +20,7 @@ test('logo renders on Onboarding + all manifest icons reachable', async ({ conte
   // The Onboarding card shows the new logo image now (was a small SVG mark).
   const logo = panel.locator('.onb-mark-logo img');
   await expect(logo).toBeVisible({ timeout: 8_000 });
-  await expect(logo).toHaveAttribute('src', '/logo.png');
+  await expect(logo).toHaveAttribute('src', '/icon.svg');
 
   // Snapshot the onboarding so we can eyeball it.
   await panel.screenshot({ path: path.join(SHOTS, '150-onboarding-logo.png') });

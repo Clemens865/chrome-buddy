@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Chrome Buddy">
+  <!-- Chrome Buddy icon. Cream palette (matches our 'cream' theme).
+       Solid colors only so it rasterizes reliably across SVG engines.
+       Squircle background + espresso smiley face for high contrast at
+       every size. -->
+
+  <!-- Rounded-square (squircle) background. -->
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="#EFEAE1"/>
+  <!-- Hairline border for a touch of depth. -->
+  <rect x="0.5" y="0.5" width="127" height="127" rx="27.5" fill="none" stroke="#D8CFC0" stroke-width="1"/>
+
+  <!-- Two subtle warm 'cheek' glows behind the face (rust accent from the
+       cream-theme palette). Kept fully solid so SVG engines can't drop them. -->
+  <circle cx="36" cy="78" r="14" fill="#E6C9B3"/>
+  <circle cx="92" cy="78" r="14" fill="#E6C9B3"/>
+
+  <!-- Espresso smiley face. -->
+  <circle cx="64" cy="64" r="40" fill="#1F1B14"/>
+
+  <!-- Eyes. -->
+  <ellipse cx="52" cy="57" rx="5.4" ry="6.4" fill="#FBF8F3"/>
+  <ellipse cx="76" cy="57" rx="5.4" ry="6.4" fill="#FBF8F3"/>
+
+  <!-- Smile — thick enough to survive 16px rasterization. -->
+  <path d="M 47 72 Q 64 90 81 72" stroke="#FBF8F3" stroke-width="6" stroke-linecap="round" fill="none"/>
+</svg>

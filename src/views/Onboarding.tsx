@@ -41,7 +41,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     <div className="onb">
       <div className="onb-card">
         <div className="onb-mark onb-mark-logo">
-          <img src="/logo.png" alt="Chrome Buddy" width={140} height={140} />
+          <img src="/icon.svg" alt="Chrome Buddy" width={120} height={120} />
         </div>
         <h1 className="onb-title">Welcome to Chrome Buddy</h1>
         <p className="onb-sub">

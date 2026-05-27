@@ -435,8 +435,8 @@ html, body {
 .onb { height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--panel-bg); }
 .onb-card { max-width: 360px; width: 100%; text-align: center; }
 .onb-mark { display: inline-flex; padding: 12px; border-radius: 14px; background: var(--panel-elev); margin-bottom: 14px; }
-.onb-mark-logo { padding: 0; background: transparent; margin-bottom: 6px; }
-.onb-mark-logo img { display: block; width: 140px; height: 140px; }
+.onb-mark-logo { padding: 0; background: transparent; margin-bottom: 8px; }
+.onb-mark-logo img { display: block; width: 120px; height: 120px; }
 .onb-title { font-size: 20px; font-weight: 700; margin: 0 0 6px; color: var(--panel-fg); }
 .onb-sub { font-size: 13px; color: var(--panel-muted); line-height: 1.5; margin: 0 0 18px; }
 .onb-link { display: inline-block; font-size: 13px; color: var(--accent); margin-bottom: 10px; text-decoration: none; }
