@@ -15,7 +15,7 @@ import { parseAppConfig, parseCodeApp, renderTemplate, APP_BUILDER_SYSTEM, CODE_
 import { runInSandbox } from '../sandbox/host';
 import type { AppConfig } from '../apps/types';
 
-export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'webhooks';
+export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'webhooks' | 'scrape';
 
 /** Chat presets launched from an app card instead of opening an app view.
  *  (Kept as a hook for future preset cards — Summarizer used to live here but
@@ -58,7 +58,7 @@ export function AppsView({
   onPreset: (preset: AppPreset) => void;
   recents?: string[];
 }) {
-  const openable = new Set<AppId>(['console', 'image', 'transcriber', 'livescribe', 'webhooks']);
+  const openable = new Set<AppId>(['console', 'image', 'transcriber', 'livescribe', 'webhooks', 'scrape']);
   const open = (id: string) => {
     if (PRESETS[id]) {
       onPreset(PRESETS[id]); // chat-coverable (e.g. Summarizer) → seed a chat prompt

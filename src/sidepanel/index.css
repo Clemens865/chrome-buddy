@@ -447,6 +447,21 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .tr-audio { width: 100%; margin-bottom: 4px; }
 .tr-result { margin-top: 12px; border: 1px solid var(--panel-border); border-radius: 10px; padding: 10px 12px; background: var(--panel-bg); }
 .tr-result-hd { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: var(--panel-muted); margin-bottom: 6px; }
+
+/* Scrape to Table */
+.scrape-section { display: flex; flex-direction: column; gap: 6px; }
+.scrape-section-h { font-size: 12px; font-weight: 600; color: var(--panel-muted); }
+.scrape-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.scrape-chip { font: inherit; font-size: 11.5px; color: var(--panel-fg); background: var(--panel-elev); border: 1px solid var(--panel-border-soft); border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+.scrape-chip:hover { border-color: var(--accent); }
+.scrape-result { border: 1px solid var(--panel-border); border-radius: 10px; padding: 10px 12px; background: var(--panel-bg); }
+.scrape-result-hd { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--panel-muted); }
+.scrape-table-wrap { max-height: 50vh; overflow: auto; border: 1px solid var(--panel-border-soft); border-radius: 8px; }
+.scrape-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.scrape-table th { position: sticky; top: 0; background: var(--panel-elev); color: var(--panel-fg); text-align: left; font-weight: 600; padding: 6px 8px; cursor: pointer; white-space: nowrap; border-bottom: 1px solid var(--panel-border); user-select: none; }
+.scrape-table th:hover { background: var(--panel-elev-2); }
+.scrape-table td { padding: 5px 8px; color: var(--panel-fg); border-bottom: 1px solid var(--panel-border-soft); vertical-align: top; }
+.scrape-table tbody tr:hover { background: var(--panel-elev); }
 .resume-card { margin: 0 12px 8px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 10px; background: var(--panel-elev); }
 .resume-card-txt { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; color: var(--panel-fg); margin-bottom: 8px; }
 .resume-card-txt .ic { width: 14px; height: 14px; flex: 0 0 14px; color: var(--accent); }

@@ -1,8 +1,9 @@
 // Apps grid launch — every built-in app card was visible but only the
 // Console card had an e2e launch test. This spec proves each openable card
 // actually OPENS its dedicated view, with the app-specific UI present, and
-// the Back button returns to the grid. Two placeholder cards (scrape, watch)
-// are asserted to be NON-openable so we don't quietly ship dead UI later.
+// the Back button returns to the grid. One placeholder card (watch) is still
+// asserted NON-openable so we don't quietly ship dead UI later; Scrape to Table
+// is now a real app and gets a launch test.
 import { test, expect } from './fixtures';
 import path from 'node:path';
 
@@ -64,14 +65,20 @@ test.describe('Apps grid: each card opens its app', () => {
     await expect(panel.getByTestId('wf-new-flow')).toBeVisible();
   });
 
-  test('Scrape to Table is a placeholder — clicking does NOT open an app view', async ({ context, extensionId }) => {
+  test('Scrape to Table opens its app view (reads the page → table/extract UI)', async ({ context, extensionId }) => {
     const panel = await context.newPage();
     await panel.setViewportSize({ width: 440, height: 980 });
     await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
     await panel.getByRole('button', { name: 'Apps', exact: true }).click();
     await panel.getByText('Scrape to Table', { exact: true }).click();
-    // Still on the apps grid — the search input is the easiest anchor.
-    await expect(panel.locator('.apps-search-input')).toBeVisible();
+    // App mounted (its dedicated view, not the grid) and ran its page read.
+    await expect(panel.locator('.micro')).toBeVisible({ timeout: 5_000 });
+    await expect(panel.locator('.apps-search-input')).toHaveCount(0);
+    // Resolves to one of the read outcomes (no driveable tab → Retry, or a
+    // readable page → the extract box), never stuck on the loading line.
+    await expect(
+      panel.getByRole('button', { name: 'Retry' }).or(panel.getByLabel('Columns to extract')),
+    ).toBeVisible({ timeout: 6_000 });
   });
 
   test('Price Watch is a placeholder — clicking does NOT open an app view', async ({ context, extensionId }) => {
