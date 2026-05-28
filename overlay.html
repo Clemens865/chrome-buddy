@@ -4,15 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chrome Buddy</title>
-    <style>
-      /* The HTML page itself stays transparent so the host iframe surface
-         can sit invisibly over the page until the panel decides to render
-         pixels (rail or expanded). The PanelApp inside paints its own
-         background where it actually draws. */
-      html, body { background: transparent; margin: 0; padding: 0; }
-    </style>
   </head>
-  <body>
+  <!-- The is-overlay-iframe class tells index.css to:
+       - keep html/body/.root TRANSPARENT (so the page shows through)
+       - let pointer events PASS THROUGH the iframe area where PanelApp
+         hasn't drawn anything (only the floating panel card captures clicks).
+       Without this class the iframe would paint the panel's solid bg over
+       the entire page and intercept every click. -->
+  <body class="is-overlay-iframe">
     <div id="root"></div>
     <script type="module" src="/src/sidepanel/overlay-main.tsx"></script>
   </body>

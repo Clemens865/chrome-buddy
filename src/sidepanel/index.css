@@ -18,6 +18,21 @@ html, body {
   overflow: hidden;
 }
 
+/* Floating-overlay iframe: the page below MUST remain visible + clickable.
+   Override the side-panel defaults so html / body / #root all stay
+   transparent + don't intercept pointer events. The PanelApp's own
+   .root.is-overlay rules (below) keep its panel card opaque + clickable. */
+body.is-overlay-iframe,
+body.is-overlay-iframe html,
+body.is-overlay-iframe #root {
+  background: transparent !important;
+  pointer-events: none;
+}
+body.is-overlay-iframe .root { background: transparent !important; }
+/* Re-enable pointer events on the actual floating panel surface so users
+   can interact with it. */
+body.is-overlay-iframe .root.is-overlay .panel { pointer-events: auto; }
+
 #root { height: 100%; width: 100%; }
 
 .root {

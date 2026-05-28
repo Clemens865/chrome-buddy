@@ -49,23 +49,50 @@ function mount() {
   iframe = document.createElement('iframe');
   iframe.src = chrome.runtime.getURL('overlay.html');
   iframe.allow = 'microphone; clipboard-read; clipboard-write';
+  // Size to match the panel's current collapse state. The page underneath
+  // stays usable everywhere OUTSIDE the iframe rectangle.
+  applyIframeStyle(getCachedCollapsed());
+  host.appendChild(iframe);
+}
+
+// Two static panel-footprint rectangles, derived from .root.is-overlay CSS:
+//   collapsed → small floating rail card at top:80 right:10
+//   expanded  → top:10 right:10 bottom:10, width:min(420, 92vw)
+// Sizes are slightly padded for the rail's own shadow + click affordance.
+function applyIframeStyle(collapsed: boolean) {
+  if (!iframe) return;
+  const COLLAPSED_W = 76;
+  const COLLAPSED_H = 420;
+  const COLLAPSED_TOP = 70;
+  const EXPANDED_TOP = 0;
+  const EXPANDED_W = Math.min(440, Math.round(window.innerWidth * 0.92));
+  const css = collapsed
+    ? [
+        'position:fixed',
+        `top:${COLLAPSED_TOP}px`,
+        'right:0px',
+        `width:${COLLAPSED_W}px`,
+        `height:${COLLAPSED_H}px`,
+      ]
+    : [
+        'position:fixed',
+        `top:${EXPANDED_TOP}px`,
+        'right:0px',
+        `width:${EXPANDED_W}px`,
+        'height:100vh',
+      ];
   iframe.style.cssText = [
-    'position:absolute',
-    'inset:0',
-    'width:100%',
-    'height:100%',
+    ...css,
     'border:0',
     'background:transparent',
-    // The iframe rect catches clicks within it. Its body is transparent
-    // until the PanelApp inside paints, so visually it's a no-op. Caveat:
-    // when overlay is ON, the iframe rect can intercept clicks even over
-    // transparent areas around the rail; a follow-up will tighten the
-    // iframe's CSS size to match the panel's rendered footprint via a
-    // postMessage from inside.
     'pointer-events:auto',
     'color-scheme:light dark',
   ].join(';');
-  host.appendChild(iframe);
+}
+
+let cachedCollapsed = true;
+function getCachedCollapsed(): boolean {
+  return cachedCollapsed;
 }
 
 function unmount() {
@@ -88,6 +115,10 @@ window.addEventListener('message', (ev) => {
   if (data.kind === 'dismiss') dismiss();
 });
 
+// Keep the iframe sized correctly when the page is resized (expanded mode
+// uses a viewport-relative width that needs to update on window resize).
+window.addEventListener('resize', () => applyIframeStyle(cachedCollapsed));
+
 // Read the setting, then mount (only if enabled).
 function init() {
   if (typeof chrome === 'undefined' || !chrome.storage?.local) {
@@ -96,14 +127,22 @@ function init() {
     // fallback, which would have rendered with stale defaults.
     return;
   }
-  chrome.storage.local.get('overlayEnabled').then((res) => {
+  // Read both flags together so initial mount picks the correct size.
+  chrome.storage.local.get(['overlayEnabled', 'overlayCollapsed']).then((res) => {
     enabled = res.overlayEnabled === true; // default OFF — must be EXPLICITLY enabled
+    cachedCollapsed = res.overlayCollapsed !== false; // default true (collapsed)
     mount();
   });
 
-  // React live to the Settings toggle.
+  // React live to both Settings toggle AND the panel's own collapse/expand
+  // state, so the iframe always matches the panel's rendered footprint.
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !changes.overlayEnabled) return;
+    if (area !== 'local') return;
+    if (changes.overlayCollapsed) {
+      cachedCollapsed = changes.overlayCollapsed.newValue !== false;
+      applyIframeStyle(cachedCollapsed);
+    }
+    if (!changes.overlayEnabled) return;
     enabled = changes.overlayEnabled.newValue === true;
     if (enabled) {
       dismissed = false; // re-enabling clears a per-page dismissal
