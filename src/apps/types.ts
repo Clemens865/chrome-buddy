@@ -41,3 +41,9 @@ export interface AppConfig {
 // v2: added Tier-3 sandboxed-UI apps (html/css/ui fields). Older records are
 // forward-compatible — Tier-1/2 fields are untouched.
 export const APP_SCHEMA_VERSION = 2;
+
+// Capabilities a Tier-2/3 app may declare + receive through the bridge. None are
+// "consequential" (no external side effects beyond the user's own LLM quota or a
+// user-initiated download) — consequential tools require the args-visible HITL
+// gate and are intentionally NOT exposed to generated/imported apps yet.
+export const KNOWN_APP_CAPS = ['gemini', 'image', 'download'] as const;

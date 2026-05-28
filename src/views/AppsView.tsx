@@ -13,9 +13,10 @@ import { useActiveModel } from '../llm/modelPref';
 import { fetchApps, persistApp, removeApp } from '../apps/request';
 import { parseAppConfig, parseCodeApp, renderTemplate, APP_BUILDER_SYSTEM, CODE_APP_BUILDER_SYSTEM } from '../apps/build';
 import { runInSandbox } from '../sandbox/host';
+import { SandboxAppView } from './apps/SandboxAppView';
 import type { AppConfig } from '../apps/types';
 
-export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'webhooks' | 'scrape' | 'viz' | 'tabs' | 'svggen';
+export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'webhooks' | 'scrape' | 'viz' | 'tabs' | 'svggen' | 'builder';
 
 /** Chat presets launched from an app card instead of opening an app view.
  *  (Kept as a hook for future preset cards — Summarizer used to live here but
@@ -113,7 +114,11 @@ export function AppsView({
   };
 
   if (openGen) {
-    return <GeneratedApp app={openGen} onBack={() => setOpenGen(null)} />;
+    return openGen.tier === 3 ? (
+      <SandboxAppView app={openGen} onBack={() => setOpenGen(null)} />
+    ) : (
+      <GeneratedApp app={openGen} onBack={() => setOpenGen(null)} />
+    );
   }
 
   return (
@@ -183,7 +188,8 @@ export function AppsView({
         </div>
       ) : (
         <div className="apps-foot">
-          <button type="button" className="apps-add" onClick={() => setCreating(true)}><span className="ic">{Ic.plus}</span>Generate app from a description</button>
+          <button type="button" className="apps-add" onClick={() => onOpenApp('builder')}><span className="ic">{Ic.sparkle}</span>Build a full app with its own UI</button>
+          <button type="button" className="apps-add" onClick={() => setCreating(true)}><span className="ic">{Ic.plus}</span>Generate a quick prompt/code app</button>
         </div>
       )}
     </div>
