@@ -45,6 +45,22 @@ body.is-overlay-iframe .root.is-overlay .panel {
   right: 4px;
   bottom: 4px;
 }
+/* In the iframe the rail buttons should appear to float DIRECTLY over the
+   page — no card background, border, or divider lines anywhere. The icons
+   themselves carry the brand; the page underneath shows through. */
+body.is-overlay-iframe .rail-floating {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  margin: 0;
+}
+body.is-overlay-iframe .rail {
+  background: transparent;
+  border: none;
+}
+body.is-overlay-iframe .rail-floating .rail-foot {
+  border-top: none;
+}
 
 #root { height: 100%; width: 100%; }
 
