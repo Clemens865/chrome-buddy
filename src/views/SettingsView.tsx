@@ -154,6 +154,9 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
         <SettingsRow t="Gemini API key" s="Kept in memory for this browser session — never written to disk">
           <ApiKeyControl />
         </SettingsRow>
+        <SettingsRow t="Anthropic API key (optional)" s="Enables Claude Opus 4.8 as a power builder for the app builder — same custody, never written to disk">
+          <ApiKeyControl provider="anthropic" skipValidate />
+        </SettingsRow>
       </div>
 
       <div className="settings-section">
@@ -509,8 +512,8 @@ function RootFolderControl() {
 
 // Inline BYO-key control: shows status (set / not set), reveals a key input on
 // "Add key", and saves to the SW via useApiKey (the key never persists to disk).
-function ApiKeyControl() {
-  const { keyStatus, setKey, validate } = useApiKey(GEMINI_PROVIDER);
+function ApiKeyControl({ provider = GEMINI_PROVIDER, skipValidate = false }: { provider?: string; skipValidate?: boolean } = {}) {
+  const { keyStatus, setKey, validate } = useApiKey(provider);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -553,10 +556,14 @@ function ApiKeyControl() {
     setBusy(true);
     setMsg(null);
     try {
-      const res = await validate(draft);
-      if (!res.ok) {
-        setMsg({ tone: 'err', text: res.error ?? 'Key did not validate.' });
-        return;
+      // Anthropic has no live-validate path (KEY_VALIDATE tests the Gemini
+      // endpoint); store it directly and let the Test-model button verify.
+      if (!skipValidate) {
+        const res = await validate(draft);
+        if (!res.ok) {
+          setMsg({ tone: 'err', text: res.error ?? 'Key did not validate.' });
+          return;
+        }
       }
       await setKey(draft);
       setMsg({ tone: 'ok', text: 'Saved.' });

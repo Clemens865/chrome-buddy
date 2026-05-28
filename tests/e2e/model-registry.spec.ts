@@ -11,7 +11,7 @@ test('add a custom model — it appears in the picker (FR-MR-8)', async ({ conte
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
   await panel.getByRole('button', { name: 'Settings', exact: true }).click();
 
-  await panel.getByRole('button', { name: '+ Add' }).click();
+  await panel.getByRole('button', { name: '+ Add', exact: true }).click();
   await panel.getByLabel('Model id').fill('gemini-custom-test');
   await panel.getByLabel('Model display name').fill('My Test Model');
   await panel.getByRole('button', { name: 'Add model' }).click();

@@ -114,7 +114,7 @@ export interface AuthConfig {
 }
 
 /** Adapter module identifiers shipped in the bundle. */
-export type AdapterId = 'openai-compatible' | 'gemini-native';
+export type AdapterId = 'openai-compatible' | 'gemini-native' | 'anthropic';
 
 /** A provider entry in the registry (inert data driving bundled logic). */
 export interface ProviderConfig {

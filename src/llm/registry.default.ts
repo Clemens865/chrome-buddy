@@ -14,6 +14,7 @@
 import type { ModelRegistry } from './types';
 
 const GEMINI = 'google-gemini';
+const ANTHROPIC = 'anthropic';
 
 export const DEFAULT_REGISTRY: ModelRegistry = {
   schemaVersion: '1.1',
@@ -35,8 +36,32 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       auth: { method: 'bearer', keyRef: 'secret:gemini' },
       enabled: true,
     },
+    // Optional "power builder" provider for the Micro-App Builder. BYO Anthropic
+    // key (stored SW-side in chrome.storage.session under apiKey:anthropic);
+    // never the default. Uses the native Anthropic Messages API (own adapter).
+    anthropic: {
+      id: 'anthropic',
+      displayName: 'Anthropic (Claude)',
+      adapter: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      auth: { method: 'header', paramName: 'x-api-key', keyRef: 'secret:anthropic' },
+      enabled: true,
+    },
   },
   models: {
+    // Opus 4.8 — optional, user-keyed builder model (not selectable until the
+    // user adds an Anthropic key). Strong at substantial codegen + iteration.
+    'claude-opus-4-8': {
+      id: 'claude-opus-4-8',
+      provider: ANTHROPIC,
+      displayName: 'Claude Opus 4.8',
+      contextWindow: 200_000,
+      maxOutputTokens: 32_000,
+      pricing: { inputPerMTok: 5.0, outputPerMTok: 25.0 },
+      capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
+      tier: 'pro',
+      enabled: true,
+    },
     // ── Gemini 2.5 (stable GA — reliable workhorses) ─────────────────────────
     'gemini-2.5-flash': {
       id: 'gemini-2.5-flash',

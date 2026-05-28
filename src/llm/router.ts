@@ -4,6 +4,7 @@
 // compute tiered fallback chains, and estimate cost from usage. (PRD FR-LLM-11,
 // NFR-COST-3; research/03 §8 "tiered fallback".)
 
+import { anthropicAdapter } from './adapters/anthropic';
 import { geminiNativeAdapter } from './adapters/geminiNative';
 import { openAICompatibleAdapter } from './adapters/openaiCompatible';
 import type {
@@ -58,6 +59,8 @@ export function pickAdapter(provider: ProviderConfig): ProviderAdapter {
       return openAICompatibleAdapter;
     case 'gemini-native':
       return geminiNativeAdapter;
+    case 'anthropic':
+      return anthropicAdapter;
     default: {
       // Exhaustiveness guard: a new AdapterId must add a case here.
       const exhaustive: never = provider.adapter;

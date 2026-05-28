@@ -10,8 +10,8 @@ test('live: model picker switches the active model', async ({ context, extension
   await panel.setViewportSize({ width: 440, height: 980 });
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
 
-  // Chat header starts on the default (Gemini 2.5 Flash).
-  await expect(panel.locator('.panel-hd-sub')).toContainText('Gemini 2.5 Flash');
+  // Chat header starts on the registry default (Gemini 3.5 Flash).
+  await expect(panel.locator('.panel-hd-sub')).toContainText('Gemini 3.5 Flash');
 
   // Switch the model in Settings.
   await panel.getByRole('button', { name: 'Settings', exact: true }).click();
