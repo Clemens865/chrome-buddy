@@ -55,15 +55,20 @@ function mount() {
   host.appendChild(iframe);
 }
 
-// Two static panel-footprint rectangles, derived from .root.is-overlay CSS:
-//   collapsed → small floating rail card at top:80 right:10
-//   expanded  → top:10 right:10 bottom:10, width:min(420, 92vw)
-// Sizes are slightly padded for the rail's own shadow + click affordance.
+// Two static panel-footprint rectangles. The iframe-only CSS overrides in
+// src/sidepanel/index.css (body.is-overlay-iframe selector) place the panel
+// at top:4 right:4 inside the iframe — so these dims should fit the rail/
+// expanded card snugly with a few px of breathing room.
+//   collapsed → narrow floating rail card on the right
+//   expanded  → ~440px chat panel on the right edge, full height
 function applyIframeStyle(collapsed: boolean) {
   if (!iframe) return;
-  const COLLAPSED_W = 76;
-  const COLLAPSED_H = 420;
-  const COLLAPSED_TOP = 70;
+  // Collapsed-rail card: rail is 48px wide + 6-10px inside the card; 8
+  // rail buttons stack to ~340px. iframe dims include small buffer for
+  // the card's drop-shadow and the body's 4px top/right inset.
+  const COLLAPSED_W = 60;
+  const COLLAPSED_H = 360;
+  const COLLAPSED_TOP = 80;
   const EXPANDED_TOP = 0;
   const EXPANDED_W = Math.min(440, Math.round(window.innerWidth * 0.92));
   const css = collapsed

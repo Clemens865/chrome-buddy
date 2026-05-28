@@ -32,6 +32,19 @@ body.is-overlay-iframe .root { background: transparent !important; }
 /* Re-enable pointer events on the actual floating panel surface so users
    can interact with it. */
 body.is-overlay-iframe .root.is-overlay .panel { pointer-events: auto; }
+/* Inside the iframe, the panel fills the iframe rect (the iframe ITSELF is
+   sized to the panel footprint by the content script). The 80px top offset
+   the legacy full-viewport overlay used would leave dead space at the top
+   of the iframe — drop it here so the rail / expanded panel hug the edges. */
+body.is-overlay-iframe .root.is-overlay .panel.is-collapsed {
+  top: 4px;
+  right: 4px;
+}
+body.is-overlay-iframe .root.is-overlay .panel {
+  top: 4px;
+  right: 4px;
+  bottom: 4px;
+}
 
 #root { height: 100%; width: 100%; }
 
