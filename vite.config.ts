@@ -14,6 +14,11 @@ export default defineConfig({
     rollupOptions: {
       input: {
         sidepanel: resolve(root, 'sidepanel.html'),
+        // Overlay runs at the EXTENSION origin via an iframe injected by
+        // the content script — see src/content/overlay.tsx and
+        // web_accessible_resources in public/manifest.json. Sharing the
+        // extension origin means it shares IndexedDB with the side panel.
+        overlay: resolve(root, 'overlay.html'),
         sandbox: resolve(root, 'sandbox.html'),
         background: resolve(root, 'src/background/background.ts'),
       },

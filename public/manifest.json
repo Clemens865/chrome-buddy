@@ -34,14 +34,14 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["sandbox.html"],
+      "resources": ["sandbox.html", "overlay.html"],
       "matches": ["<all_urls>"]
     }
   ],
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["assets/overlay.js"],
+      "js": ["assets/content.js"],
       "run_at": "document_idle"
     }
   ]

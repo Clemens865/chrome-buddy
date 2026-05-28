@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chrome Buddy</title>
+    <style>
+      /* The HTML page itself stays transparent so the host iframe surface
+         can sit invisibly over the page until the panel decides to render
+         pixels (rail or expanded). The PanelApp inside paints its own
+         background where it actually draws. */
+      html, body { background: transparent; margin: 0; padding: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/sidepanel/overlay-main.tsx"></script>
+  </body>
+</html>

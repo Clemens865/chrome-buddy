@@ -19,7 +19,10 @@ test('chat history lists, switches, starts new, and deletes conversations', asyn
   await panel.evaluate(async () => {
     const now = Date.now();
     const db: IDBDatabase = await new Promise((resolve, reject) => {
-      const req = indexedDB.open('chrome-buddy', 7);
+      // Match the app's current schema version (src/db.ts). Opening at a
+      // lower version when the DB is already at the current version throws
+      // VersionError, breaking the seed.
+      const req = indexedDB.open('chrome-buddy', 12);
       req.onupgradeneeded = () => {
         const d = req.result;
         if (!d.objectStoreNames.contains('chats')) {

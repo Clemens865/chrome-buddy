@@ -1,45 +1,35 @@
-// overlay.tsx — content script. Mounts the Chrome Buddy panel into a shadow root
-// so it floats OVER the current page (page stays visible behind it).
+// overlay.tsx — content script. Injects the floating Chrome Buddy overlay
+// onto a web page as an <iframe> pointing at chrome-extension://EXT_ID/overlay.html.
 //
-// IMPORTANT ARCHITECTURAL NOTE (NOT FIXED YET):
-//   This file mounts React DIRECTLY in the content-script context, which runs
-//   in the page's origin (e.g. example.com), NOT the extension's. That means
-//   any IndexedDB writes (chats, library, notes, skills, workflows, etc.) land
-//   in the PAGE'S IDB, not the extension's. The overlay therefore has a
-//   separate, per-origin chat history that does not match the side panel.
-//   The proper fix is to render the panel inside an iframe at the extension
-//   origin (chrome-extension://EXT_ID/...) so both surfaces share one IDB.
-//   That refactor is tracked in docs/code-review.md. For now we default the
-//   overlay OFF so new users don't hit the surprise.
+// Architectural note (this is the FIX for the original "separate IDB" bug):
 //
-// - Controlled by the `overlayEnabled` setting (Settings → toggle). DEFAULT OFF.
-// - The close (✕) button removes it for the current page until the next load.
-// - Only runs on http/https pages (Chrome blocks content scripts on chrome://,
-//   the New Tab page, the Web Store, extension pages, PDFs and file:// URLs).
-import { StrictMode } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
-import { PanelApp } from '../ui/PanelApp';
-import css from '../sidepanel/index.css?inline';
+//   Earlier versions rendered React directly inside a Shadow DOM in the
+//   content-script context, which runs in the PAGE's origin. Every IDB write
+//   (chats, library, notes, skills, workflows) landed in the page's IDB, not
+//   the extension's — so each website had its own isolated chat history.
+//
+//   Now we inject an <iframe src="chrome-extension://EXT_ID/overlay.html">
+//   into the page. The iframe runs at the EXTENSION origin, so its IDB is
+//   the SAME one the side panel uses. One persistent surface, no per-site
+//   surprise. (The iframe entry is overlay.html → overlay-main.tsx; see the
+//   build entry in vite.config.ts and web_accessible_resources in
+//   public/manifest.json.)
+//
+// Surface behavior:
+//   - Controlled by the `overlayEnabled` setting (Settings → toggle). DEFAULT OFF.
+//   - The close (✕) button in the panel postMessages 'dismiss' back to this
+//     content script, which unmounts the iframe for the current page until
+//     next load.
+//   - Only runs on http/https pages (Chrome blocks content scripts on
+//     chrome://, the New Tab page, the Web Store, extension pages, PDFs and
+//     file:// URLs).
 
 const HOST_ID = 'chrome-buddy-overlay-host';
 
-let root: Root | null = null;
 let host: HTMLDivElement | null = null;
+let iframe: HTMLIFrameElement | null = null;
 let enabled = false; // global setting — default OFF (see comment at top)
 let dismissed = false; // user closed it on this page
-
-function injectStyles(shadow: ShadowRoot) {
-  // Constructable stylesheet bypasses page CSP (style-src); falls back to <style>.
-  try {
-    const sheet = new CSSStyleSheet();
-    sheet.replaceSync(css);
-    shadow.adoptedStyleSheets = [sheet];
-  } catch {
-    const style = document.createElement('style');
-    style.textContent = css;
-    shadow.appendChild(style);
-  }
-}
 
 function mount() {
   if (!enabled || dismissed) return;
@@ -47,29 +37,40 @@ function mount() {
   const docEl = document.documentElement;
   if (!docEl) return;
 
+  // Outer host: pointer-events:none lets clicks pass through to the page in
+  // the regions where the iframe isn't drawing anything. The iframe itself
+  // re-enables pointer events for its own contents.
   host = document.createElement('div');
   host.id = HOST_ID;
-  host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;pointer-events:none;';
+  host.style.cssText =
+    'position:fixed;inset:0;z-index:2147483647;pointer-events:none;';
   docEl.appendChild(host);
 
-  const shadow = host.attachShadow({ mode: 'open' });
-  injectStyles(shadow);
-
-  const mountPoint = document.createElement('div');
-  mountPoint.style.cssText = 'width:100%;height:100%;';
-  shadow.appendChild(mountPoint);
-
-  root = createRoot(mountPoint);
-  root.render(
-    <StrictMode>
-      <PanelApp surface="overlay" onClose={dismiss} />
-    </StrictMode>,
-  );
+  iframe = document.createElement('iframe');
+  iframe.src = chrome.runtime.getURL('overlay.html');
+  iframe.allow = 'microphone; clipboard-read; clipboard-write';
+  iframe.style.cssText = [
+    'position:absolute',
+    'inset:0',
+    'width:100%',
+    'height:100%',
+    'border:0',
+    'background:transparent',
+    // The iframe rect catches clicks within it. Its body is transparent
+    // until the PanelApp inside paints, so visually it's a no-op. Caveat:
+    // when overlay is ON, the iframe rect can intercept clicks even over
+    // transparent areas around the rail; a follow-up will tighten the
+    // iframe's CSS size to match the panel's rendered footprint via a
+    // postMessage from inside.
+    'pointer-events:auto',
+    'color-scheme:light dark',
+  ].join(';');
+  host.appendChild(iframe);
 }
 
 function unmount() {
-  root?.unmount();
-  root = null;
+  iframe?.remove();
+  iframe = null;
   host?.remove();
   host = null;
 }
@@ -80,10 +81,19 @@ function dismiss() {
   unmount();
 }
 
-// Read the setting, then mount.
+// Listen for the iframe's postMessage when the user clicks close inside it.
+window.addEventListener('message', (ev) => {
+  const data = ev.data as { source?: string; kind?: string } | null;
+  if (!data || data.source !== 'chrome-buddy-overlay') return;
+  if (data.kind === 'dismiss') dismiss();
+});
+
+// Read the setting, then mount (only if enabled).
 function init() {
   if (typeof chrome === 'undefined' || !chrome.storage?.local) {
-    mount();
+    // Without chrome.storage access we have no way to honor the toggle, so
+    // we do NOT mount. Safer than the previous "mount unconditionally"
+    // fallback, which would have rendered with stale defaults.
     return;
   }
   chrome.storage.local.get('overlayEnabled').then((res) => {
@@ -105,16 +115,3 @@ function init() {
 }
 
 init();
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', mount, { once: true });
-}
-
-// Re-mount if a single-page app wipes the DOM subtree we live in.
-try {
-  const obs = new MutationObserver(() => {
-    if (enabled && !dismissed && !document.getElementById(HOST_ID)) mount();
-  });
-  obs.observe(document.documentElement, { childList: true });
-} catch {
-  /* documentElement not observable yet — init already ran */
-}

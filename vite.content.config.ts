@@ -15,9 +15,12 @@ export default defineConfig({
     emptyOutDir: false,
     lib: {
       entry: resolve(root, 'src/content/overlay.tsx'),
-      name: 'ChromeBuddyOverlay',
+      name: 'ChromeBuddyContent',
       formats: ['iife'],
-      fileName: () => 'assets/overlay.js',
+      // Renamed from 'overlay.js' to 'content.js' — the iframe-overlay
+      // refactor introduced a new 'overlay' entry in the main build that
+      // emits assets/overlay.js for the iframe's React bundle.
+      fileName: () => 'assets/content.js',
     },
     rollupOptions: {
       output: { inlineDynamicImports: true },
