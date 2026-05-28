@@ -53,6 +53,7 @@
     "test:e2e:visionmode": "playwright test vision-mode.spec.ts",
     "test:e2e:scrape": "playwright test scrape.spec.ts",
     "test:e2e:viz": "playwright test viz.spec.ts",
+    "test:e2e:tabmanager": "playwright test tab-manager.spec.ts",
     "test:e2e:history": "playwright test history-detail.spec.ts",
     "test:e2e:stream": "playwright test chat-stream.spec.ts",
     "test:e2e:filesearch": "playwright test file-search-stores.spec.ts",

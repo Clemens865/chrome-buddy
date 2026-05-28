@@ -472,6 +472,31 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .viz-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .viz-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--panel-muted); }
 .viz-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+/* Tab Manager */
+.tab-toolbar { display: flex; gap: 6px; align-items: center; }
+.tab-toolbar .settings-input { flex: 1; }
+.tab-actions { display: flex; gap: 6px; align-items: center; }
+.tab-count { margin-left: auto; font-size: 11px; color: var(--panel-muted-soft); }
+.tab-save { display: flex; gap: 6px; align-items: center; }
+.tab-save .settings-input { flex: 1; }
+.tab-row { display: flex; align-items: stretch; border-radius: 8px; }
+.tab-row:hover { background: var(--panel-elev); }
+.tab-row.is-active { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.tab-row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left; background: transparent; border: 0; cursor: pointer; padding: 7px 8px; font: inherit; }
+.tab-fav { width: 16px; height: 16px; flex: 0 0 16px; border-radius: 3px; }
+.tab-fav-empty { background: var(--panel-elev-2); }
+.tab-row-text { min-width: 0; display: flex; flex-direction: column; }
+.tab-row-title { font-size: 12.5px; color: var(--panel-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-row-host { font-size: 11px; color: var(--panel-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-row-close { width: 30px; border: 0; background: transparent; color: var(--panel-muted-soft); cursor: pointer; opacity: 0; }
+.tab-row:hover .tab-row-close, .tab-session-row:hover .tab-row-close { opacity: 1; }
+.tab-row-close:hover { color: var(--panel-fg); }
+.tab-session-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; }
+.tab-session-row:hover { background: var(--panel-elev); }
+.tab-session-name { flex: 1; min-width: 0; font-size: 12px; color: var(--panel-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-group { margin-bottom: 8px; }
+.tab-group-h { font-size: 11.5px; font-weight: 600; color: var(--accent); margin: 4px 0; }
 .resume-card { margin: 0 12px 8px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 10px; background: var(--panel-elev); }
 .resume-card-txt { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; color: var(--panel-fg); margin-bottom: 8px; }
 .resume-card-txt .ic { width: 14px; height: 14px; flex: 0 0 14px; color: var(--accent); }

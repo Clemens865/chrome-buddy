@@ -104,6 +104,7 @@ test.describe('Apps grid: each card opens its app', () => {
       'Webhook Flows',
       'Scrape to Table',
       'Data Visualizer',
+      'Tab Manager',
       'Price Watch',
     ]) {
       // .first() because Console + Image also appear in the Recents row.
