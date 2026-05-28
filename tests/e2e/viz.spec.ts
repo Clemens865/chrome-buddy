@@ -86,8 +86,11 @@ test('Use page table: marks every table, auto-picks the numeric one', async ({ c
   // Both tables are marked as chips (the downloads one is disabled — 0 numeric).
   await expect(panel.getByTestId('viz-page-tables').locator('.scrape-chip')).toHaveCount(2);
   await expect(panel.getByRole('button', { name: /Downloads · 12r · 0 num/ })).toBeDisabled();
-  // The numeric data table is auto-selected and charted (2 numeric series × 3 rows = 6 bars).
-  await expect(panel.locator('.viz-svg rect')).toHaveCount(6);
+  // The numeric data table is auto-selected and charted. Arrivals (~1e5) and
+  // Change% (~1e0) are different scales, so only the primary series is shown by
+  // default (1 series × 3 rows = 3 bars) with a hint to add the other.
+  await expect(panel.locator('.viz-svg rect')).toHaveCount(3);
+  await expect(panel.getByText(/similar scale/)).toBeVisible();
   await expect(panel.getByText(/No numeric columns/)).toHaveCount(0);
   await panel.screenshot({ path: path.join(SHOTS, '295-viz-page-table-pick.png') });
 });

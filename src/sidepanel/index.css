@@ -473,6 +473,7 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .viz-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .viz-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--panel-muted); }
 .viz-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.viz-hint { font-size: 10.5px; color: var(--panel-muted-soft); margin-top: 6px; }
 
 /* Tab Manager */
 .tab-toolbar { display: flex; gap: 6px; align-items: center; }

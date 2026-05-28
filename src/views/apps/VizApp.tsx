@@ -16,6 +16,7 @@ import {
   parseData,
   numericColumns,
   promoteHeaders,
+  defaultValueCols,
   buildModel,
   barLayout,
   lineLayout,
@@ -69,7 +70,9 @@ export function VizApp({ onBack }: { onBack: () => void }) {
     const label = t.headers.findIndex((_, i) => !nums.includes(i));
     setTable(t);
     setLabelCol(label >= 0 ? label : 0);
-    setValueCols(nums.slice(0, 4));
+    // Default to columns sharing the primary metric's scale (mixed scales make
+    // small series invisible); the rest stay available as toggles.
+    setValueCols(defaultValueCols(t, nums));
     setType('bar');
     setInsights(null);
     setError(null);
@@ -254,6 +257,9 @@ export function VizApp({ onBack }: { onBack: () => void }) {
                   </button>
                 ))}
               </div>
+              {numCols.length > valueCols.length && (
+                <div className="viz-hint">Showing columns on a similar scale — tap others to add them.</div>
+              )}
             </div>
 
             {model && (

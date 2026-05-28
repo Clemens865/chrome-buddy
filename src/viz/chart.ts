@@ -152,6 +152,29 @@ export function numericColumns(table: TableData): number[] {
   return out;
 }
 
+/**
+ * Choose a sensible default set of value columns to chart. Charting columns of
+ * wildly different magnitude together (e.g. absolute counts ~1e6 alongside
+ * percentages ~1e0) makes the small series invisible. So we anchor on the FIRST
+ * numeric column (the leftmost metric, usually primary) and keep only columns
+ * within ~1.5 orders of magnitude of it; the rest stay available as toggles.
+ * Capped at 4. Returns the original list when there's 0-1 numeric column.
+ */
+export function defaultValueCols(table: TableData, numericCols: number[]): number[] {
+  if (numericCols.length <= 1) return numericCols.slice();
+  const logMag = (c: number): number => {
+    const vals = table.rows
+      .map((r) => Math.abs(toNumber(r[c] ?? '')))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (!vals.length) return 0;
+    vals.sort((a, b) => a - b);
+    return Math.log10(vals[Math.floor(vals.length / 2)]); // median magnitude
+  };
+  const anchor = logMag(numericCols[0]);
+  const group = numericCols.filter((c) => Math.abs(logMag(c) - anchor) <= 1.5);
+  return (group.length ? group : numericCols).slice(0, 4);
+}
+
 // ---- chart model + geometry ----------------------------------------------
 
 export type ChartType = 'bar' | 'line' | 'pie';

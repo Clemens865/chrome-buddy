@@ -6,6 +6,7 @@ import {
   toNumber,
   numericColumns,
   promoteHeaders,
+  defaultValueCols,
   rankTables,
   buildModel,
   niceMax,
@@ -129,6 +130,26 @@ describe('rankTables', () => {
     const small = { headers: ['x'], rows: [['1'], ['2']] };
     const big = { headers: ['x'], rows: [['1'], ['2'], ['3']] };
     expect(rankTables([small, big])[0].table).toBe(big);
+  });
+});
+
+describe('defaultValueCols', () => {
+  const t = (rows: string[][]) => ({ headers: rows[0].map((_, i) => `c${i}`), rows });
+  it('drops columns on a wildly different scale (counts vs percentages)', () => {
+    // col1 ~1e5-1e6 (Arrivals), col2 ~1e0 (Change %) → keep only col1.
+    const table = t([['A', '65 619', '8.3'], ['B', '640 704', '-1.6'], ['C', '3 459 758', '2.1']]);
+    expect(defaultValueCols(table, [1, 2])).toEqual([1]);
+  });
+  it('keeps columns of comparable scale', () => {
+    const table = t([['Jan', '120', '30'], ['Feb', '180', '50']]); // 1e2 vs 1e1 → within 1.5
+    expect(defaultValueCols(table, [1, 2])).toEqual([1, 2]);
+  });
+  it('returns the single numeric column unchanged', () => {
+    expect(defaultValueCols(t([['A', '1']]), [1])).toEqual([1]);
+  });
+  it('caps the default at 4 columns', () => {
+    const row = ['x', '1', '2', '3', '4', '5', '6'];
+    expect(defaultValueCols(t([row, row]), [1, 2, 3, 4, 5, 6])).toEqual([1, 2, 3, 4]);
   });
 });
 
