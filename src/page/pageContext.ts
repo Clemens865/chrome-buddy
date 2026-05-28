@@ -58,7 +58,6 @@ async function waitForStable(
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   // Loop polls chrome.tabs.get; cheap and avoids holding a webNavigation listener.
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     let complete = true;
     try {

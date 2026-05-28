@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mapUsage, OpenAICompatibleAdapter } from './openaiCompatible';
 import type { GenerateRequest, ModelConfig } from '../types';
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 describe('mapUsage', () => {
   it('maps prompt/completion/total tokens', () => {

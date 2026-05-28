@@ -31,7 +31,6 @@ export async function runUserCode(
     const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as (
       ...args: string[]
     ) => (inputs: unknown, bridge: SandboxBridge) => Promise<unknown>;
-    // eslint-disable-next-line no-new-func
     const fn = AsyncFunction('inputs', 'bridge', `"use strict";\n${code}`);
     const result = await fn(inputs ?? {}, bridge);
     return { ok: true, result };
