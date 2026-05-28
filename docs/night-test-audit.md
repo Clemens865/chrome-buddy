@@ -249,5 +249,6 @@ These are all noted as candidate follow-ups in a future audit pass.
 - 519 unit tests, still passing
 - 1 real bug fixed (skill default mode)
 - Build clean, typecheck clean
-- Full regression: still running at write time — completion notification will land separately
+- Full regression: **134/134 e2e tests passed (18.9 m)** — every new test + every existing test green, no regressions
+- Total tests across the project: **519 unit + 134 e2e = 653 tests** (up from 519 + 92 = 611 yesterday)
 
