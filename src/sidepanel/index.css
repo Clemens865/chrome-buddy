@@ -463,6 +463,7 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .scrape-table td { padding: 5px 8px; color: var(--panel-fg); border-bottom: 1px solid var(--panel-border-soft); vertical-align: top; }
 .scrape-table tbody tr:hover { background: var(--panel-elev); }
 .scrape-chip.is-on { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: var(--accent); color: var(--panel-fg); }
+.scrape-chip:disabled { opacity: 0.45; cursor: default; }
 
 /* Data Visualizer */
 .viz-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

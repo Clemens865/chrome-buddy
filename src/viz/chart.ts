@@ -99,19 +99,55 @@ export function toNumber(s: string): number {
   return Number(cleaned);
 }
 
-/** Indices of columns whose every non-empty cell parses as a number. */
+/**
+ * Rank candidate page tables for charting: most numeric columns first, then
+ * most rows. A page often has layout/nav tables alongside the data table —
+ * picking purely by row count grabs the wrong one, so numeric density leads.
+ */
+export function rankTables(tables: TableData[]): { table: TableData; numericCount: number }[] {
+  return tables
+    .map((table) => ({ table, numericCount: numericColumns(table).length }))
+    .sort((a, b) => b.numericCount - a.numericCount || b.table.rows.length - a.table.rows.length);
+}
+
+/**
+ * Some pages (and our DOM distiller) don't mark a header row — the header text
+ * ends up as the first data row, which poisons numeric detection. When a table
+ * has no headers, lift the first all-text row out as the headers (provided a
+ * later row actually has numbers); otherwise synthesize "Column N" labels.
+ */
+export function promoteHeaders(table: TableData): TableData {
+  if (table.headers.some((h) => h.trim() !== '')) return table;
+  const isNum = (c: string) => c.trim() !== '' && !Number.isNaN(toNumber(c));
+  const hasNumericRow = table.rows.some((r) => r.some(isNum));
+  if (hasNumericRow) {
+    const hi = table.rows.findIndex((r) => r.some((c) => c.trim() !== '') && !r.some(isNum));
+    if (hi >= 0) {
+      return { headers: table.rows[hi], rows: table.rows.filter((_, i) => i !== hi) };
+    }
+  }
+  const n = table.rows.reduce((m, r) => Math.max(m, r.length), 0);
+  return { headers: Array.from({ length: n }, (_, i) => `Column ${i + 1}`), rows: table.rows };
+}
+
+/**
+ * Indices of columns that are mostly numeric. Tolerant of a minority of
+ * non-numeric cells (a stray header, a "total"/footnote row, an "n/a") so a
+ * single odd cell doesn't disqualify an otherwise-numeric column.
+ */
 export function numericColumns(table: TableData): number[] {
   const out: number[] = [];
-  for (let c = 0; c < table.headers.length; c++) {
+  const cols = table.headers.length || table.rows.reduce((m, r) => Math.max(m, r.length), 0);
+  for (let c = 0; c < cols; c++) {
     let seen = 0;
-    let numeric = true;
+    let numeric = 0;
     for (const r of table.rows) {
       const v = r[c] ?? '';
       if (v.trim() === '') continue;
       seen++;
-      if (Number.isNaN(toNumber(v))) { numeric = false; break; }
+      if (!Number.isNaN(toNumber(v))) numeric++;
     }
-    if (numeric && seen > 0) out.push(c);
+    if (seen > 0 && numeric >= 1 && numeric / seen >= 0.6) out.push(c);
   }
   return out;
 }

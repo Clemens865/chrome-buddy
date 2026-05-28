@@ -5,6 +5,8 @@ import {
   parseData,
   toNumber,
   numericColumns,
+  promoteHeaders,
+  rankTables,
   buildModel,
   niceMax,
   barLayout,
@@ -74,9 +76,59 @@ describe('numericColumns', () => {
     const t = { headers: ['name', 'qty', 'price'], rows: [['a', '2', '$5'], ['b', '3', '$6']] };
     expect(numericColumns(t)).toEqual([1, 2]);
   });
-  it('ignores empty cells but rejects mixed columns', () => {
+  it('ignores empty cells but rejects mostly-text columns', () => {
     const t = { headers: ['v'], rows: [['1'], [''], ['x']] };
-    expect(numericColumns(t)).toEqual([]);
+    expect(numericColumns(t)).toEqual([]); // 1/2 numeric < 0.6
+  });
+  it('tolerates a minority of non-numeric cells (stray header / total row)', () => {
+    // Header text "Arrivals" sits in the body (10 numbers + 1 word = 91%).
+    const rows = [['Arrivals'], ...Array.from({ length: 10 }, (_, i) => [String(i)])];
+    expect(numericColumns({ headers: ['x'], rows })).toEqual([0]);
+  });
+});
+
+describe('promoteHeaders', () => {
+  it('lifts the first all-text row out as headers when none are marked', () => {
+    // Mirrors statistik.at: total row first, header row second, then data.
+    const t = {
+      headers: [],
+      rows: [
+        ['Austria total', '3 459 758', '-1.6'],
+        ['Federal province', 'Arrivals', 'Change'],
+        ['Burgenland', '65 619', '8.3'],
+      ],
+    };
+    const p = promoteHeaders(t);
+    expect(p.headers).toEqual(['Federal province', 'Arrivals', 'Change']);
+    expect(p.rows).toEqual([['Austria total', '3 459 758', '-1.6'], ['Burgenland', '65 619', '8.3']]);
+    // And the value columns are now detected as numeric.
+    expect(numericColumns(p)).toEqual([1, 2]);
+  });
+  it('keeps existing headers untouched', () => {
+    const t = { headers: ['a'], rows: [['1']] };
+    expect(promoteHeaders(t)).toBe(t);
+  });
+  it('synthesizes Column N when every row has numbers', () => {
+    const p = promoteHeaders({ headers: [], rows: [['1', '2'], ['3', '4']] });
+    expect(p.headers).toEqual(['Column 1', 'Column 2']);
+    expect(p.rows).toHaveLength(2);
+  });
+});
+
+describe('rankTables', () => {
+  it('ranks numeric-dense tables above bigger non-numeric ones', () => {
+    // A long nav/downloads table (no numbers) vs a smaller data table.
+    const nav = { headers: ['Date', 'Title'], rows: Array.from({ length: 20 }, (_, i) => [`2026-0${i % 9}`, `Doc ${i}`]) };
+    const data = { headers: ['Region', 'Arrivals', 'Change'], rows: [['A', '65 619', '8.3'], ['B', '139 427', '2.1']] };
+    const ranked = rankTables([nav, data]);
+    expect(ranked[0].table).toBe(data); // data wins despite far fewer rows
+    expect(ranked[0].numericCount).toBe(2);
+    expect(ranked[1].numericCount).toBe(0);
+  });
+  it('breaks numeric ties by row count', () => {
+    const small = { headers: ['x'], rows: [['1'], ['2']] };
+    const big = { headers: ['x'], rows: [['1'], ['2'], ['3']] };
+    expect(rankTables([small, big])[0].table).toBe(big);
   });
 });
 

@@ -8,19 +8,33 @@ import { useState } from 'react';
 import { AppHeader, appById } from '../AppsView';
 import { Ic } from '../../ui/icons';
 import { Markdown } from '../../ui/Markdown';
-import type { DistilledPage } from '../../page/types';
+import type { DistilledPage, DistilledTable } from '../../page/types';
 import type { LlmGenerateResponse, ErrorResponse } from '../../key/messages';
 import {
   type TableData,
   type ChartType,
   parseData,
   numericColumns,
+  promoteHeaders,
   buildModel,
   barLayout,
   lineLayout,
   pieLayout,
   color,
 } from '../../viz/chart';
+
+/** A page table offered as a chip: a label + the data + how many numeric columns it has. */
+interface PageTableOption {
+  label: string;
+  table: TableData;
+  numericCount: number;
+}
+
+/** Human label for a page table: caption, else its (promoted) first header, else "Table N". */
+function tableLabel(t: DistilledTable, promoted: TableData, index: number): string {
+  const head = promoted.headers.find((h) => h.trim()) ?? promoted.rows[0]?.find((c) => c.trim());
+  return (t.caption?.trim() || head || `Table ${index + 1}`).slice(0, 40);
+}
 
 const W = 360;
 const H = 190;
@@ -40,6 +54,9 @@ export function VizApp({ onBack }: { onBack: () => void }) {
   const [type, setType] = useState<ChartType>('bar');
   const [insights, setInsights] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Tables found on the page, ranked numeric-first, shown as pickable chips.
+  const [pageTables, setPageTables] = useState<PageTableOption[] | null>(null);
+  const [activeTable, setActiveTable] = useState<TableData | null>(null);
 
   const ingest = (t: TableData) => {
     const nums = numericColumns(t);
@@ -65,6 +82,8 @@ export function VizApp({ onBack }: { onBack: () => void }) {
       setTable(null);
       return;
     }
+    setPageTables(null); // pasted data supersedes any page-table picker
+    setActiveTable(null);
     ingest(parsed);
   };
 
@@ -75,11 +94,35 @@ export function VizApp({ onBack }: { onBack: () => void }) {
       | undefined;
     const tables = r?.ok && r.result.ok ? r.result.data?.tables ?? [] : [];
     if (tables.length === 0) {
+      setPageTables(null);
       setError(r?.result?.error?.message ?? 'No tables found on the current page.');
       return;
     }
-    const t = tables.reduce((a, b) => (b.rows.length > a.rows.length ? b : a));
-    ingest({ headers: t.headers, rows: t.rows });
+    // Pages mix data tables with layout/download/nav tables, and many tables
+    // arrive without a marked header row (the header text lands in the body).
+    // promoteHeaders fixes that; then we rank numeric-first and surface ALL of
+    // them as chips so the user picks — rather than us guessing (the old "most
+    // rows" pick grabbed nav tables).
+    const options: PageTableOption[] = tables
+      .map((t, i) => {
+        const table = promoteHeaders({ headers: t.headers, rows: t.rows });
+        return { table, label: tableLabel(t, table, i), numericCount: numericColumns(table).length };
+      })
+      .sort((a, b) => b.numericCount - a.numericCount || b.table.rows.length - a.table.rows.length);
+    setPageTables(options);
+    const best = options[0];
+    if (best && best.numericCount > 0) {
+      pickTable(best.table);
+    } else {
+      setTable(null);
+      setActiveTable(null);
+      setError(`Found ${options.length} table${options.length === 1 ? '' : 's'} but none has a numeric column — pick one to inspect.`);
+    }
+  };
+
+  const pickTable = (t: TableData) => {
+    setActiveTable(t);
+    ingest(t);
   };
 
   const toggleValue = (c: number) =>
@@ -147,6 +190,29 @@ export function VizApp({ onBack }: { onBack: () => void }) {
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => void readPageTable()}>Use page table</button>
           </div>
         </div>
+
+        {pageTables && pageTables.length > 0 && (
+          <div className="scrape-section">
+            <div className="scrape-section-h">
+              {pageTables.length === 1 ? 'Table on this page' : `${pageTables.length} tables on this page — pick one`}
+            </div>
+            <div className="scrape-chips" data-testid="viz-page-tables">
+              {pageTables.map((opt, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={'scrape-chip' + (activeTable === opt.table ? ' is-on' : '')}
+                  aria-pressed={activeTable === opt.table}
+                  disabled={opt.numericCount === 0}
+                  title={opt.numericCount === 0 ? 'No numeric columns — can’t chart this one' : ''}
+                  onClick={() => pickTable(opt.table)}
+                >
+                  {opt.label} · {opt.table.rows.length}r · {opt.numericCount} num
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {error && <div className="empty-state-desc" style={{ color: '#B91C1C' }}>{error}</div>}
 

@@ -20,6 +20,7 @@ import {
   sortRows,
   filterRows,
 } from '../../scrape/extract';
+import { promoteHeaders } from '../../viz/chart';
 
 type PageState =
   | { kind: 'loading' }
@@ -68,8 +69,21 @@ export function ScrapeApp({ onBack }: { onBack: () => void }) {
     setFilter('');
   };
 
-  const pickPageTable = (t: DistilledTable) =>
-    showTable({ headers: t.headers, rows: t.rows, caption: t.caption ?? `Table ${t.id}` });
+  // Label a page table by caption, else its (promoted) first header/cell, else
+  // "Table N" — pages rarely use <caption>, so the header makes chips legible.
+  const tableLabel = (t: DistilledTable): string => {
+    const p = promoteHeaders({ headers: t.headers, rows: t.rows });
+    const head = p.headers.find((h) => h.trim()) ?? p.rows[0]?.find((c) => c.trim());
+    return (t.caption?.trim() || head || `Table ${t.id}`).slice(0, 40);
+  };
+
+  // Many page tables arrive without a marked header row (the header text lands
+  // in the body); promoteHeaders lifts it back out so the rendered table + CSV
+  // have real column names.
+  const pickPageTable = (t: DistilledTable) => {
+    const p = promoteHeaders({ headers: t.headers, rows: t.rows });
+    showTable({ headers: p.headers, rows: p.rows, caption: tableLabel(t) });
+  };
 
   const extract = async () => {
     if (page.kind !== 'ready' || !instruction.trim()) return;
@@ -145,7 +159,7 @@ export function ScrapeApp({ onBack }: { onBack: () => void }) {
                 <div className="scrape-chips">
                   {page.tables.map((t) => (
                     <button key={t.id} type="button" className="scrape-chip" onClick={() => pickPageTable(t)}>
-                      {(t.caption ?? `Table ${t.id}`)} · {t.rows.length} row{t.rows.length === 1 ? '' : 's'}
+                      {tableLabel(t)} · {t.rows.length} row{t.rows.length === 1 ? '' : 's'}
                     </button>
                   ))}
                 </div>

@@ -50,6 +50,48 @@ test('renders a chart from pasted CSV, switches types, exports SVG', async ({ co
   expect(dl.suggestedFilename()).toBe('chart.svg');
 });
 
+test('Use page table: marks every table, auto-picks the numeric one', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 980 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await openViz(panel);
+
+  // Reproduces statistik.at: a long non-numeric downloads table (more rows)
+  // alongside the real data table (nbsp thousands separators, U+00A0).
+  await panel.evaluate(() => {
+    const real = chrome.runtime.sendMessage.bind(chrome.runtime);
+    // @ts-expect-error stub onto typed handle
+    chrome.runtime.sendMessage = async (msg: { type?: string; tool?: string }, ...rest: unknown[]) => {
+      if (msg && msg.type === 'TOOL_EXEC' && msg.tool === 'read_dom') {
+        const downloads = {
+          id: 1, caption: 'Downloads', headers: ['Date', 'Title', 'PDF'],
+          rows: Array.from({ length: 12 }, (_, i) => [`2026-0${i % 9}`, `Report ${i}`, 'pdf']), selector: 'table',
+        };
+        const data = {
+          id: 2, caption: 'Arrivals', headers: ['Region', 'Arrivals', 'Change'],
+          rows: [['Burgenland', '65 619', '8.3'], ['Vienna', '640 704', '8.6'], ['Austria total', '3 459 758', '-1.6']],
+          selector: 'table',
+        };
+        return {
+          type: 'TOOL_EXEC', ok: true,
+          result: { ok: true, data: { url: 'https://statistik.at', title: 'Stats', text: '', interactiveElements: [], tables: [downloads, data], provenance: { url: 'https://statistik.at', distilledAt: 0 } } },
+        };
+      }
+      return real(msg as Parameters<typeof real>[0], ...(rest as []));
+    };
+  });
+
+  await panel.getByRole('button', { name: 'Use page table' }).click();
+
+  // Both tables are marked as chips (the downloads one is disabled — 0 numeric).
+  await expect(panel.getByTestId('viz-page-tables').locator('.scrape-chip')).toHaveCount(2);
+  await expect(panel.getByRole('button', { name: /Downloads · 12r · 0 num/ })).toBeDisabled();
+  // The numeric data table is auto-selected and charted (2 numeric series × 3 rows = 6 bars).
+  await expect(panel.locator('.viz-svg rect')).toHaveCount(6);
+  await expect(panel.getByText(/No numeric columns/)).toHaveCount(0);
+  await panel.screenshot({ path: path.join(SHOTS, '295-viz-page-table-pick.png') });
+});
+
 test('rejects data with no numeric column', async ({ context, extensionId }) => {
   const panel = await context.newPage();
   await panel.setViewportSize({ width: 440, height: 980 });
