@@ -99,6 +99,65 @@ test('chat history lists, switches, starts new, and deletes conversations', asyn
   await expect(panel.locator('.chats-row-title')).toHaveText('Summarize this article for me');
 });
 
+// Regression guard: opening the panel must ALWAYS land on a fresh chat, even
+// if the user previously left mid-conversation. Earlier we persisted
+// `activeChatId` to chrome.storage.local via usePersistedState, so every
+// reopen restored the prior transcript — which gradually built one giant
+// thread instead of separate short chats. We now never persist it; prior
+// chats remain reachable from the Chats slide-over.
+test('open with fresh chat even when activeChatId was previously persisted', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 980 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  // Seed: one conversation in IDB + activeChatId pointing at it in storage.
+  await panel.evaluate(async () => {
+    const now = Date.now();
+    const db: IDBDatabase = await new Promise((resolve, reject) => {
+      const req = indexedDB.open('chrome-buddy', 12);
+      req.onupgradeneeded = () => {
+        const d = req.result;
+        if (!d.objectStoreNames.contains('chats')) {
+          d.createObjectStore('chats', { keyPath: 'id' }).createIndex('updatedAt', 'updatedAt');
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('chats', 'readwrite');
+      tx.objectStore('chats').put({
+        id: 'conv_resume',
+        title: 'A chat from yesterday',
+        items: [
+          { kind: 'user', id: 'u1', text: 'A chat from yesterday' },
+          { kind: 'agent', id: 'a1', text: 'Some long-running discussion.' },
+        ],
+        createdAt: now - 86_400_000,
+        updatedAt: now - 86_400_000,
+      });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+    // Simulate "user previously had this chat open" — what usePersistedState
+    // would have written before we dropped persistence for activeChatId.
+    await chrome.storage.local.set({ activeChatId: 'conv_resume' });
+  });
+  await panel.reload();
+
+  // Greeting visible, NO restored transcript. (Pre-fix: the "yesterday" text
+  // would have rendered here because the activeChatId effect hydrated it.)
+  await expect(panel.locator('.chat-greeting-title')).toBeVisible({ timeout: 10_000 });
+  await expect(panel.locator('.msg-user', { hasText: 'A chat from yesterday' })).toHaveCount(0);
+  await expect(panel.locator('.msg-agent', { hasText: 'long-running discussion' })).toHaveCount(0);
+
+  // Prior chat is still listed in the Chats slide-over.
+  await panel.getByRole('button', { name: 'Chats', exact: true }).click();
+  await expect(panel.locator('.chats-over')).toBeVisible();
+  await expect(panel.locator('.chats-row-title', { hasText: 'A chat from yesterday' })).toBeVisible();
+});
+
 // Live path: a real chat turn is auto-persisted (lazy id on first settled turn,
 // title derived from the first user message) and shows up in the slide-over.
 // Requires a built-in key (npm run build with VITE_GEMINI_API_KEY).

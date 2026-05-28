@@ -107,6 +107,20 @@ function recentHistory(items: TranscriptItem[], max = 6): string {
     .join('\n');
 }
 
+/** The last few user/agent turns as proper chat messages, so the plain-chat
+ *  model has conversational memory ("tell me more about that" resolves to
+ *  what we just discussed). Empty bubbles — e.g. a streaming placeholder
+ *  caught mid-flight — are dropped by `runPlainChat` itself. */
+function recentChatMessages(
+  items: TranscriptItem[],
+  max = 8,
+): Array<{ role: 'user' | 'assistant'; content: string }> {
+  return items
+    .filter((it): it is Extract<TranscriptItem, { kind: 'user' | 'agent' }> => it.kind === 'user' || it.kind === 'agent')
+    .slice(-max)
+    .map((it) => ({ role: it.kind === 'user' ? 'user' as const : 'assistant' as const, content: it.text }));
+}
+
 export function ChatView({
   pendingRun,
   onConsumePending,
@@ -222,7 +236,12 @@ export function ChatView({
   }, []);
 
   // --- Multi-session chat history -----------------------------------------
-  const [activeChatId, setActiveChatId] = usePersistedState<string>('activeChatId', '');
+  // NOT persisted: closing & reopening the panel always lands on a FRESH chat.
+  // Prior conversations stay reachable via the Chats slide-over (header `⋮`),
+  // which lists them from IDB and calls openConversation() to load one in.
+  // The previously-persisted `activeChatId` storage key is now ignored (left
+  // in place to avoid a migration; nothing reads it anymore).
+  const [activeChatId, setActiveChatId] = useState<string>('');
   const [convs, setConvs] = useState<Conversation[] | null>(null);
   const loadedIdRef = useRef<string>('');
   const chatCreatedRef = useRef<number>(0);
@@ -269,7 +288,7 @@ export function ChatView({
     loadedIdRef.current = '';
     chatCreatedRef.current = 0;
     setActiveChatId('');
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Voice session — start the Gemini Live socket + mic capture. Transcripts
    *  flow into the existing items[] state. The model's audio replies play
@@ -383,7 +402,7 @@ export function ChatView({
     setItems(c.items);
     setActiveChatId(c.id);
     onCloseChatList?.();
-  }, [onCloseChatList]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [onCloseChatList]);
 
   const removeConversation = useCallback(
     async (id: string) => {
@@ -630,6 +649,12 @@ export function ChatView({
             model: activeModel,
             preferNano,
             signal: aborter.signal,
+            // Prior turns so the model has conversational memory across the
+            // session (was previously stateless — every plain-chat call shipped
+            // only the new prompt, so follow-ups like "what about Y?" lost
+            // context). Snapshot from the ref so streaming placeholders don't
+            // race the read.
+            history: recentChatMessages(itemsRef.current),
             imageAttachments: imageAttachments(attachments).map((a) => ({
               name: a.name,
               mime: a.mime,

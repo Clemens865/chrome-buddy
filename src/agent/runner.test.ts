@@ -2,7 +2,7 @@
 // A mock `send` stands in for chrome.runtime.sendMessage so no real SW is hit.
 
 import { describe, it, expect, vi } from 'vitest';
-import { runAgentTask, buildCallSkillTool, askUserToolHandler, buildVisionFallback, classifyFileError } from './runner';
+import { runAgentTask, runPlainChat, buildCallSkillTool, askUserToolHandler, buildVisionFallback, classifyFileError } from './runner';
 import type { AgentEvent } from './types';
 import type { Skill } from '../skills/types';
 
@@ -166,6 +166,72 @@ describe('buildVisionFallback', () => {
     const send = vi.fn(async () => ({ type: 'TOOL_EXEC', ok: true, result: { ok: false, error: { code: 'undriveable', message: 'no' } } }));
     const res = await buildVisionFallback(send, 'm')({ runId: 'r', step: 1, intent: 'x' });
     expect(res.ok).toBe(false);
+  });
+});
+
+describe('runPlainChat history injection', () => {
+  // Regression guard for the "amnesic chat" bug — prior turns must be
+  // forwarded as proper chat messages so follow-ups can reference earlier
+  // context. The non-streaming fallback path is exercised here (no Port).
+  it('inserts prior user/assistant turns between system messages and the new user prompt', async () => {
+    let captured: { role: string; content: unknown }[] | undefined;
+    const send = vi.fn(async (msg: unknown) => {
+      const m = msg as { type?: string; messages?: { role: string; content: unknown }[] };
+      if (m.type === 'KEY_STATUS') return { type: 'KEY_STATUS', hasKey: true };
+      if (m.type === 'LLM_GENERATE') {
+        captured = m.messages;
+        return {
+          type: 'LLM_GENERATE',
+          ok: true,
+          result: { text: 'ack', toolCalls: [], finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, model: 'mock', cost: { totalCost: 0 } },
+        };
+      }
+      return undefined;
+    });
+
+    const res = await runPlainChat('and what about Y?', {
+      send,
+      context: 'page: https://acme.com — Acme homepage',
+      history: [
+        { role: 'user', content: 'tell me about X' },
+        { role: 'assistant', content: 'X is a thing.' },
+      ],
+    });
+
+    expect(res.outcome).toBe('ok');
+    expect(captured).toBeDefined();
+    const roles = captured!.map((m) => m.role);
+    // Order: system (PLAIN_CHAT_SYSTEM), system (context), user (prior), assistant (prior), user (new).
+    expect(roles).toEqual(['system', 'system', 'user', 'assistant', 'user']);
+    expect(captured![2].content).toBe('tell me about X');
+    expect(captured![3].content).toBe('X is a thing.');
+    expect(captured![4].content).toBe('and what about Y?');
+  });
+
+  it('drops empty history entries (streaming placeholders mid-flight should not pollute history)', async () => {
+    let captured: { role: string; content: unknown }[] | undefined;
+    const send = vi.fn(async (msg: unknown) => {
+      const m = msg as { type?: string; messages?: { role: string; content: unknown }[] };
+      if (m.type === 'KEY_STATUS') return { type: 'KEY_STATUS', hasKey: true };
+      if (m.type === 'LLM_GENERATE') {
+        captured = m.messages;
+        return { type: 'LLM_GENERATE', ok: true, result: { text: 'ok', toolCalls: [], finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, model: 'mock', cost: { totalCost: 0 } } };
+      }
+      return undefined;
+    });
+
+    await runPlainChat('hello again', {
+      send,
+      history: [
+        { role: 'user', content: 'first' },
+        { role: 'assistant', content: '   ' }, // whitespace-only — drop
+        { role: 'assistant', content: '' },    // empty — drop
+      ],
+    });
+
+    expect(captured!.map((m) => m.role)).toEqual(['system', 'user', 'user']);
+    expect(captured![1].content).toBe('first');
+    expect(captured![2].content).toBe('hello again');
   });
 });
 

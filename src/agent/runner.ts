@@ -553,6 +553,12 @@ export async function runPlainChat(
      *  parts; text files are folded into `context` by the caller. Pass only
      *  the IMAGE entries here so we can build ContentPart[] cleanly. */
     imageAttachments?: Array<{ name: string; mime: string; dataUrl: string }>;
+    /** Prior user/assistant turns in this conversation so the cheap chat model
+     *  can resolve follow-up references ("tell me more about that") without
+     *  re-stating the topic each turn. Caller decides the budget (typically
+     *  the last 6–8 turns). Text only — image attachments from earlier turns
+     *  are intentionally dropped (per-turn cost, not per-thread memory). */
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   } = {},
 ): Promise<PlainChatResult> {
   const send = options.send ?? defaultSend;
@@ -575,6 +581,15 @@ export async function runPlainChat(
   // without an agentic read_dom round-trip).
   if (options.context && options.context.trim()) {
     messages.push({ role: 'system', content: options.context });
+  }
+  // Prior turns in this conversation. Inserted between the system messages
+  // and the new user prompt so the model sees them as actual chat history
+  // (not as a wall of text in the system). Empty entries are dropped so
+  // streaming placeholders don't pollute the history if a turn is mid-flight.
+  for (const turn of options.history ?? []) {
+    const text = (turn.content ?? '').trim();
+    if (!text) continue;
+    messages.push({ role: turn.role, content: text });
   }
   // Multimodal user message when image attachments are present (image_url parts
   // pass through the OpenAI-compatible adapter as ContentPart[]). Otherwise
