@@ -39,7 +39,13 @@ function resetFrame(): void {
 export type BridgeHandler = (op: string, args: unknown) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
 
 export interface RunInSandboxOptions {
+  /** Idle timeout between progress events (refreshed on each bridge round-trip). */
   timeoutMs?: number;
+  /** ABSOLUTE wall-clock cap for the whole run — NOT refreshed by bridge calls,
+   *  so a tight `while(true){ await bridge.gemini() }` loop can't dodge it. */
+  maxWallMs?: number;
+  /** Hard cap on bridge round-trips for one run (quota-drain / loop guard). */
+  maxBridgeCalls?: number;
   /** Capabilities exposed to the code (the bridge surface) — must be authorized. */
   capabilities?: string[];
   /** Executes an authorized bridge op (e.g. gemini.generate). */
@@ -52,26 +58,31 @@ export async function runInSandbox(
   inputs: Record<string, unknown>,
   options: RunInSandboxOptions = {},
 ): Promise<SandboxResult> {
-  const { timeoutMs = 3000, capabilities = [], onBridge } = options;
+  const { timeoutMs = 3000, maxWallMs = 60_000, maxBridgeCalls = 64, capabilities = [], onBridge } = options;
   await ensureFrame();
   const id = `s${seq++}`;
   return new Promise<SandboxResult>((resolve) => {
+    // Absolute deadline for the whole run. The idle timer is refreshed on each
+    // bridge round-trip (legit LLM calls are slow) but NEVER past this deadline —
+    // otherwise a loop that keeps calling the bridge would reset the timer forever.
+    const deadline = Date.now() + maxWallMs;
+    let bridgeCalls = 0;
     const cleanup = () => {
       clearTimeout(timer);
       window.removeEventListener('message', onMsg);
     };
-    // Bridge calls may legitimately take a while (an LLM call) — the timeout is
-    // refreshed on each bridge round-trip so a working app isn't killed.
-    let timer = setTimeout(onTimeout, timeoutMs);
-    function onTimeout() {
+    function fail(error: string) {
       cleanup();
       resetFrame();
-      resolve({ ok: false, error: 'Sandbox timed out (possible infinite loop).' });
+      resolve({ ok: false, error });
     }
-    const bump = () => {
+    const onTimeout = () => fail('Sandbox timed out (possible infinite loop).');
+    // Idle timer, clamped to the remaining wall-clock budget.
+    const arm = () => {
       clearTimeout(timer);
-      timer = setTimeout(onTimeout, timeoutMs);
+      timer = setTimeout(onTimeout, Math.max(0, Math.min(timeoutMs, deadline - Date.now())));
     };
+    let timer = setTimeout(onTimeout, Math.min(timeoutMs, maxWallMs));
     const onMsg = (ev: MessageEvent) => {
       const data = ev.data as {
         type?: string;
@@ -84,7 +95,11 @@ export async function runInSandbox(
         error?: string;
       };
       if (data?.type === 'SANDBOX_BRIDGE' && data.runId === id) {
-        bump();
+        if (++bridgeCalls > maxBridgeCalls) {
+          fail(`Sandbox exceeded its capability-call budget (${maxBridgeCalls}).`);
+          return;
+        }
+        arm();
         void (async () => {
           const r = onBridge
             ? await onBridge(String(data.op), data.args).catch((e) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }))
