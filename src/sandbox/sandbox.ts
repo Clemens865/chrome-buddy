@@ -26,7 +26,8 @@ window.addEventListener('message', (ev: MessageEvent) => {
     const p = pendingBridge.get(d.id);
     if (p) {
       pendingBridge.delete(d.id);
-      d.ok ? p.resolve(d.result) : p.reject(new Error(d.error ?? 'bridge error'));
+      if (d.ok) p.resolve(d.result);
+      else p.reject(new Error(d.error ?? 'bridge error'));
     }
     return;
   }

@@ -158,7 +158,7 @@ describe('MCP transport — SSE path', () => {
     // progress notification was forwarded (not silently dropped).
     // (This client uses a default no-op; for the unit test we don't need
     //  introspection beyond verifying connect succeeded.)
-    seen.length;
+    void seen.length;
 
     const info = await c.connect();
     expect(info.serverName).toBe('SseStub');

@@ -47,7 +47,7 @@ export function parseSseFrames(buf: string): { frames: SseFrame[]; rest: string 
 
 function parseBlock(block: string): SseFrame | null {
   let event: string | undefined;
-  let dataParts: string[] = [];
+  const dataParts: string[] = [];
   const lines = block.split(/\r?\n/);
   for (const line of lines) {
     if (line === '' || line.startsWith(':')) continue;

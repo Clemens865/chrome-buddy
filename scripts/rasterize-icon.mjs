@@ -2,6 +2,7 @@
 // using real Chrome via Playwright. ImageMagick's SVG parser drops fills
 // inconsistently across versions; Chrome renders the file the same way it
 // will inside the extension, so what you see is what ships.
+/* global process, console */
 import { chromium } from 'playwright';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
