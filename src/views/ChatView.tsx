@@ -717,7 +717,7 @@ export function ChatView({
         setThinkHarder(false);
       }
     },
-    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments],
+    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments, githubDefaultRepo, libraryAutoContext, thinkHarder, visionConfirmAll],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -800,7 +800,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano],
+    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, githubDefaultRepo],
   );
 
   // Resume an interrupted run (FR-AGENT-8): reuse the saved plan, skip done steps.
@@ -834,7 +834,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, makeOnConfirm, askBeforePlan, onPlanReview, onAskUser, onHumanGate, activeModel, perRunCap, stepBudget, recordCost],
+    [busy, makeOnConfirm, askBeforePlan, onPlanReview, onAskUser, onHumanGate, activeModel, perRunCap, stepBudget, recordCost, githubDefaultRepo],
   );
 
   const dismissResume = useCallback(() => {
@@ -897,6 +897,12 @@ export function ChatView({
     }
     el.scrollTop = el.scrollHeight;
     bottomRef.current?.scrollIntoView({ block: 'end' });
+    // We INTENTIONALLY depend on pendingConfirm?.id, not the full object.
+    // pendingConfirm is computed fresh on every render (items.find(...)), so
+    // including it would re-fire the effect every render. The ID alone
+    // captures the meaningful state transition ('new card landed' or
+    // 'card was resolved'); the items dep covers content changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, noKey, busy, pendingConfirm?.id]);
 
   return (

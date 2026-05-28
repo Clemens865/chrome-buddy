@@ -78,7 +78,12 @@ export function ConsoleApp({
     return () => clearInterval(id);
   }, [capturing]);
 
-  // Detach the debugger if the panel unmounts mid-capture.
+  // Detach the debugger if the panel unmounts mid-capture. We INTENTIONALLY
+  // read controllerRef.current at cleanup time, not at mount — the controller
+  // is created later inside start(), so a snapshot-at-mount pattern would
+  // miss it. The ref is a stable instance variable; reading .current at
+  // cleanup is the documented React pattern for "latest mutable value."
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     return () => {
       void controllerRef.current?.stop();

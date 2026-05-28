@@ -194,16 +194,46 @@ async function onPortConnected(
       ws.onmessage = (ev) => {
         // The server may send text frames OR Blob frames. We coerce to JSON.
         const handle = (text: string) => {
-          // Surface server frames to the panel AND extract function calls
-          // for the SW-side dispatch loop.
-          const calls = routeServerFrame(text, send);
-          if (calls && calls.length > 0 && tools) {
-            void dispatchFunctionCalls(calls, tools, getKey, ws, send);
+          try {
+            // Surface server frames to the panel AND extract function calls
+            // for the SW-side dispatch loop.
+            const calls = routeServerFrame(text, send);
+            if (calls && calls.length > 0 && tools) {
+              void dispatchFunctionCalls(calls, tools, getKey, ws, send).catch((e) => {
+                send({
+                  type: 'ERROR',
+                  message:
+                    'Voice tool dispatch failed: ' +
+                    (e instanceof Error ? e.message : String(e)),
+                });
+              });
+            }
+          } catch (e) {
+            send({
+              type: 'ERROR',
+              message:
+                'Voice frame processing failed: ' +
+                (e instanceof Error ? e.message : String(e)),
+            });
           }
         };
+        const onDecodeFail = (e: unknown) => {
+          send({
+            type: 'ERROR',
+            message:
+              'Voice frame decode failed: ' +
+              (e instanceof Error ? e.message : String(e)),
+          });
+        };
         if (typeof ev.data === 'string') handle(ev.data);
-        else if (ev.data instanceof Blob) void ev.data.text().then(handle);
-        else if (ev.data instanceof ArrayBuffer) handle(new TextDecoder().decode(ev.data));
+        else if (ev.data instanceof Blob) void ev.data.text().then(handle).catch(onDecodeFail);
+        else if (ev.data instanceof ArrayBuffer) {
+          try {
+            handle(new TextDecoder().decode(ev.data));
+          } catch (e) {
+            onDecodeFail(e);
+          }
+        }
       };
 
       ws.onerror = () => {

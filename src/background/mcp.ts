@@ -181,6 +181,17 @@ export async function executeMcpToolCall(
       { provenance: [`mcp://${match.serverName}/${toolName}`] },
     );
   } catch (e) {
+    // Drop the pooled client on any error — if the WebSocket dropped or the
+    // session id is no longer recognised by the server, leaving it in the
+    // pool means every subsequent call to this server fails the same way
+    // until the SW restarts. Best-effort close, then evict.
+    const pooled = sessionPool.get(serverId);
+    if (pooled) {
+      sessionPool.delete(serverId);
+      void pooled.close().catch(() => {
+        /* pool eviction is best-effort */
+      });
+    }
     const message = e instanceof Error ? e.message : String(e);
     return err('runtime-error', message);
   }

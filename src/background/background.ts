@@ -64,9 +64,17 @@ import { matchesEventTrigger } from '../workflows/build';
 // NFR-SEC-1: keep session storage (where the API key lives) unreadable from
 // content scripts / page contexts. TRUSTED_CONTEXTS is the MV3 default, but we
 // set it explicitly so the key custody guarantee doesn't depend on a default.
+// If this call ever fails we LOUDLY surface it — a silent failure would mean
+// session storage is potentially world-readable from any page's content
+// script, which violates the SECURITY.md promise.
 chrome.storage?.session
   ?.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' })
-  .catch(() => {});
+  .catch((e) =>
+    console.error(
+      '[chrome-buddy] SECURITY: setAccessLevel failed — session storage may be readable from content scripts. NFR-SEC-1 at risk:',
+      e,
+    ),
+  );
 
 // Load the effective model registry (bundled + remote + user overlay) and keep
 // it fresh when the user edits it or a verified remote update lands (FR-MR-1/5/8).

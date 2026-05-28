@@ -129,7 +129,18 @@ export class ToolRegistry {
         if (ctx.signal?.aborted) {
           return err('aborted', `Tool "${name}" aborted before execution`);
         }
-        return decision.def.handler(args, ctx);
+        // Defensive try/catch: a handler that THROWS instead of returning
+        // err(...) would otherwise crash up into the agent runtime with a
+        // partially-mutated scratchpad. Normalize every escape into a
+        // structured ToolResult so the loop can record + recover.
+        try {
+          return await decision.def.handler(args, ctx);
+        } catch (e) {
+          return err(
+            'runtime-error',
+            `Tool "${name}" threw: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
     }
   }
 }
