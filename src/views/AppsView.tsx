@@ -15,7 +15,7 @@ import { parseAppConfig, parseCodeApp, renderTemplate, APP_BUILDER_SYSTEM, CODE_
 import { runInSandbox } from '../sandbox/host';
 import type { AppConfig } from '../apps/types';
 
-export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'webhooks' | 'scrape' | 'viz' | 'tabs';
+export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'webhooks' | 'scrape' | 'viz' | 'tabs' | 'svggen';
 
 /** Chat presets launched from an app card instead of opening an app view.
  *  (Kept as a hook for future preset cards — Summarizer used to live here but
@@ -42,6 +42,7 @@ export const APPS: AppMeta[] = [
   { id: 'scrape', icon: Ic.scrape, name: 'Scrape to Table', desc: 'Extract structured data to CSV.', color: '#F43F5E' },
   { id: 'viz', icon: Ic.chart, name: 'Data Visualizer', desc: 'Turn CSV, JSON or a page table into charts.', color: '#14B8A6' },
   { id: 'tabs', icon: Ic.apps, name: 'Tab Manager', desc: 'Search, dedupe, group + save tab sessions.', color: '#0EA5E9' },
+  { id: 'svggen', icon: Ic.sparkle, name: 'SVG Icon Generator', desc: 'Generate inline SVG icons from a description.', color: '#8B5CF6' },
   { id: 'watch', icon: Ic.watch, name: 'Price Watch', desc: 'Ping me when something changes.', color: '#6366F1' },
 ];
 
@@ -60,7 +61,7 @@ export function AppsView({
   onPreset: (preset: AppPreset) => void;
   recents?: string[];
 }) {
-  const openable = new Set<AppId>(['console', 'image', 'transcriber', 'livescribe', 'webhooks', 'scrape', 'viz', 'tabs']);
+  const openable = new Set<AppId>(['console', 'image', 'transcriber', 'livescribe', 'webhooks', 'scrape', 'viz', 'tabs', 'svggen']);
   const open = (id: string) => {
     if (PRESETS[id]) {
       onPreset(PRESETS[id]); // chat-coverable (e.g. Summarizer) → seed a chat prompt

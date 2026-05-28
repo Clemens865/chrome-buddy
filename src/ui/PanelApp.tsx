@@ -32,6 +32,10 @@ const VizApp = lazy(() =>
 const TabManagerApp = lazy(() =>
   import('../views/apps/TabManagerApp').then((m) => ({ default: m.TabManagerApp })),
 );
+const SandboxAppView = lazy(() =>
+  import('../views/apps/SandboxAppView').then((m) => ({ default: m.SandboxAppView })),
+);
+import { SVG_GENERATOR_APP } from '../apps/builtins/svgGenerator';
 import { SkillsView, FlowsView, HistoryView } from '../views/StubViews';
 import { LibraryView } from '../views/LibraryView';
 import { SettingsView } from '../views/SettingsView';
@@ -114,6 +118,7 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
     else if (openApp === 'scrape') content = lazyApp(<ScrapeApp onBack={() => setOpenApp(null)} />);
     else if (openApp === 'viz') content = lazyApp(<VizApp onBack={() => setOpenApp(null)} />);
     else if (openApp === 'tabs') content = lazyApp(<TabManagerApp onBack={() => setOpenApp(null)} />);
+    else if (openApp === 'svggen') content = lazyApp(<SandboxAppView app={SVG_GENERATOR_APP} onBack={() => setOpenApp(null)} />);
     else content = <AppsView onOpenApp={setOpenApp} onPreset={runPreset} />;
   } else if (view === 'skills') content = <SkillsView onRunSkill={runSkill} />;
   else if (view === 'flows') content = <FlowsView onRunWorkflow={runWorkflow} />;
