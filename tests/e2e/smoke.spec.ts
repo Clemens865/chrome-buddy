@@ -30,10 +30,24 @@ test('navigating the rail switches views', async ({ context, extensionId }) => {
   await expect(page.getByText('Profile', { exact: true })).toBeVisible();
 });
 
-test('overlay injects on a web page', async ({ context }) => {
+test('overlay injects on a web page WHEN overlayEnabled is explicitly true', async ({ context }) => {
+  // Overlay default is OFF — opt in by setting overlayEnabled=true in storage
+  // BEFORE the content script reads it. (See the architectural note at the
+  // top of src/content/overlay.tsx for why the default is off.)
+  let sw = context.serviceWorkers()[0];
+  if (!sw) sw = await context.waitForEvent('serviceworker');
+  await sw.evaluate(() => chrome.storage.local.set({ overlayEnabled: true }));
+
   const page = await context.newPage();
-  // Needs a real http(s) page for the content script to match.
   await page.goto('https://example.com', { waitUntil: 'load' });
-  // The overlay mounts after an async chrome.storage read — be patient.
   await expect(page.locator('#chrome-buddy-overlay-host')).toHaveCount(1, { timeout: 15_000 });
+});
+
+test('overlay does NOT inject by default (overlayEnabled unset)', async ({ context }) => {
+  // Fresh extension — no overlayEnabled set. Overlay must stay off.
+  const page = await context.newPage();
+  await page.goto('https://example.com', { waitUntil: 'load' });
+  // Give the content script time to read storage + decide not to mount.
+  await page.waitForTimeout(2_000);
+  await expect(page.locator('#chrome-buddy-overlay-host')).toHaveCount(0);
 });

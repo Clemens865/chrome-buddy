@@ -1,7 +1,18 @@
 // overlay.tsx — content script. Mounts the Chrome Buddy panel into a shadow root
 // so it floats OVER the current page (page stays visible behind it).
 //
-// - Controlled by the `overlayEnabled` setting (Settings → toggle). Default on.
+// IMPORTANT ARCHITECTURAL NOTE (NOT FIXED YET):
+//   This file mounts React DIRECTLY in the content-script context, which runs
+//   in the page's origin (e.g. example.com), NOT the extension's. That means
+//   any IndexedDB writes (chats, library, notes, skills, workflows, etc.) land
+//   in the PAGE'S IDB, not the extension's. The overlay therefore has a
+//   separate, per-origin chat history that does not match the side panel.
+//   The proper fix is to render the panel inside an iframe at the extension
+//   origin (chrome-extension://EXT_ID/...) so both surfaces share one IDB.
+//   That refactor is tracked in docs/code-review.md. For now we default the
+//   overlay OFF so new users don't hit the surprise.
+//
+// - Controlled by the `overlayEnabled` setting (Settings → toggle). DEFAULT OFF.
 // - The close (✕) button removes it for the current page until the next load.
 // - Only runs on http/https pages (Chrome blocks content scripts on chrome://,
 //   the New Tab page, the Web Store, extension pages, PDFs and file:// URLs).
@@ -14,7 +25,7 @@ const HOST_ID = 'chrome-buddy-overlay-host';
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
-let enabled = true; // global setting
+let enabled = false; // global setting — default OFF (see comment at top)
 let dismissed = false; // user closed it on this page
 
 function injectStyles(shadow: ShadowRoot) {
@@ -76,14 +87,14 @@ function init() {
     return;
   }
   chrome.storage.local.get('overlayEnabled').then((res) => {
-    enabled = res.overlayEnabled !== false; // default on
+    enabled = res.overlayEnabled === true; // default OFF — must be EXPLICITLY enabled
     mount();
   });
 
   // React live to the Settings toggle.
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !changes.overlayEnabled) return;
-    enabled = changes.overlayEnabled.newValue !== false;
+    enabled = changes.overlayEnabled.newValue === true;
     if (enabled) {
       dismissed = false; // re-enabling clears a per-page dismissal
       mount();

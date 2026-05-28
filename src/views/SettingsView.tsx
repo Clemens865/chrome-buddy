@@ -43,7 +43,10 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   useEffect(() => {
     reloadModels();
   }, []);
-  const [overlayEnabled, setOverlayEnabled] = usePersistedState<boolean>('overlayEnabled', true);
+  // Floating overlay is OFF by default — see the note in src/content/overlay.tsx
+  // and SECURITY.md. The side panel is the canonical surface; the overlay is
+  // an opt-in convenience for users who want a panel without leaving the page.
+  const [overlayEnabled, setOverlayEnabled] = usePersistedState<boolean>('overlayEnabled', false);
   const [profiles, setProfiles] = usePersistedState<Profiles>('userProfiles', EMPTY_PROFILES);
   const [activeProfile, setActiveProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile, setAttachProfile] = usePersistedState<boolean>('attachProfile', false);

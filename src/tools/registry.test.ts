@@ -24,14 +24,14 @@ function makeRegistry(handler: (args: Record<string, unknown>) => Promise<ToolRe
 describe('ToolRegistry.invoke() error handling', () => {
   it('returns ok({...}) when the handler returns ok', async () => {
     const reg = makeRegistry(async () => ok({ value: 42 }));
-    const res = await reg.invoke('demo', {}, { caller: 'test' });
+    const res = await reg.invoke('demo', {}, { caller: 'agent' });
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.data).toEqual({ value: 42 });
   });
 
   it('returns err({...}) when the handler returns err', async () => {
     const reg = makeRegistry(async () => err('not-found', 'nope'));
-    const res = await reg.invoke('demo', {}, { caller: 'test' });
+    const res = await reg.invoke('demo', {}, { caller: 'agent' });
     expect(res.ok).toBe(false);
     if (!res.ok) {
       expect(res.error.code).toBe('not-found');
@@ -43,7 +43,7 @@ describe('ToolRegistry.invoke() error handling', () => {
     const reg = makeRegistry(async () => {
       throw new Error('handler exploded');
     });
-    const res = await reg.invoke('demo', {}, { caller: 'test' });
+    const res = await reg.invoke('demo', {}, { caller: 'agent' });
     expect(res.ok).toBe(false);
     if (!res.ok) {
       expect(res.error.code).toBe('runtime-error');
@@ -57,7 +57,7 @@ describe('ToolRegistry.invoke() error handling', () => {
       // eslint-disable-next-line @typescript-eslint/only-throw-error
       throw 'string thrown';
     });
-    const res = await reg.invoke('demo', {}, { caller: 'test' });
+    const res = await reg.invoke('demo', {}, { caller: 'agent' });
     expect(res.ok).toBe(false);
     if (!res.ok) {
       expect(res.error.code).toBe('runtime-error');
@@ -67,7 +67,7 @@ describe('ToolRegistry.invoke() error handling', () => {
 
   it('rejects an unknown tool name without invoking anything', async () => {
     const reg = makeRegistry(async () => ok({}));
-    const res = await reg.invoke('nope', {}, { caller: 'test' });
+    const res = await reg.invoke('nope', {}, { caller: 'agent' });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe('not-found');
   });
@@ -80,7 +80,7 @@ describe('ToolRegistry.invoke() error handling', () => {
     });
     const ac = new AbortController();
     ac.abort();
-    const res = await reg.invoke('demo', {}, { caller: 'test', signal: ac.signal });
+    const res = await reg.invoke('demo', {}, { caller: 'agent', signal: ac.signal });
     expect(called).toBe(false);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe('aborted');
