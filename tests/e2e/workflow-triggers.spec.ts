@@ -51,3 +51,44 @@ test('workflow schedule registers an alarm + shows a due badge', async ({ contex
     })
     .not.toContain('wf:wf_test');
 });
+
+test('running a due workflow clears its due badge + persisted flag', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 980 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  // Seed a manual workflow and mark it due (as the SW alarm handler would).
+  await panel.evaluate(async () => {
+    await chrome.runtime.sendMessage({
+      type: 'WORKFLOW_SAVE',
+      workflow: {
+        id: 'wf_due',
+        name: 'Weekly brief',
+        steps: [{ id: 's1', mode: 'chat', prompt: 'say hi' }],
+        trigger: { type: 'manual' },
+        createdAt: Date.now(),
+      },
+    });
+    await chrome.storage.local.set({ dueWorkflows: ['wf_due'] });
+  });
+
+  await panel.getByRole('button', { name: 'Workflows', exact: true }).click();
+  await expect(panel.locator('.stub-row-title', { hasText: 'Weekly brief' })).toBeVisible();
+  await expect(panel.locator('.wf-due-badge')).toBeVisible({ timeout: 10_000 });
+
+  // Run it: runAndClear() drops the id from the persisted due list before
+  // handing off to chat, so the source-of-truth flag must clear.
+  await panel.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect
+    .poll(async () => panel.evaluate(() => chrome.storage.local.get('dueWorkflows').then((r) => r.dueWorkflows ?? [])), {
+      timeout: 10_000,
+    })
+    .not.toContain('wf_due');
+
+  // Back on the Workflows view the badge is gone (not merely hidden by the
+  // chat navigation that Run triggers).
+  await panel.getByRole('button', { name: 'Workflows', exact: true }).click();
+  await expect(panel.locator('.stub-row-title', { hasText: 'Weekly brief' })).toBeVisible();
+  await expect(panel.locator('.wf-due-badge')).toHaveCount(0);
+  await panel.screenshot({ path: path.join(SHOTS, '27-workflow-due-cleared.png') });
+});

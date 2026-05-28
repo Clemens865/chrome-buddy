@@ -287,7 +287,14 @@ export function FlowsView({ onRunWorkflow }: { onRunWorkflow: (wf: Workflow) => 
   };
 
   const runAndClear = (w: Workflow) => {
-    if (due.includes(w.id)) setDue(due.filter((id) => id !== w.id));
+    if (due.includes(w.id)) {
+      const next = due.filter((id) => id !== w.id);
+      setDue(next); // instant UI
+      // onRunWorkflow navigates to chat, unmounting this view before
+      // usePersistedState's effect can flush — so write the cleared flag
+      // through to storage directly, or the "Due" badge reappears on reload.
+      if (typeof chrome !== 'undefined') void chrome.storage?.local?.set({ [DUE_WORKFLOWS_KEY]: next });
+    }
     onRunWorkflow(w);
   };
 
