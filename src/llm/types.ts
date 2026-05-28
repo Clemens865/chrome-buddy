@@ -194,7 +194,7 @@ export interface GenerationParams {
   /** Thinking effort. Gemini 3 maps to `thinking_config.thinking_level`
    *  (minimal|low|medium|high); Gemini 2.5 maps to `thinking_config.thinking_budget`
    *  (an integer derived from this level). Other providers ignore.
-   *  See /Users/clemenshoenig/Documents/Software-Projects/Google_Geminin_documentation/thinking.md
+   *  See Gemini API docs (https://ai.google.dev/gemini-api/docs/): thinking.md
    *  L374-382. */
   thinking?: 'minimal' | 'low' | 'medium' | 'high';
   /** Force a stop on these sequences. */

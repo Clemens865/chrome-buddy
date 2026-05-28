@@ -1,7 +1,8 @@
 # MicroLabs-Chrome — Technical Audit (prior extension)
 
-> Source: `/Users/clemenshoenig/Documents/Software-Projects/MicroLabs-Chrome`
-> Purpose: learn from what we already built so Chrome_Buddy improves on it.
+> Source: an earlier extension by the same author (MicroLabs-Chrome — a 64-app
+> Gemini-powered Chrome side panel, private codebase). Captured here as a
+> candid self-critique so Chrome_Buddy improves on its predecessor.
 
 ## 1. Architecture & Stack
 

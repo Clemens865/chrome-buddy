@@ -1,5 +1,5 @@
 // Retry wrapper for Gemini fetch sites.
-// (See /Users/clemenshoenig/Documents/Software-Projects/Google_Geminin_documentation/troubleshooting.md
+// (See Gemini API docs (https://ai.google.dev/gemini-api/docs/): troubleshooting.md
 //  L20-29; rate-limits.md; flex-inference.md L482-503 for the recommended pattern.)
 //
 // - Retries 429 (rate limit), 503 (overloaded), 504 (timeout), and transient

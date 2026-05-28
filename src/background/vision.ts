@@ -5,7 +5,7 @@
 // action via executeVisionAction (CDP) → next turn includes the new
 // screenshot as a FunctionResponse part. Loop until no more functionCalls.
 //
-// See /Users/clemenshoenig/Documents/Software-Projects/Google_Geminin_documentation/computer-use.md
+// See Gemini API docs (https://ai.google.dev/gemini-api/docs/): computer-use.md
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { safetySettingsForNative } from '../llm/safety';
 import { BUDDY_UA } from '../llm/ua';

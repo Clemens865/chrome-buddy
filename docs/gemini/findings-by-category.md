@@ -1,6 +1,6 @@
 # Gemini Findings — By Category
 
-Per-category digest of the 79 docs at `/Users/clemenshoenig/Documents/Software-Projects/Google_Geminin_documentation/`. Each section gives the key facts + the actionable bits with line refs. For prioritized actions, see `action-items.md`.
+Per-category digest of the 79-doc Gemini API documentation set (publicly available at https://ai.google.dev/gemini-api/docs). Each section gives the key facts + the actionable bits with line refs. For prioritized actions, see `action-items.md`.
 
 Today: **2026-05-23**.
 

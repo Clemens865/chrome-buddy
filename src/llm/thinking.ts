@@ -1,7 +1,7 @@
 // Map a semantic thinking level to the Gemini wire form.
 // Gemini 3 (3.x ids):  { thinking_level: 'minimal'|'low'|'medium'|'high' }
 // Gemini 2.5 (2.x ids): { thinking_budget: <int> }  — derived from the level.
-// (See /Users/clemenshoenig/Documents/Software-Projects/Google_Geminin_documentation/thinking.md
+// (See Gemini API docs (https://ai.google.dev/gemini-api/docs/): thinking.md
 //  L374-382 for the enum, L493 for the don't-mix rule.)
 // Pure + unit-testable.
 

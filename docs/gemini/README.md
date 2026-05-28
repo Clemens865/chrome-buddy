@@ -1,6 +1,6 @@
 # Gemini Findings for Chrome Buddy
 
-A condensed, code-mapped view of what's in `/Users/clemenshoenig/Documents/Software-Projects/Google_Geminin_documentation/` (79 docs, ~2 MB) and what it means for our app. Generated 2026-05-23 from 7 parallel deep-read passes (one per category).
+A condensed, code-mapped view of the 79-document Gemini API documentation set (~2 MB total) and what it means for Chrome Buddy. Generated 2026-05-23 from 7 parallel deep-read passes (one per category).
 
 ## Files in this folder
 
@@ -26,4 +26,4 @@ A condensed, code-mapped view of what's in `/Users/clemenshoenig/Documents/Softw
 
 ## Source-doc navigation
 
-The Gemini docs folder has its own `README.md` (a quick-find table by topic) — open `/Users/clemenshoenig/Documents/Software-Projects/Google_Geminin_documentation/README.md` to jump to a specific source doc.
+Per-doc source citations in the findings link back to the upstream Gemini documentation by section number; the bundled corpus we read from is not committed to this repository (it's the publicly available Gemini API docs at https://ai.google.dev/gemini-api/docs).

@@ -1,5 +1,5 @@
 // Gemini safety settings — explicit, because defaults are OFF on 2.5/3.
-// (See /Users/clemenshoenig/Documents/Software-Projects/Google_Geminin_documentation/safety-settings.md L65, L82-83.)
+// (See Gemini API docs (https://ai.google.dev/gemini-api/docs/): safety-settings.md L65, L82-83.)
 //
 // We pick BLOCK_MEDIUM_AND_ABOVE for the four adjustable categories as the
 // "normal" preset for a productivity tool. A "strict" preset would use

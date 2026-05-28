@@ -1,6 +1,6 @@
 # Gemini Action Items — Chrome Buddy
 
-Prioritized, code-mapped. Source: deep-read of `/Users/clemenshoenig/Documents/Software-Projects/Google_Geminin_documentation/` on 2026-05-23. Each item cites the source doc and our file(s).
+Prioritized, code-mapped. Source: a deep-read pass over the Gemini API documentation set on 2026-05-23 (publicly available at https://ai.google.dev/gemini-api/docs). Each item cites the source doc and the file(s) in this repo it affects.
 
 Legend: 🔴 MUST FIX · 🟠 HIGH-VALUE · 🟡 OPTIMIZATION · 🟢 NICE-TO-HAVE.
 
