@@ -26,6 +26,9 @@ const WebhookFlowsApp = lazy(() =>
 const ScrapeApp = lazy(() =>
   import('../views/apps/ScrapeApp').then((m) => ({ default: m.ScrapeApp })),
 );
+const VizApp = lazy(() =>
+  import('../views/apps/VizApp').then((m) => ({ default: m.VizApp })),
+);
 import { SkillsView, FlowsView, HistoryView } from '../views/StubViews';
 import { LibraryView } from '../views/LibraryView';
 import { SettingsView } from '../views/SettingsView';
@@ -106,6 +109,7 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
     else if (openApp === 'livescribe') content = lazyApp(<LiveTranscriberApp onBack={() => setOpenApp(null)} />);
     else if (openApp === 'webhooks') content = lazyApp(<WebhookFlowsApp onBack={() => setOpenApp(null)} />);
     else if (openApp === 'scrape') content = lazyApp(<ScrapeApp onBack={() => setOpenApp(null)} />);
+    else if (openApp === 'viz') content = lazyApp(<VizApp onBack={() => setOpenApp(null)} />);
     else content = <AppsView onOpenApp={setOpenApp} onPreset={runPreset} />;
   } else if (view === 'skills') content = <SkillsView onRunSkill={runSkill} />;
   else if (view === 'flows') content = <FlowsView onRunWorkflow={runWorkflow} />;

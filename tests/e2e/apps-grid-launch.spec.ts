@@ -95,7 +95,7 @@ test.describe('Apps grid: each card opens its app', () => {
     await panel.setViewportSize({ width: 440, height: 980 });
     await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
     await panel.getByRole('button', { name: 'Apps', exact: true }).click();
-    // All 7 cards must be visible.
+    // All built-in cards must be visible.
     for (const name of [
       'Console Inspector',
       'Image Generator',
@@ -103,6 +103,7 @@ test.describe('Apps grid: each card opens its app', () => {
       'Live Transcriber',
       'Webhook Flows',
       'Scrape to Table',
+      'Data Visualizer',
       'Price Watch',
     ]) {
       // .first() because Console + Image also appear in the Recents row.

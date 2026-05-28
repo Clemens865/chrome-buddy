@@ -15,7 +15,7 @@ import { parseAppConfig, parseCodeApp, renderTemplate, APP_BUILDER_SYSTEM, CODE_
 import { runInSandbox } from '../sandbox/host';
 import type { AppConfig } from '../apps/types';
 
-export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'webhooks' | 'scrape';
+export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'webhooks' | 'scrape' | 'viz';
 
 /** Chat presets launched from an app card instead of opening an app view.
  *  (Kept as a hook for future preset cards — Summarizer used to live here but
@@ -40,6 +40,7 @@ export const APPS: AppMeta[] = [
   { id: 'livescribe', icon: Ic.mic, name: 'Live Transcriber', desc: 'Live mic → text in real time (Gemini Live).', color: '#06B6D4' },
   { id: 'webhooks', icon: Ic.hook, name: 'Webhook Flows', desc: 'One-tap: snapshot a page → POST to a saved webhook.', color: '#F59E0B' },
   { id: 'scrape', icon: Ic.scrape, name: 'Scrape to Table', desc: 'Extract structured data to CSV.', color: '#F43F5E' },
+  { id: 'viz', icon: Ic.chart, name: 'Data Visualizer', desc: 'Turn CSV, JSON or a page table into charts.', color: '#14B8A6' },
   { id: 'watch', icon: Ic.watch, name: 'Price Watch', desc: 'Ping me when something changes.', color: '#6366F1' },
 ];
 
@@ -58,7 +59,7 @@ export function AppsView({
   onPreset: (preset: AppPreset) => void;
   recents?: string[];
 }) {
-  const openable = new Set<AppId>(['console', 'image', 'transcriber', 'livescribe', 'webhooks', 'scrape']);
+  const openable = new Set<AppId>(['console', 'image', 'transcriber', 'livescribe', 'webhooks', 'scrape', 'viz']);
   const open = (id: string) => {
     if (PRESETS[id]) {
       onPreset(PRESETS[id]); // chat-coverable (e.g. Summarizer) → seed a chat prompt

@@ -462,6 +462,16 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .scrape-table th:hover { background: var(--panel-elev-2); }
 .scrape-table td { padding: 5px 8px; color: var(--panel-fg); border-bottom: 1px solid var(--panel-border-soft); vertical-align: top; }
 .scrape-table tbody tr:hover { background: var(--panel-elev); }
+.scrape-chip.is-on { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: var(--accent); color: var(--panel-fg); }
+
+/* Data Visualizer */
+.viz-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.viz-field { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--panel-muted); }
+.viz-svg { width: 100%; height: auto; margin-top: 6px; display: block; }
+.viz-axis { font-size: 9px; fill: var(--panel-muted); }
+.viz-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.viz-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--panel-muted); }
+.viz-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .resume-card { margin: 0 12px 8px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 10px; background: var(--panel-elev); }
 .resume-card-txt { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; color: var(--panel-fg); margin-bottom: 8px; }
 .resume-card-txt .ic { width: 14px; height: 14px; flex: 0 0 14px; color: var(--accent); }
