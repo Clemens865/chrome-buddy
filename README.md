@@ -24,21 +24,40 @@ Default model is **Google Gemini** (`gemini-2.5-flash`) via `@google/genai`. The
 
 See [`docs/night-test-audit.md`](docs/night-test-audit.md) for the current coverage map and a honest list of known gaps.
 
-## Install (developer / unpacked)
+## Install
+
+### Quick install (download the latest release)
+
+1. Download the latest **`chrome-buddy-vX.Y.Z.zip`** from the
+   [Releases page](https://github.com/Clemens865/chrome-buddy/releases/latest)
+2. Unzip — you'll get a `chrome-buddy/` folder
+3. Open `chrome://extensions` and enable **Developer mode** (toggle, top right)
+4. Click **Load unpacked** and pick the `chrome-buddy/` folder
+5. Click the Chrome Buddy icon to open the side panel
+6. Paste a Gemini API key on the onboarding screen
+   ([get one free at AI Studio](https://aistudio.google.com/apikey))
+
+No `npm`, no toolchain — the release zip is a pre-built extension. Every tagged release builds + attaches a fresh zip automatically.
+
+### Build from source (contributors)
 
 ```bash
+git clone https://github.com/Clemens865/chrome-buddy.git
+cd chrome-buddy
 npm install
-npm run build
+npm run build       # produces dist/
 ```
 
 Then in Chrome:
 
 1. Open `chrome://extensions` and enable **Developer mode**
-2. Click **Load unpacked** and pick the `dist/` folder
+2. Click **Load unpacked** and pick the **`dist/`** folder
 3. Click the Chrome Buddy icon to open the side panel
-4. Paste a Gemini API key on the onboarding screen ([get one free at AI Studio](https://aistudio.google.com/apikey))
+4. Paste a Gemini API key on the onboarding screen
 
-The key lives **only** in `chrome.storage.session` (in-memory, cleared on browser restart). It never enters the rendered UI, never gets written to disk, never leaves the service worker except as the `Authorization` header on the Gemini API call.
+### Key custody
+
+The key lives **only** in `chrome.storage.session` (in-memory, cleared on browser restart). It never enters the rendered UI, never gets written to disk, never leaves the service worker except as the `Authorization` header on the Gemini API call. See [`SECURITY.md`](SECURITY.md) for the full custody story.
 
 ## How to use
 

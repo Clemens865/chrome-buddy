@@ -1,0 +1,56 @@
+name: Release
+
+# Every push of a v* tag (e.g. v0.1.0, v0.2.0) triggers a clean build of the
+# extension, zips it with a chrome-buddy/ wrapper folder so users can extract
+# straight into Chrome's "Load unpacked" picker, and attaches the zip to a
+# GitHub Release of the same name.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck + lint + test
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Pack zip (chrome-buddy/ wrapper)
+        run: |
+          mkdir -p pack/chrome-buddy
+          cp -R dist/* pack/chrome-buddy/
+          cd pack
+          zip -rq "chrome-buddy-${GITHUB_REF_NAME}.zip" chrome-buddy/
+          ls -la
+
+      - name: Create release + attach zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "pack/chrome-buddy-${GITHUB_REF_NAME}.zip" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
