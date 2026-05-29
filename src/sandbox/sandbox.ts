@@ -22,6 +22,8 @@ interface RunMessage {
 interface MountMessage {
   type: 'SANDBOX_MOUNT';
   id: string;
+  /** Host-supplied base stylesheet (Chrome Buddy theme tokens + .cb-* classes). */
+  baseCss?: string;
   html?: string;
   css?: string;
   ui?: string;
@@ -80,7 +82,12 @@ window.addEventListener('message', (ev: MessageEvent) => {
     const m = data as unknown as MountMessage;
     const bridge = makeBridge(m.id, m.capabilities ?? []);
     try {
-      // Styles: scoped <style> for this app.
+      // Base (host theme) styles FIRST, then the app's own CSS so it can override.
+      if (m.baseCss) {
+        const base = document.createElement('style');
+        base.textContent = m.baseCss;
+        document.head.appendChild(base);
+      }
       const style = document.createElement('style');
       style.textContent = m.css ?? '';
       document.head.appendChild(style);

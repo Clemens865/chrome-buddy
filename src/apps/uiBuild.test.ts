@@ -31,6 +31,10 @@ describe('parseUiApp', () => {
     const p = parseUiApp(JSON.stringify({ name: 'X', html: '<div>hi</div><script>steal()</script>', ui: 'x' }));
     expect(p?.html).toBe('<div>hi</div>');
   });
+  it('strips inline on* handlers (the silent-dead-button trap)', () => {
+    const p = parseUiApp(JSON.stringify({ name: 'X', html: '<button onclick="go()" onmouseover=\'x()\'>Go</button>', ui: 'x' }));
+    expect(p?.html).toBe('<button>Go</button>');
+  });
   it('rejects missing name or empty body', () => {
     expect(parseUiApp(JSON.stringify({ html: '<div></div>' }))).toBeNull();
     expect(parseUiApp(JSON.stringify({ name: 'X', html: '', ui: '' }))).toBeNull();

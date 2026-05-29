@@ -8,10 +8,20 @@ import type { ChatMessage } from '../llm/types';
 export const UI_APP_BUILDER_SYSTEM = `You build a small self-contained web "micro-app" that runs INSIDE an opaque-origin sandboxed iframe in a Chrome extension side panel (~400px wide). You return ONLY JSON — no prose, no markdown fences — of the shape:
 {"name": string, "description": string, "html": string, "css": string, "ui": string, "permissions": string[]}
 
-THE RUNTIME CONTRACT (follow exactly):
-- "html": the app's UI markup (structure only). It is set as innerHTML on a root element. Do NOT include <script> tags or inline on* handlers — they will not run. Give interactive elements ids you can query.
-- "css": styles for the app. Assume a light background; the app cannot read the host's theme. Keep it compact and mobile-narrow friendly.
-- "ui": the BODY of a function (root, bridge, api) => { ... }. It runs once after the html is mounted. Wire all behavior here with root.querySelector(...) + addEventListener. You MAY use async handlers and standard browser APIs (DOM, fetch is NOT available, but document/Blob/JSON/Math/etc are).
+THE RUNTIME CONTRACT (follow EXACTLY — most bugs come from breaking these):
+- "html": the app's UI markup (structure only). It is set as innerHTML on a \`root\` element. Give interactive elements ids.
+    ⛔ NEVER use inline handlers like onclick="..." — they CANNOT see your functions and will silently do nothing.
+    ⛔ NEVER include <script> tags — they are stripped and do not run.
+- "ui": the BODY of a function (root, bridge, api) => { ... }. It runs ONCE, AFTER the html is already mounted.
+    ✅ Wire EVERY interaction here: root.querySelector('#id').addEventListener('click', () => { ... }).
+    ⛔ Do NOT wait for DOMContentLoaded or window.onload — those already fired; your listeners would never run. Wire immediately.
+    • Your variables/functions are LOCAL to this function (not global). async handlers are fine.
+    • Available: the DOM (document, root), Blob, JSON, Math, fetch is NOT available — use bridge.* for anything external.
+    Example "ui": "const out = root.querySelector('#out'); root.querySelector('#go').addEventListener('click', async () => { out.textContent = await bridge.gemini(root.querySelector('#q').value); });"
+- "css": styles for the app. The app INHERITS Chrome Buddy's theme — prefer these so it looks native:
+    • CSS vars: --cb-bg, --cb-fg, --cb-muted, --cb-border, --cb-elev, --cb-accent (the body already uses bg/fg/font).
+    • Base classes: .cb-btn (primary; add .cb-ghost for secondary), .cb-input (input/textarea/select), .cb-card, .cb-muted, .cb-row.
+    Add your own CSS as needed; it overrides the base. Keep it compact + mobile-narrow (~400px).
 - Capabilities reach the app ONLY via \`bridge\` and \`api\`, and ONLY if declared in "permissions":
     • bridge.gemini(promptString) -> Promise<string>   // an LLM text completion (declare "gemini")
     • bridge.image({prompt}) -> Promise<dataUrl>        // a generated image data URL (declare "image")
@@ -34,10 +44,16 @@ function stripFence(text: string): string {
   return fence ? fence[1].trim() : t;
 }
 
-/** Remove <script>…</script> from app markup defensively (innerHTML never runs
- *  them, but don't carry executable-looking markup around). */
-function stripScripts(html: string): string {
-  return html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<script[^>]*\/?>/gi, '');
+/** Defensively clean app markup: drop <script> (innerHTML never runs them) and
+ *  inline on* handlers (they reference non-existent globals → silent dead
+ *  buttons; the contract requires addEventListener in `ui` instead). */
+function cleanHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<script[^>]*\/?>/gi, '')
+    // strip on<event>="..." / on<event>='...' attributes
+    .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, '');
 }
 
 export interface ParsedUiApp {
@@ -67,7 +83,7 @@ export function parseUiApp(jsonText: string): ParsedUiApp | null {
   if (!data || typeof data !== 'object') return null;
   const o = data as Record<string, unknown>;
   const name = typeof o.name === 'string' ? o.name.trim() : '';
-  const html = typeof o.html === 'string' ? stripScripts(o.html).trim() : '';
+  const html = typeof o.html === 'string' ? cleanHtml(o.html).trim() : '';
   const css = typeof o.css === 'string' ? o.css.trim() : '';
   const ui = typeof o.ui === 'string' ? o.ui.trim() : '';
   // Need a name and something to render or run.

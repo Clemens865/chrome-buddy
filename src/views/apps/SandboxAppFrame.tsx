@@ -10,6 +10,7 @@ import { useEffect, useRef } from 'react';
 import { type AppConfig, KNOWN_APP_CAPS } from '../../apps/types';
 import { generateViaBackground } from '../../llm/instance';
 import { appDataKey, applyStorageOp, type StorageArgs } from '../../apps/appStorage';
+import { appBaseCss, readThemeTokens } from '../../apps/appTheme';
 
 type BridgeOutcome = { ok: boolean; result?: unknown; error?: string };
 export type AppStatus = 'loading' | 'running' | 'error';
@@ -121,8 +122,11 @@ export function SandboxAppFrame({
       const d = ev.data as { type?: string; id?: string; runId?: string; op?: string; args?: unknown; ok?: boolean; error?: string };
       if (d?.type === 'SANDBOX_READY') {
         onStatus?.('loading');
+        // Pass the live theme so the app inherits Chrome Buddy's look (the
+        // sandbox can't read the panel's CSS vars across the origin boundary).
+        const baseCss = appBaseCss(readThemeTokens(frame));
         frame.contentWindow?.postMessage(
-          { type: 'SANDBOX_MOUNT', id: mountId, html: app.html ?? '', css: app.css ?? '', ui: app.ui ?? '', capabilities: caps },
+          { type: 'SANDBOX_MOUNT', id: mountId, baseCss, html: app.html ?? '', css: app.css ?? '', ui: app.ui ?? '', capabilities: caps },
           '*',
         );
       } else if (d?.type === 'SANDBOX_MOUNTED' && d.id === mountId) {
