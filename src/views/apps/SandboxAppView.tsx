@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { AppHeader } from '../AppsView';
 import { Ic } from '../../ui/icons';
 import type { AppConfig } from '../../apps/types';
-import { SandboxAppFrame, grantedCaps, type AppStatus } from './SandboxAppFrame';
+import { SandboxAppFrame, grantedCaps, describeCaps, type AppStatus } from './SandboxAppFrame';
 
 export function SandboxAppView({ app, onBack }: { app: AppConfig; onBack: () => void }) {
   const [status, setStatus] = useState<AppStatus>('loading');
@@ -18,7 +18,7 @@ export function SandboxAppView({ app, onBack }: { app: AppConfig; onBack: () => 
       <AppHeader app={meta} onBack={onBack} />
       <div className="sandbox-app-bar">
         <span className="sandbox-badge">{Ic.warn}Sandboxed app — runs isolated; can’t read your keys or other tabs</span>
-        {caps.length > 0 && <span className="sandbox-caps">Uses: {caps.join(', ')}</span>}
+        {caps.length > 0 && <span className="sandbox-caps">Uses: {describeCaps(caps)}</span>}
       </div>
       {status === 'error' && (
         <div className="empty-state-desc" style={{ color: '#B91C1C', padding: '8px 14px' }}>{errMsg}</div>

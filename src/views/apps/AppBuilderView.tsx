@@ -19,7 +19,7 @@ import {
   iterateMessage,
   repairMessage,
 } from '../../apps/uiBuild';
-import { SandboxAppFrame, type AppStatus } from './SandboxAppFrame';
+import { SandboxAppFrame, describeCaps, type AppStatus } from './SandboxAppFrame';
 
 const MAX_REPAIRS = 3;
 const OPUS_MODEL = 'claude-opus-4-8';
@@ -145,7 +145,7 @@ export function AppBuilderView({ onBack, onSaved }: { onBack: () => void; onSave
             </div>
             <div className="sandbox-app-bar">
               <span className="sandbox-badge">{Ic.warn}Live preview — sandboxed</span>
-              {(draft.permissions ?? []).length > 0 && <span className="sandbox-caps">Uses: {(draft.permissions ?? []).join(', ')}</span>}
+              {(draft.permissions ?? []).length > 0 && <span className="sandbox-caps">Uses: {describeCaps(draft.permissions ?? [])}</span>}
             </div>
             {status === 'error' && (
               <div className="empty-state-desc" style={{ color: '#B91C1C' }}>

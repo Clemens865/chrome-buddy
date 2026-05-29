@@ -9,6 +9,7 @@
 import { useEffect, useRef } from 'react';
 import { type AppConfig, KNOWN_APP_CAPS } from '../../apps/types';
 import { generateViaBackground } from '../../llm/instance';
+import { appDataKey, applyStorageOp, type StorageArgs } from '../../apps/appStorage';
 
 type BridgeOutcome = { ok: boolean; result?: unknown; error?: string };
 export type AppStatus = 'loading' | 'running' | 'error';
@@ -18,6 +19,19 @@ const MAX_CALLS_PER_MIN = 30;
 
 export function grantedCaps(app: AppConfig): string[] {
   return (app.permissions ?? []).filter((p) => KNOWN_CAPS.has(p));
+}
+
+/** Human-readable capability labels for the disclosure badge (page-read is the
+ *  privacy-relevant one, so it's spelled out). */
+const CAP_LABELS: Record<string, string> = {
+  gemini: 'AI text',
+  image: 'AI images',
+  download: 'file downloads',
+  storage: 'saved data',
+  page: 'reads this page',
+};
+export function describeCaps(caps: string[]): string {
+  return caps.map((c) => CAP_LABELS[c] ?? c).join(', ');
 }
 
 export function SandboxAppFrame({
@@ -74,6 +88,27 @@ export function SandboxAppFrame({
           link.click();
           URL.revokeObjectURL(url);
           return { ok: true, result: true };
+        }
+        if (op === 'storage') {
+          // App-scoped KV in chrome.storage.local, namespaced by app id.
+          const dataKey = appDataKey(app.id);
+          const store = chrome.storage?.local;
+          if (!store) return { ok: false, error: 'storage unavailable' };
+          const cur = ((await store.get(dataKey))[dataKey] as Record<string, unknown>) ?? {};
+          const { state, result } = applyStorageOp(cur, (args ?? {}) as StorageArgs);
+          if (state !== cur) await store.set({ [dataKey]: state });
+          return { ok: true, result };
+        }
+        if (op === 'page') {
+          // Read-only snapshot of the active page (no external egress).
+          const r = (await chrome.runtime.sendMessage({ type: 'TOOL_EXEC', tool: 'read_dom', args: {} })) as
+            | { ok?: boolean; result?: { ok?: boolean; data?: { url?: string; title?: string; text?: string }; error?: { message?: string } } }
+            | undefined;
+          if (r?.ok && r.result?.ok && r.result.data) {
+            const d = r.result.data;
+            return { ok: true, result: { url: d.url ?? '', title: d.title ?? '', text: d.text ?? '' } };
+          }
+          return { ok: false, error: r?.result?.error?.message ?? 'Could not read the page.' };
         }
         return { ok: false, error: `Unknown capability "${op}".` };
       } catch (e) {

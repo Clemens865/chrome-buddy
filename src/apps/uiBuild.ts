@@ -16,8 +16,11 @@ THE RUNTIME CONTRACT (follow exactly):
     • bridge.gemini(promptString) -> Promise<string>   // an LLM text completion (declare "gemini")
     • bridge.image({prompt}) -> Promise<dataUrl>        // a generated image data URL (declare "image")
     • api.download(filename, content, mime?)            // trigger a file download (declare "download")
+    • bridge.storage({action,key,value}) -> Promise     // persist app state across sessions (declare "storage")
+        actions: 'get'|'set'|'remove'|'keys'|'clear'; get returns the value (or null)
+    • bridge.page() -> Promise<{url,title,text}>        // READ the current browser tab's text (declare "page")
   There is NO network, NO chrome.* API, NO access to the user's keys. Anything else is unavailable.
-- 1-3 capabilities max; declare only what you use. Default to [] if the app is pure-client (no LLM).
+- Declare only what you use (prefer the fewest). Default to [] if the app is pure-client.
 - Keep the whole app focused and small. Prefer plain DOM over frameworks (no imports).
 
 EXAMPLE permissions for an icon generator: ["gemini","download"].`;
