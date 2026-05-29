@@ -6,6 +6,7 @@ import { fetchRuns, clearHistory } from '../memory/request';
 import { fetchSkills, persistSkill, removeSkill } from '../skills/request';
 import { skillFromRun, parseSkillBundle, toSkillBundle } from '../skills/skillData';
 import { detectSkillInputs, makeSkill, reviewImport, type ImportReview } from '../skills/edit';
+import { parseClaudeSkill, looksLikeClaudeSkill } from '../skills/claudeSkill';
 import { fetchWorkflows, persistWorkflow, removeWorkflow } from '../workflows/request';
 import { parseWorkflowSteps, makeWorkflow, WORKFLOW_BUILDER_SYSTEM, toWorkflowBundle, parseWorkflowBundle, newWorkflowId } from '../workflows/build';
 import { DUE_WORKFLOWS_KEY } from '../workflows/schedule';
@@ -64,8 +65,16 @@ export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void 
   };
 
   // FR-SKILL-9/10: review before enabling imported skills (no silent persist).
+  // Accepts our own JSON skill bundles AND a Claude Agent Skill (SKILL.md).
   const onImportFile = async (file: File) => {
-    const parsed = parseSkillBundle(await file.text());
+    const text = await file.text();
+    const isMd = /\.(md|markdown|txt)$/i.test(file.name) || looksLikeClaudeSkill(text);
+    if (isMd) {
+      const skill = parseClaudeSkill(text);
+      if (skill) setImportReview(reviewImport([skill]));
+      return;
+    }
+    const parsed = parseSkillBundle(text);
     if (parsed.length) setImportReview(reviewImport(parsed));
   };
   const confirmImport = async () => {
@@ -123,12 +132,12 @@ export function SkillsView({ onRunSkill }: { onRunSkill: (skill: Skill) => void 
     <div className="stub">
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing('new')}>+ New skill</button>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>Import</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} title="Import a Chrome Buddy skill bundle (.json) or a Claude Agent Skill (SKILL.md)">Import</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onExport} disabled={empty}>Export</button>
         <input
           ref={fileRef}
           type="file"
-          accept="application/json"
+          accept="application/json,.json,.md,.markdown,text/markdown"
           style={{ display: 'none' }}
           onChange={(e) => {
             const f = e.target.files?.[0];
