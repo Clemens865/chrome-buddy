@@ -57,6 +57,7 @@
     "test:e2e:sandboxui": "playwright test sandbox-ui-app.spec.ts",
     "test:e2e:appbuilder": "playwright test app-builder.spec.ts",
     "test:e2e:appcaps": "playwright test app-caps.spec.ts",
+    "test:e2e:appshare": "playwright test app-share.spec.ts",
     "test:e2e:history": "playwright test history-detail.spec.ts",
     "test:e2e:stream": "playwright test chat-stream.spec.ts",
     "test:e2e:filesearch": "playwright test file-search-stores.spec.ts",

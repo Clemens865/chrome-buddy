@@ -2,7 +2,7 @@
 // Also hosts Tier-1 app generation: describe a tool in natural language, Buddy
 // emits a validated declarative config (a form + prompt template), it's saved
 // and shown in the grid, and runs via a generic engine (no code — pure data).
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Ic } from '../ui/icons';
 import { hexAlpha } from '../ui/theme';
 import { Markdown } from '../ui/Markdown';
@@ -14,6 +14,8 @@ import { fetchApps, persistApp, removeApp } from '../apps/request';
 import { parseAppConfig, parseCodeApp, renderTemplate, APP_BUILDER_SYSTEM, CODE_APP_BUILDER_SYSTEM } from '../apps/build';
 import { runInSandbox } from '../sandbox/host';
 import { SandboxAppView } from './apps/SandboxAppView';
+import { describeCaps } from './apps/SandboxAppFrame';
+import { toAppBundle, parseAppBundle, type AppImportReview } from '../apps/appBundle';
 import type { AppConfig } from '../apps/types';
 
 export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'webhooks' | 'scrape' | 'viz' | 'tabs' | 'svggen' | 'builder';
@@ -73,6 +75,8 @@ export function AppsView({
 
   const [genApps, setGenApps] = useState<AppConfig[]>([]);
   const [openGen, setOpenGen] = useState<AppConfig | null>(null);
+  const [importReview, setImportReview] = useState<AppImportReview | null>(null);
+  const importRef = useRef<HTMLInputElement | null>(null);
   const [creating, setCreating] = useState(false);
   const [tier, setTier] = useState<1 | 2>(1);
   const [desc, setDesc] = useState('');
@@ -83,6 +87,25 @@ export function AppsView({
   useEffect(() => {
     void refresh();
   }, []);
+
+  const exportApps = () => {
+    const blob = new Blob([JSON.stringify(toAppBundle(genApps), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'chrome-buddy-apps.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const onImportFile = async (file: File) => {
+    const review = parseAppBundle(await file.text());
+    setImportReview(review);
+  };
+  const confirmImport = async () => {
+    for (const a of importReview?.apps ?? []) await persistApp(a);
+    setImportReview(null);
+    void refresh();
+  };
 
   const generate = async () => {
     if (!desc.trim()) return;
@@ -121,6 +144,46 @@ export function AppsView({
     );
   }
 
+  if (importReview) {
+    return (
+      <div className="apps" data-testid="apps-import-review">
+        <div className="settings-section-h">Import apps — review</div>
+        {importReview.fromNewerVersion && (
+          <div className="empty-state-desc" style={{ color: '#92400E', marginBottom: 6 }}>
+            Made with a newer version of Chrome Buddy — some features may not run here.
+          </div>
+        )}
+        {importReview.apps.length === 0 ? (
+          <div className="empty-state-desc">No valid apps found in that file{importReview.dropped ? ` (${importReview.dropped} dropped)` : ''}.</div>
+        ) : (
+          <div className="stub-list">
+            {importReview.apps.map((a) => (
+              <div key={a.id} className="stub-row">
+                <span className="stub-row-ic" style={{ color: GEN_COLOR, background: hexAlpha(GEN_COLOR, 0.12) }}>{Ic.sparkle}</span>
+                <div className="stub-row-body">
+                  <div className="stub-row-title">{a.name}</div>
+                  <div className="stub-row-sub">
+                    {a.tier === 3 ? 'UI app' : a.tier === 2 ? 'code app' : 'prompt app'}
+                    {(a.permissions ?? []).length ? ` · uses ${describeCaps(a.permissions ?? [])}` : ''} · reviewed on first run
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {importReview.dropped > 0 && importReview.apps.length > 0 && (
+          <div className="empty-state-desc" style={{ marginTop: 6 }}>{importReview.dropped} entr{importReview.dropped === 1 ? 'y was' : 'ies were'} invalid and dropped.</div>
+        )}
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 10 }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImportReview(null)}>Cancel</button>
+          <button type="button" className="btn btn-primary btn-sm" disabled={importReview.apps.length === 0} onClick={() => void confirmImport()}>
+            Import {importReview.apps.length || ''}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="apps">
       <div className="apps-search">
@@ -131,9 +194,23 @@ export function AppsView({
         {recents.map((id) => <AppCard key={id} app={appById(id)} onOpen={() => open(id)} />)}
       </div>
 
+      <input
+        ref={importRef}
+        type="file"
+        accept="application/json"
+        style={{ display: 'none' }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) void onImportFile(f); e.target.value = ''; }}
+      />
+
       {genApps.length > 0 && (
         <>
-          <div className="apps-section-h">Your generated apps</div>
+          <div className="apps-section-h" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>Your generated apps</span>
+            <span style={{ display: 'flex', gap: 4 }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={exportApps}>Export</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => importRef.current?.click()}>Import</button>
+            </span>
+          </div>
           <div className="apps-grid">
             {genApps.map((a) => (
               <AppCard
@@ -190,6 +267,7 @@ export function AppsView({
         <div className="apps-foot">
           <button type="button" className="apps-add" onClick={() => onOpenApp('builder')}><span className="ic">{Ic.sparkle}</span>Build a full app with its own UI</button>
           <button type="button" className="apps-add" onClick={() => setCreating(true)}><span className="ic">{Ic.plus}</span>Generate a quick prompt/code app</button>
+          <button type="button" className="apps-add" onClick={() => importRef.current?.click()}><span className="ic">{Ic.download}</span>Import shared apps</button>
         </div>
       )}
     </div>
