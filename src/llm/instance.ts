@@ -47,12 +47,19 @@ export async function readSessionApiKey(provider: string): Promise<string | unde
     const value = (res as Record<string, unknown>)[storageKey];
     if (typeof value === 'string' && value.length > 0) return value;
   }
-  const envKey = import.meta.env?.VITE_GEMINI_API_KEY;
-  if (provider === 'google-gemini' && typeof envKey === 'string' && envKey.length > 0) {
-    return envKey;
-  }
+  // DEV-only .env fallback (inlined by Vite at build time): lets a contributor
+  // keep a key across SW/extension reloads without re-pasting. Per-provider;
+  // end users leave .env empty so the key lives only in chrome.storage.session.
+  const envKey = ENV_API_KEYS[provider];
+  if (typeof envKey === 'string' && envKey.length > 0) return envKey;
   return undefined;
 }
+
+/** Provider id → its dev .env key (VITE_* vars are inlined at build time). */
+const ENV_API_KEYS: Record<string, string | undefined> = {
+  'google-gemini': import.meta.env?.VITE_GEMINI_API_KEY,
+  anthropic: import.meta.env?.VITE_ANTHROPIC_API_KEY,
+};
 
 // Effective registry = bundled floor + user overlay (FR-MR-1/8). Cached in the
 // SW and refreshed on demand / storage change so user-added models resolve.

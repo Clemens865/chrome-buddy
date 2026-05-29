@@ -25,9 +25,12 @@ test('API key is stored in session, never in local', async ({ context, extension
   expect(where.session).toBe(TEST_KEY);
   expect(where.local).toBeUndefined(); // NEVER on disk
 
-  // Settings reflects a key is set.
+  // Settings reflects a key is set (scope to the Gemini row — the Anthropic
+  // key control also shows a "Key set" pill when its key is configured).
   await panel.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(panel.getByText('Key set')).toBeVisible();
+  await expect(
+    panel.locator('.settings-row', { hasText: 'Gemini API key' }).getByText('Key set'),
+  ).toBeVisible();
   await panel.screenshot({ path: path.join(SHOTS, '35-key-session.png') });
 
   // Cleanup: clear the test key.
