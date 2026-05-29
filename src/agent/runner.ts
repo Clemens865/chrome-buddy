@@ -242,6 +242,9 @@ async function listSavedSkills(send: (m: unknown) => Promise<unknown>): Promise<
 export interface CallSkillDeps {
   send: (m: unknown) => Promise<unknown>;
   onConfirm: ConfirmHandler;
+  /** The outer run's model, so a nested skill inherits the user's choice
+   *  (e.g. Opus) instead of silently dropping to the cheap default. */
+  model?: string;
 }
 
 /**
@@ -268,7 +271,7 @@ export function buildCallSkillTool(skills: Skill[], deps?: CallSkillDeps): ToolD
       if (!deps) return ok({ name: skill.name, kind: skill.kind, instructions: skill.prompt });
 
       if (skill.kind === 'chat') {
-        const r = await runPlainChat(skill.prompt, { send: deps.send });
+        const r = await runPlainChat(skill.prompt, { send: deps.send, model: deps.model });
         if (r.outcome === 'no-key') return err('runtime-error', 'No API key set for the skill run.');
         return ok({ name: skill.name, answer: r.text ?? '' });
       }
@@ -277,6 +280,7 @@ export function buildCallSkillTool(skills: Skill[], deps?: CallSkillDeps): ToolD
         onEvent: () => {},
         onConfirm: deps.onConfirm,
         send: deps.send,
+        model: deps.model,
         exposeSkills: false,
       });
       if (result.outcome === 'no-key') return err('runtime-error', 'No API key set for the skill run.');
@@ -457,7 +461,7 @@ export async function runAgentTask(
     send,
     options.makeRegistry ?? createDefaultRegistry,
     skills,
-    { send, onConfirm: options.onConfirm },
+    { send, onConfirm: options.onConfirm, model },
     options.onAskUser,
   );
   // Phase 2 routing: pull enabled MCP tools off the address-book and register

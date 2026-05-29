@@ -17,7 +17,7 @@ test('add a custom model — it appears in the picker (FR-MR-8)', async ({ conte
   await panel.getByRole('button', { name: 'Add model' }).click();
 
   // The new model is now an option in the Active-model picker.
-  await expect(panel.getByLabel('Active model').locator('option', { hasText: 'My Test Model' })).toHaveCount(1);
+  await expect(panel.getByLabel('Exact model').locator('option', { hasText: 'My Test Model' })).toHaveCount(1);
   await panel.screenshot({ path: path.join(SHOTS, '54-model-editor.png') });
 });
 

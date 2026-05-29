@@ -4,7 +4,7 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { Ic, BuddyMark } from '../ui/icons';
 import { IconBtn } from '../ui/primitives';
-import { modelLabel, useActiveModel } from '../llm/modelPref';
+import { modelLabel, useResolvedModelId } from '../llm/modelPref';
 
 export type View = 'chat' | 'apps' | 'skills' | 'flows' | 'history' | 'library' | 'settings';
 
@@ -117,10 +117,10 @@ export function BuddyPanel({ view, onView, collapsed, collapsible, onToggleColla
 
 function PanelHeader({ view, onClose, onNewChat, onOpenChatList }: { view: View; onClose?: () => void; onNewChat?: () => void; onOpenChatList?: () => void }) {
   const t = TITLES[view] ?? TITLES.chat;
-  const [activeModel] = useActiveModel();
+  const resolvedModel = useResolvedModelId();
   const [menu, setMenu] = useState(false);
-  // The chat header shows the live active model (picked in Settings).
-  const sub = view === 'chat' ? modelLabel(activeModel) : t.sub;
+  // The chat header shows the model actually in use (resolved from the intent).
+  const sub = view === 'chat' ? modelLabel(resolvedModel) : t.sub;
   return (
     <header className="panel-hd">
       <div className="panel-hd-l">

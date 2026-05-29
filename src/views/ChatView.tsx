@@ -47,7 +47,7 @@ import {
   addSpend,
   isOverDailyCap,
 } from '../cost/budget';
-import { useActiveModel } from '../llm/modelPref';
+import { useResolvedModelId } from '../llm/modelPref';
 import {
   isSTTSupported,
   isTTSSupported,
@@ -161,7 +161,7 @@ export function ChatView({
   // useful semantics; the user re-picks if they want to send again.
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
-  const [activeModel] = useActiveModel();
+  const activeModel = useResolvedModelId();
   const [sessionCost, setSessionCost] = useState(0);
   const [perRunCap] = usePersistedState<number>(BUDGET_KEYS.perRun, BUDGET_DEFAULTS.perRun);
   const [perDayCap] = usePersistedState<number>(BUDGET_KEYS.perDay, BUDGET_DEFAULTS.perDay);

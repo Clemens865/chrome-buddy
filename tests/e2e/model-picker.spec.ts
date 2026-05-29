@@ -10,14 +10,15 @@ test('live: model picker switches the active model', async ({ context, extension
   await panel.setViewportSize({ width: 440, height: 980 });
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
 
-  // Chat header starts on the registry default (Gemini 3.5 Flash).
+  // Settings: the Balanced intent resolves to the registry default (3.5 Flash).
+  await panel.getByRole('button', { name: 'Settings', exact: true }).click();
+  await panel.getByRole('button', { name: 'Balanced', exact: true }).click();
+  await panel.getByRole('button', { name: 'Chat', exact: true }).click();
   await expect(panel.locator('.panel-hd-sub')).toContainText('Gemini 3.5 Flash');
 
-  // Switch the model in Settings.
+  // Pick an exact model (advanced) → the header reflects it.
   await panel.getByRole('button', { name: 'Settings', exact: true }).click();
-  await panel.getByLabel('Active model').selectOption({ label: 'Gemini 2.5 Pro' });
-
-  // Back to Chat: the header reflects the new model.
+  await panel.getByLabel('Exact model').selectOption({ label: 'Gemini 2.5 Pro' });
   await panel.getByRole('button', { name: 'Chat', exact: true }).click();
   await expect(panel.locator('.panel-hd-sub')).toContainText('Gemini 2.5 Pro');
   await panel.screenshot({ path: path.join(SHOTS, '23-model-picker.png') });

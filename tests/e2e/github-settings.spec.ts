@@ -15,9 +15,12 @@ test('Settings → GitHub: add + remove token (storage.session, never on disk)',
   // Scroll the GitHub row into view (anchor on the row label, not the section).
   await panel.getByText('Personal access token', { exact: true }).scrollIntoViewIfNeeded();
   await expect(panel.getByText('Personal access token', { exact: true })).toBeVisible();
-  // Allow time for chrome.storage.session.get to resolve hasToken=false. We use
-  // the Pill class to disambiguate (the words "Not set" could appear elsewhere).
-  const notSetPill = panel.locator('.pill', { hasText: 'Not set' });
+  // Allow time for chrome.storage.session.get to resolve hasToken=false. Scope
+  // to the GitHub row — other key controls (Gemini, Anthropic) also show a
+  // "Not set" pill, so an unscoped .pill locator is ambiguous.
+  const notSetPill = panel
+    .locator('.settings-row', { hasText: 'Personal access token' })
+    .locator('.pill', { hasText: 'Not set' });
   await expect(notSetPill).toBeVisible({ timeout: 15_000 });
 
   // Add a fake token.
