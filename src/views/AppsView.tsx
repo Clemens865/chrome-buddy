@@ -13,6 +13,7 @@ import { fetchApps, persistApp, removeApp } from '../apps/request';
 import { parseAppConfig, parseCodeApp, renderTemplate, APP_BUILDER_SYSTEM, CODE_APP_BUILDER_SYSTEM } from '../apps/build';
 import { runInSandbox } from '../sandbox/host';
 import { SandboxAppView } from './apps/SandboxAppView';
+import { AppBuilderView } from './apps/AppBuilderView';
 import { describeCaps } from './apps/SandboxAppFrame';
 import { toAppBundle, parseAppBundle, type AppImportReview } from '../apps/appBundle';
 import type { AppConfig } from '../apps/types';
@@ -75,6 +76,7 @@ export function AppsView({
   const resolvedModel = useResolvedModelId();
   const [genApps, setGenApps] = useState<AppConfig[]>([]);
   const [openGen, setOpenGen] = useState<AppConfig | null>(null);
+  const [editApp, setEditApp] = useState<AppConfig | null>(null);
   const [importReview, setImportReview] = useState<AppImportReview | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
   const [creating, setCreating] = useState(false);
@@ -135,6 +137,16 @@ export function AppsView({
       setBusy(false);
     }
   };
+
+  if (editApp) {
+    return (
+      <AppBuilderView
+        initial={editApp}
+        onBack={() => setEditApp(null)}
+        onSaved={() => { setEditApp(null); void refresh(); }}
+      />
+    );
+  }
 
   if (openGen) {
     return openGen.tier === 3 ? (
@@ -217,6 +229,7 @@ export function AppsView({
                 key={a.id}
                 app={{ id: a.id, icon: Ic.sparkle, name: a.name, desc: a.tier === 2 ? `${a.description} · sandboxed` : a.description, color: GEN_COLOR }}
                 onOpen={() => setOpenGen(a)}
+                onEdit={a.tier === 3 ? () => setEditApp(a) : undefined}
                 onDelete={async () => {
                   await removeApp(a.id);
                   void refresh();
@@ -274,7 +287,7 @@ export function AppsView({
   );
 }
 
-function AppCard({ app, onOpen, onDelete }: { app: AppMeta; onOpen: () => void; onDelete?: () => void | Promise<void> }) {
+function AppCard({ app, onOpen, onDelete, onEdit }: { app: AppMeta; onOpen: () => void; onDelete?: () => void | Promise<void>; onEdit?: () => void }) {
   return (
     <div className="app-card-wrap">
       <button type="button" className="app-card" onClick={onOpen}>
@@ -284,6 +297,9 @@ function AppCard({ app, onOpen, onDelete }: { app: AppMeta; onOpen: () => void; 
           <div className="app-card-desc">{app.desc}</div>
         </div>
       </button>
+      {onEdit && (
+        <button type="button" className="app-card-edit" aria-label={`Edit ${app.name}`} title="Edit in the builder" onClick={onEdit}>✎</button>
+      )}
       {onDelete && (
         <button type="button" className="app-card-del" aria-label={`Delete ${app.name}`} onClick={() => void onDelete()}>✕</button>
       )}

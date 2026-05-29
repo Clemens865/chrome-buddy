@@ -18,20 +18,33 @@ import {
   describeMessages,
   iterateMessage,
   repairMessage,
+  UI_APP_BUILDER_SYSTEM,
 } from '../../apps/uiBuild';
 import { SandboxAppFrame, describeCaps, type AppStatus } from './SandboxAppFrame';
 
 const MAX_REPAIRS = 3;
 
-export function AppBuilderView({ onBack, onSaved }: { onBack: () => void; onSaved: (app: AppConfig) => void }) {
+/** Seed an edit session: the system contract + the app's current spec as the
+ *  prior assistant turn, so "Refine it…" edits the existing app. */
+function seedMessages(app: AppConfig): ChatMessage[] {
+  const spec = JSON.stringify({ name: app.name, description: app.description, html: app.html ?? '', css: app.css ?? '', ui: app.ui ?? '', permissions: app.permissions ?? [] });
+  return [
+    { role: 'system', content: UI_APP_BUILDER_SYSTEM },
+    { role: 'assistant', content: spec },
+  ];
+}
+
+// `initial` (optional) reopens a saved Tier-3 app to iterate on it — its id is
+// preserved so saving UPDATES the same app rather than creating a duplicate.
+export function AppBuilderView({ onBack, onSaved, initial }: { onBack: () => void; onSaved: (app: AppConfig) => void; initial?: AppConfig }) {
   const [desc, setDesc] = useState('');
   const [instruction, setInstruction] = useState('');
-  const [draft, setDraft] = useState<AppConfig | null>(null);
-  const [version, setVersion] = useState(0); // bump to remount the preview
+  const [draft, setDraft] = useState<AppConfig | null>(initial ?? null);
+  const [version, setVersion] = useState(initial ? 1 : 0); // bump to remount the preview
   const [status, setStatus] = useState<AppStatus>('loading');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const messages = useRef<ChatMessage[]>([]);
+  const messages = useRef<ChatMessage[]>(initial ? seedMessages(initial) : []);
   const repairs = useRef(0);
 
   // Unified model choice (Settings → Quality vs. cost). Set "Best" + an
