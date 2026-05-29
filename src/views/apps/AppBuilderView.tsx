@@ -11,7 +11,7 @@ import type { AppConfig } from '../../apps/types';
 import type { ChatMessage } from '../../llm/types';
 import { generateViaBackground } from '../../llm/instance';
 import { persistApp } from '../../apps/request';
-import { useApiKey } from '../../key/useApiKey';
+import { useResolvedModelId, modelLabel } from '../../llm/modelPref';
 import {
   parseUiApp,
   toAppConfig,
@@ -22,7 +22,6 @@ import {
 import { SandboxAppFrame, describeCaps, type AppStatus } from './SandboxAppFrame';
 
 const MAX_REPAIRS = 3;
-const OPUS_MODEL = 'claude-opus-4-8';
 
 export function AppBuilderView({ onBack, onSaved }: { onBack: () => void; onSaved: (app: AppConfig) => void }) {
   const [desc, setDesc] = useState('');
@@ -32,12 +31,12 @@ export function AppBuilderView({ onBack, onSaved }: { onBack: () => void; onSave
   const [status, setStatus] = useState<AppStatus>('loading');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [useOpus, setUseOpus] = useState(false);
   const messages = useRef<ChatMessage[]>([]);
   const repairs = useRef(0);
 
-  const { keyStatus: anthropicKey } = useApiKey('anthropic');
-  const model = useOpus ? OPUS_MODEL : undefined;
+  // Unified model choice (Settings → Quality vs. cost). Set "Best" + an
+  // Anthropic key to build with Opus 4.8.
+  const model = useResolvedModelId();
 
   // Run a builder turn: send the accumulated messages, parse the app spec,
   // record the assistant turn (so the next edit builds on it), and preview it.
@@ -135,7 +134,7 @@ export function AppBuilderView({ onBack, onSaved }: { onBack: () => void; onSave
               <button type="button" className="btn btn-primary btn-sm" disabled={busy || !desc.trim()} onClick={() => void build()}>
                 {busy ? 'Building…' : 'Build'}
               </button>
-              <ModelToggle useOpus={useOpus} setUseOpus={setUseOpus} opusAvailable={anthropicKey === 'set'} />
+              <span className="builder-model-note">Building with {modelLabel(model)} · change in Settings → Model</span>
             </div>
           </div>
         ) : (
@@ -176,24 +175,12 @@ export function AppBuilderView({ onBack, onSaved }: { onBack: () => void; onSave
                 <button type="button" className="btn btn-primary btn-sm" disabled={!canSave} onClick={() => void save()} title={canSave ? '' : 'The app must run once before saving'}>
                   Save to my apps
                 </button>
-                <ModelToggle useOpus={useOpus} setUseOpus={setUseOpus} opusAvailable={anthropicKey === 'set'} />
+                <span className="builder-model-note">{modelLabel(model)}</span>
               </div>
             </div>
           </>
         )}
       </div>
     </div>
-  );
-}
-
-function ModelToggle({ useOpus, setUseOpus, opusAvailable }: { useOpus: boolean; setUseOpus: (v: boolean) => void; opusAvailable: boolean }) {
-  if (!opusAvailable) {
-    return <span className="builder-model-note">Builder: Gemini Flash · add an Anthropic key in Settings for Opus</span>;
-  }
-  return (
-    <label className="builder-model-note" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-      <input type="checkbox" checked={useOpus} onChange={(e) => setUseOpus(e.target.checked)} aria-label="Use Opus 4.8 to build" />
-      Build with Opus 4.8
-    </label>
   );
 }

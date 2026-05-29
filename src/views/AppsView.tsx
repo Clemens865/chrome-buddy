@@ -7,9 +7,8 @@ import { Ic } from '../ui/icons';
 import { hexAlpha } from '../ui/theme';
 import { Markdown } from '../ui/Markdown';
 import { generateViaBackground } from '../llm/instance';
-import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { runPlainChat } from '../agent';
-import { useActiveModel } from '../llm/modelPref';
+import { useResolvedModelId } from '../llm/modelPref';
 import { fetchApps, persistApp, removeApp } from '../apps/request';
 import { parseAppConfig, parseCodeApp, renderTemplate, APP_BUILDER_SYSTEM, CODE_APP_BUILDER_SYSTEM } from '../apps/build';
 import { runInSandbox } from '../sandbox/host';
@@ -73,6 +72,7 @@ export function AppsView({
     if (openable.has(id as AppId)) onOpenApp(id as AppId);
   };
 
+  const resolvedModel = useResolvedModelId();
   const [genApps, setGenApps] = useState<AppConfig[]>([]);
   const [openGen, setOpenGen] = useState<AppConfig | null>(null);
   const [importReview, setImportReview] = useState<AppImportReview | null>(null);
@@ -113,7 +113,7 @@ export function AppsView({
     setError(undefined);
     try {
       const res = await generateViaBackground({
-        model: DEFAULT_REGISTRY.defaultModel,
+        model: resolvedModel,
         messages: [
           { role: 'system', content: tier === 2 ? CODE_APP_BUILDER_SYSTEM : APP_BUILDER_SYSTEM },
           { role: 'user', content: desc },
@@ -298,7 +298,7 @@ function GeneratedApp({ app, onBack }: { app: AppConfig; onBack: () => void }) {
   const [busy, setBusy] = useState(false);
   const [output, setOutput] = useState<string | null>(null);
   const [noKey, setNoKey] = useState(false);
-  const [activeModel] = useActiveModel();
+  const activeModel = useResolvedModelId();
   // FR-T2-5: a Tier-2 code app needs human review of its code + capabilities
   // before its first run.
   const [reviewed, setReviewed] = useState(app.tier !== 2 || !app.code || !!app.reviewed);

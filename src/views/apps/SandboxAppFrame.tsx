@@ -9,6 +9,7 @@
 import { useEffect, useRef } from 'react';
 import { type AppConfig, KNOWN_APP_CAPS } from '../../apps/types';
 import { generateViaBackground } from '../../llm/instance';
+import { useResolvedModelId } from '../../llm/modelPref';
 import { appDataKey, applyStorageOp, type StorageArgs } from '../../apps/appStorage';
 import { appBaseCss, readThemeTokens } from '../../apps/appTheme';
 
@@ -45,6 +46,12 @@ export function SandboxAppFrame({
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const callTimes = useRef<number[]>([]);
   const caps = grantedCaps(app);
+  // The app's bridge.gemini honors the user's model choice (Settings → Quality
+  // vs. cost). Held in a ref so the long-lived bridge always reads the current
+  // value without re-mounting the iframe when the preference changes.
+  const modelId = useResolvedModelId();
+  const modelRef = useRef(modelId);
+  modelRef.current = modelId;
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -66,7 +73,7 @@ export function SandboxAppFrame({
         if (op === 'gemini') {
           const prompt = typeof args === 'string' ? args : String((args as { prompt?: unknown })?.prompt ?? '');
           if (!prompt.trim()) return { ok: false, error: 'gemini: empty prompt.' };
-          const res = await generateViaBackground({ messages: [{ role: 'user', content: prompt }] });
+          const res = await generateViaBackground({ messages: [{ role: 'user', content: prompt }], model: modelRef.current });
           return { ok: true, result: res.text };
         }
         if (op === 'image') {
