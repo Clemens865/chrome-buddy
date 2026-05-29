@@ -40,6 +40,32 @@ export function rotatedSize(width: number, height: number): { width: number; hei
 }
 
 /**
+ * PURE: map a selection drawn in DISPLAYED pixels (over a scaled <img>) to a
+ * crop rect in the canvas's native pixels, clamped to bounds. Used by the
+ * interactive crop tool: the preview is scaled, so the box must be re-scaled.
+ */
+export function selectionToCrop(
+  sel: CropRect,
+  displayWidth: number,
+  displayHeight: number,
+  canvasWidth: number,
+  canvasHeight: number,
+): CropRect {
+  const sx = displayWidth > 0 ? canvasWidth / displayWidth : 1;
+  const sy = displayHeight > 0 ? canvasHeight / displayHeight : 1;
+  return clampCropRect(
+    { x: sel.x * sx, y: sel.y * sy, width: sel.width * sx, height: sel.height * sy },
+    canvasWidth,
+    canvasHeight,
+  );
+}
+
+/** PURE: clamp a corner radius to a sane range (0 .. half the shortest side). */
+export function clampRadius(radius: number, width: number, height: number): number {
+  return Math.max(0, Math.min(Math.round(radius), Math.floor(Math.min(width, height) / 2)));
+}
+
+/**
  * PURE: apply a brightness LUT to RGBA pixel data in place (alpha untouched).
  * Operates on a raw Uint8ClampedArray so it can be tested without a canvas.
  */
@@ -94,6 +120,30 @@ export function rotate90(canvas: HTMLCanvasElement): HTMLCanvasElement {
   const ctx = get2dContext(out);
   ctx.translate(out.width, 0);
   ctx.rotate(Math.PI / 2);
+  ctx.drawImage(canvas, 0, 0);
+  return out;
+}
+
+/** Render a canvas with rounded corners onto a new (transparent-cornered)
+ *  canvas. radius is clamped; 0 returns an unmodified copy. PNG-export only. */
+export function roundedCanvas(canvas: HTMLCanvasElement, radius: number): HTMLCanvasElement {
+  const r = clampRadius(radius, canvas.width, canvas.height);
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height;
+  const ctx = get2dContext(out);
+  if (r > 0) {
+    const w = out.width;
+    const h = out.height;
+    ctx.beginPath();
+    ctx.moveTo(r, 0);
+    ctx.arcTo(w, 0, w, h, r);
+    ctx.arcTo(w, h, 0, h, r);
+    ctx.arcTo(0, h, 0, 0, r);
+    ctx.arcTo(0, 0, w, 0, r);
+    ctx.closePath();
+    ctx.clip();
+  }
   ctx.drawImage(canvas, 0, 0);
   return out;
 }

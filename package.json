@@ -59,6 +59,7 @@
     "test:e2e:appcaps": "playwright test app-caps.spec.ts",
     "test:e2e:appshare": "playwright test app-share.spec.ts",
     "test:e2e:apptheme": "playwright test app-theme.spec.ts",
+    "test:e2e:imageedit": "playwright test image-edit.spec.ts",
     "test:e2e:history": "playwright test history-detail.spec.ts",
     "test:e2e:stream": "playwright test chat-stream.spec.ts",
     "test:e2e:filesearch": "playwright test file-search-stores.spec.ts",

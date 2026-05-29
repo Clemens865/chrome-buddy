@@ -33,6 +33,11 @@ const STYLE_HINT: Record<ImageStyle, string> = {
  */
 export function buildImagePrompt(req: GenerateRequest): string {
   const base = req.prompt.trim();
+  // Edit mode: the prompt is an instruction applied to inputImage. Keep the
+  // existing composition + dimensions; don't append style/aspect directives.
+  if (req.inputImage) {
+    return `Edit the provided image: ${base}. Keep the overall composition unless the instruction says otherwise; return only the edited image.`;
+  }
   const style = req.style ?? DEFAULT_STYLE;
   const aspect = req.aspect ?? DEFAULT_ASPECT;
   const parts = [base, STYLE_HINT[style], `aspect ratio ${aspect}`];
@@ -94,7 +99,12 @@ export async function generateImage(req: GenerateRequest): Promise<GenerateOutco
 
   try {
     // Image models use the native generateContent endpoint, not the chat adapter.
-    const dataUrl = await generateImageViaBackground({ model: IMAGE_MODEL, prompt, aspect });
+    const dataUrl = await generateImageViaBackground({
+      model: IMAGE_MODEL,
+      prompt,
+      aspect,
+      ...(req.inputImage ? { inputImage: req.inputImage } : {}),
+    });
     if (!dataUrl) {
       return {
         ok: false,

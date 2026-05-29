@@ -8,113 +8,181 @@ import {
   generateImage,
   loadImageToCanvas,
   rotate90,
+  roundedCanvas,
+  selectionToCrop,
+  clampRadius,
 } from '../../image';
-import type { AspectRatio, GeneratedImage, ImageStyle } from '../../image';
+import type { AspectRatio, CropRect, ImageStyle } from '../../image';
 
 type Status =
   | { kind: 'idle' }
   | { kind: 'generating' }
+  | { kind: 'editing' }
   | { kind: 'no-key' }
   | { kind: 'error'; message: string };
 
 const MAX_PROMPT = 480;
+type Sel = { x: number; y: number; w: number; h: number };
 
 export function ImageApp({ onBack }: { onBack: () => void }) {
   const app = appById('image');
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState<AspectRatio>('1:1');
   const [style, setStyle] = useState<ImageStyle>('illustration');
+  const [editPrompt, setEditPrompt] = useState('');
+  const [radius, setRadius] = useState(0);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
-  const [generated, setGenerated] = useState<GeneratedImage | null>(null);
 
-  // The editable upload lives on a canvas; we mirror it into a data URL for the
-  // preview <img> and re-render on each edit.
+  // One canvas-backed working image drives BOTH generated + uploaded images, so
+  // every tool (crop / rotate / brightness / AI-edit / rounded export) applies
+  // to whatever is on screen. `versions` is the undo stack of prior data URLs.
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [editUrl, setEditUrl] = useState<string | null>(null);
+  const versions = useRef<string[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const busy = status.kind === 'generating';
+  // Interactive crop state.
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const [cropping, setCropping] = useState(false);
+  const [sel, setSel] = useState<Sel | null>(null);
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
 
-  async function onGenerate() {
-    if (!prompt.trim() || busy) return;
-    setStatus({ kind: 'generating' });
-    setGenerated(null);
-    const outcome = await generateImage({ prompt, aspect, style });
-    if (outcome.ok) {
-      setGenerated(outcome.image);
-      setStatus({ kind: 'idle' });
-    } else if (outcome.reason === 'no-key') {
-      setStatus({ kind: 'no-key' });
-    } else {
-      setStatus({ kind: 'error', message: outcome.message });
-    }
-  }
+  const busy = status.kind === 'generating' || status.kind === 'editing';
 
-  function syncEditUrl() {
+  function syncFromCanvas() {
     const canvas = canvasRef.current;
     if (canvas) setEditUrl(canvas.toDataURL('image/png'));
   }
 
-  async function onUpload(file: File) {
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = String(reader.result);
-      const { canvas } = await loadImageToCanvas(dataUrl);
-      canvasRef.current = canvas;
-      setGenerated(null);
+  // Replace the working image with a new data URL, pushing the old onto undo.
+  async function setImage(dataUrl: string, { keepHistory = true } = {}) {
+    if (keepHistory && editUrl) {
+      versions.current.push(editUrl);
+      setCanUndo(true);
+    } else if (!keepHistory) {
+      versions.current = [];
+      setCanUndo(false);
+    }
+    const { canvas } = await loadImageToCanvas(dataUrl);
+    canvasRef.current = canvas;
+    setEditUrl(dataUrl);
+    setCropping(false);
+    setSel(null);
+  }
+
+  async function onGenerate() {
+    if (!prompt.trim() || busy) return;
+    setStatus({ kind: 'generating' });
+    const outcome = await generateImage({ prompt, aspect, style });
+    if (outcome.ok) {
+      await setImage(outcome.image.dataUrl, { keepHistory: false });
       setStatus({ kind: 'idle' });
-      syncEditUrl();
-    };
+    } else setStatus(outcome.reason === 'no-key' ? { kind: 'no-key' } : { kind: 'error', message: outcome.message });
+  }
+
+  // Iterate with AI: re-generate using the current image as the edit base.
+  async function onAiEdit() {
+    if (!editUrl || !editPrompt.trim() || busy) return;
+    setStatus({ kind: 'editing' });
+    const outcome = await generateImage({ prompt: editPrompt, inputImage: editUrl, aspect, style });
+    if (outcome.ok) {
+      await setImage(outcome.image.dataUrl);
+      setEditPrompt('');
+      setStatus({ kind: 'idle' });
+    } else setStatus(outcome.reason === 'no-key' ? { kind: 'no-key' } : { kind: 'error', message: outcome.message });
+  }
+
+  async function onUndo() {
+    const prev = versions.current.pop();
+    setCanUndo(versions.current.length > 0);
+    if (!prev) return;
+    const { canvas } = await loadImageToCanvas(prev);
+    canvasRef.current = canvas;
+    setEditUrl(prev);
+    setCropping(false);
+    setSel(null);
+  }
+
+  function onUpload(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => void setImage(String(reader.result), { keepHistory: false });
     reader.readAsDataURL(file);
   }
 
-  function onCrop() {
+  // --- interactive crop (drag a box over the preview) ---
+  function onCropPointerDown(e: React.PointerEvent) {
+    if (!cropping || !imgRef.current) return;
+    const r = imgRef.current.getBoundingClientRect();
+    dragStart.current = { x: e.clientX - r.left, y: e.clientY - r.top };
+    setSel({ x: dragStart.current.x, y: dragStart.current.y, w: 0, h: 0 });
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+  }
+  function onCropPointerMove(e: React.PointerEvent) {
+    if (!cropping || !dragStart.current || !imgRef.current) return;
+    const r = imgRef.current.getBoundingClientRect();
+    const cx = Math.max(0, Math.min(e.clientX - r.left, r.width));
+    const cy = Math.max(0, Math.min(e.clientY - r.top, r.height));
+    const s = dragStart.current;
+    setSel({ x: Math.min(s.x, cx), y: Math.min(s.y, cy), w: Math.abs(cx - s.x), h: Math.abs(cy - s.y) });
+  }
+  function applyCrop() {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    // Center crop to 80% — a simple deterministic edit (clamped in helper).
-    const w = Math.round(canvas.width * 0.8);
-    const h = Math.round(canvas.height * 0.8);
-    canvasRef.current = crop(canvas, {
-      x: Math.round((canvas.width - w) / 2),
-      y: Math.round((canvas.height - h) / 2),
-      width: w,
-      height: h,
-    });
-    syncEditUrl();
+    const img = imgRef.current;
+    if (!canvas || !img || !sel || sel.w < 6 || sel.h < 6) { setCropping(false); setSel(null); return; }
+    const rect: CropRect = { x: sel.x, y: sel.y, width: sel.w, height: sel.h };
+    const mapped = selectionToCrop(rect, img.clientWidth, img.clientHeight, canvas.width, canvas.height);
+    versions.current.push(editUrl!);
+    setCanUndo(true);
+    canvasRef.current = crop(canvas, mapped);
+    setCropping(false);
+    setSel(null);
+    syncFromCanvas();
   }
 
   function onRotate() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvasRef.current = rotate90(canvas);
-    syncEditUrl();
+    if (!canvasRef.current) return;
+    versions.current.push(editUrl!); setCanUndo(true);
+    canvasRef.current = rotate90(canvasRef.current);
+    syncFromCanvas();
   }
-
   function onBrighten(delta: number) {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    versions.current.push(editUrl!); setCanUndo(true);
     adjustBrightness(ctx, delta);
-    syncEditUrl();
+    syncFromCanvas();
   }
 
-  function download(url: string, name: string) {
+  function onDownload() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    // Build the Blob SYNCHRONOUSLY (in the click gesture) and download via an
+    // object URL — async toBlob loses the user-activation and the browser
+    // blocks the download. Rounded export clips to a rounded rect first.
+    const target = radius > 0 ? roundedCanvas(canvas, radius) : canvas;
+    const dataUrl = target.toDataURL('image/png');
+    const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = name;
+    a.download = 'chrome-buddy-image.png';
     a.click();
+    URL.revokeObjectURL(url);
   }
 
-  // Revoke nothing (data URLs), but reset edit state when leaving via back.
-  useEffect(() => () => setEditUrl(null), []);
+  useEffect(() => () => { setEditUrl(null); versions.current = []; }, []);
 
+  const maxRadius = canvasRef.current ? Math.floor(Math.min(canvasRef.current.width, canvasRef.current.height) / 2) : 256;
   const showEditor = editUrl !== null;
-  const showResult = generated !== null;
-  const showEmpty = !showEditor && !showResult && status.kind !== 'generating';
+  const showEmpty = !showEditor && !busy && status.kind !== 'no-key' && status.kind !== 'error';
 
   return (
-    <div className="micro">
+    <div className="micro" data-testid="image-app">
       <AppHeader app={app} onBack={onBack} />
       <div className="micro-body">
         <div className="img-prompt">
@@ -127,132 +195,116 @@ export function ImageApp({ onBack }: { onBack: () => void }) {
           />
           <div className="img-prompt-foot">
             <span className="img-prompt-meta">{prompt.length} / {MAX_PROMPT}</span>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={!prompt.trim() || busy}
-              onClick={onGenerate}
-            >
-              <span className="ic ic-sm">{Ic.sparkle}</span>
-              {busy ? 'Generating…' : 'Generate'}
+            <button type="button" className="btn btn-primary btn-sm" disabled={!prompt.trim() || busy} onClick={onGenerate}>
+              <span className="ic ic-sm">{Ic.sparkle}</span>{status.kind === 'generating' ? 'Generating…' : 'Generate'}
             </button>
           </div>
         </div>
 
         <div className="seg-row">
           <span className="seg-row-l">Aspect</span>
-          <Segmented
-            value={aspect}
-            onChange={(v) => setAspect(v as AspectRatio)}
-            options={[{ v: '1:1', l: '1:1' }, { v: '3:2', l: '3:2' }, { v: '16:9', l: '16:9' }, { v: '9:16', l: '9:16' }]}
-          />
+          <Segmented value={aspect} onChange={(v) => setAspect(v as AspectRatio)}
+            options={[{ v: '1:1', l: '1:1' }, { v: '3:2', l: '3:2' }, { v: '16:9', l: '16:9' }, { v: '9:16', l: '9:16' }]} />
         </div>
         <div className="seg-row">
           <span className="seg-row-l">Style</span>
-          <Segmented
-            value={style}
-            onChange={(v) => setStyle(v as ImageStyle)}
-            options={[{ v: 'photo', l: 'Photo' }, { v: 'illustration', l: 'Illustration' }, { v: '3d', l: '3D' }]}
-          />
+          <Segmented value={style} onChange={(v) => setStyle(v as ImageStyle)}
+            options={[{ v: 'photo', l: 'Photo' }, { v: 'illustration', l: 'Illustration' }, { v: '3d', l: '3D' }]} />
         </div>
 
-        {/* Generated image result */}
-        {showResult && generated && (
-          <div className="img-result">
-            <img className="art" src={generated.dataUrl} alt={generated.prompt} />
-            <div className="img-result-actions">
-              <button
-                type="button"
-                className="img-tool"
-                aria-label="Download image"
-                title="Download"
-                onClick={() => download(generated.dataUrl, 'chrome-buddy-image.png')}
-              >
-                <span className="ic">{Ic.download}</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Uploaded photo editor */}
         {showEditor && editUrl && (
           <>
-            <div className="img-result">
-              <img className="art" src={editUrl} alt="Editing canvas" />
+            <div className={'img-result' + (cropping ? ' is-cropping' : '')}>
+              <div
+                className="img-crop-stage"
+                onPointerDown={onCropPointerDown}
+                onPointerMove={onCropPointerMove}
+                onPointerUp={() => { dragStart.current = null; }}
+              >
+                <img ref={imgRef} className="art" src={editUrl} alt="Working image" draggable={false} />
+                {cropping && sel && sel.w > 0 && (
+                  <div className="img-crop-box" style={{ left: sel.x, top: sel.y, width: sel.w, height: sel.h }} />
+                )}
+              </div>
               <div className="img-result-actions">
-                <button type="button" className="img-tool" aria-label="Download image" title="Download" onClick={() => download(editUrl, 'chrome-buddy-edit.png')}>
+                {canUndo && (
+                  <button type="button" className="img-tool" aria-label="Undo" title="Undo" onClick={() => void onUndo()}>
+                    <span className="ic">{Ic.history}</span>
+                  </button>
+                )}
+                <button type="button" className="img-tool" aria-label="Download PNG" title="Download PNG" onClick={onDownload}>
                   <span className="ic">{Ic.download}</span>
                 </button>
               </div>
             </div>
+
+            {/* Iterate with AI */}
+            <div className="img-edit-row">
+              <input
+                className="settings-input"
+                placeholder="Change it… e.g. make the sky sunset, add a hat"
+                value={editPrompt}
+                onChange={(e) => setEditPrompt(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void onAiEdit(); }}
+                aria-label="Edit instruction"
+                disabled={busy}
+              />
+              <button type="button" className="btn btn-primary btn-sm" disabled={busy || !editPrompt.trim()} onClick={() => void onAiEdit()}>
+                {status.kind === 'editing' ? 'Editing…' : 'Edit with AI'}
+              </button>
+            </div>
+
+            {/* Manual edit tools */}
             <div className="seg-row">
               <span className="seg-row-l">Edit</span>
               <div className="seg" role="group" aria-label="Edit tools">
-                <button type="button" className="seg-btn" onClick={onCrop}>Crop</button>
+                <button type="button" className={'seg-btn' + (cropping ? ' is-on' : '')} onClick={() => { setCropping((c) => !c); setSel(null); }}>{cropping ? 'Cancel' : 'Crop'}</button>
+                {cropping && <button type="button" className="seg-btn" onClick={applyCrop}>Apply</button>}
                 <button type="button" className="seg-btn" onClick={onRotate}>Rotate</button>
                 <button type="button" className="seg-btn" onClick={() => onBrighten(12)}>Brighter</button>
                 <button type="button" className="seg-btn" onClick={() => onBrighten(-12)}>Darker</button>
               </div>
             </div>
+            {cropping && <div className="empty-state-desc" style={{ fontSize: 11 }}>Drag a box on the image, then tap Apply.</div>}
+
+            {/* Rounded-corner PNG export */}
+            <div className="seg-row">
+              <span className="seg-row-l">Corners</span>
+              <div className="img-radius">
+                <input type="range" min={0} max={maxRadius} value={Math.min(radius, maxRadius)} onChange={(e) => setRadius(Number(e.target.value))} aria-label="Corner radius" />
+                <span className="img-radius-val">{radius ? `${clampRadius(radius, canvasRef.current?.width ?? 0, canvasRef.current?.height ?? 0)}px round` : 'square'}</span>
+              </div>
+            </div>
           </>
         )}
 
-        {/* Generating placeholder */}
         {status.kind === 'generating' && (
-          <div className="empty-state">
-            <span className="ic" style={{ width: 28, height: 28 }}>{Ic.sparkle}</span>
-            <div className="empty-state-title">Generating…</div>
-            <div className="empty-state-desc">Asking the model to create your image.</div>
-          </div>
+          <div className="empty-state"><span className="ic" style={{ width: 28, height: 28 }}>{Ic.sparkle}</span>
+            <div className="empty-state-title">Generating…</div></div>
         )}
-
-        {/* No-key state */}
         {status.kind === 'no-key' && (
-          <div className="empty-state">
-            <span className="ic" style={{ width: 28, height: 28 }}>{Ic.warn}</span>
+          <div className="empty-state"><span className="ic" style={{ width: 28, height: 28 }}>{Ic.warn}</span>
             <div className="empty-state-title">Add an API key in Settings to generate</div>
-            <div className="empty-state-desc">Image generation runs through your own Gemini key. Open Settings to add one, then try again.</div>
-          </div>
+            <div className="empty-state-desc">Image generation runs through your own Gemini key.</div></div>
         )}
-
-        {/* Error state */}
         {status.kind === 'error' && (
-          <div className="empty-state">
-            <span className="ic" style={{ width: 28, height: 28 }}>{Ic.warn}</span>
+          <div className="empty-state"><span className="ic" style={{ width: 28, height: 28 }}>{Ic.warn}</span>
             <div className="empty-state-title">Couldn’t generate that image</div>
-            <div className="empty-state-desc">{status.message}</div>
-          </div>
+            <div className="empty-state-desc">{status.message}</div></div>
         )}
-
-        {/* Empty state */}
-        {showEmpty && status.kind === 'idle' && (
-          <div className="empty-state">
-            <span className="ic" style={{ width: 28, height: 28 }}>{Ic.image}</span>
+        {showEmpty && (
+          <div className="empty-state"><span className="ic" style={{ width: 28, height: 28 }}>{Ic.image}</span>
             <div className="empty-state-title">Your image will appear here</div>
-            <div className="empty-state-desc">Write a prompt and generate, or upload a photo to edit with crop and AI tools.</div>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileInputRef.current?.click()}>
-              <span className="ic ic-sm">{Ic.download}</span>Upload a photo to edit
-            </button>
+            <div className="empty-state-desc">Generate from a prompt, or upload a photo — then iterate with AI, crop, and export with rounded corners.</div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileInputRef.current?.click()}><span className="ic ic-sm">{Ic.image}</span>Upload a photo</button>
           </div>
         )}
-
-        {!showEmpty && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileInputRef.current?.click()}>
-            <span className="ic ic-sm">{Ic.download}</span>Upload a photo to edit
-          </button>
+        {showEditor && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileInputRef.current?.click()}><span className="ic ic-sm">{Ic.image}</span>Upload a different photo</button>
         )}
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void onUpload(file);
-            e.target.value = '';
-          }}
-        />
+        <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); e.target.value = ''; }} />
       </div>
     </div>
   );

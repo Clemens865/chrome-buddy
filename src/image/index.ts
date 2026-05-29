@@ -10,10 +10,13 @@ export {
   clampCropRect,
   brightnessLut,
   rotatedSize,
+  selectionToCrop,
+  clampRadius,
   applyBrightnessToPixels,
   loadImageToCanvas,
   crop,
   rotate90,
+  roundedCanvas,
   adjustBrightness,
 } from './canvas';
 export { registerImageTools } from './tools';

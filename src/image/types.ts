@@ -9,12 +9,16 @@ export type ImageStyle = 'photo' | 'illustration' | '3d';
 
 /** A request to generate an image (Imagen 4 / Nano Banana — research/03 §4). */
 export interface GenerateRequest {
-  /** Natural-language description of the image to generate. */
+  /** Natural-language description of the image to generate (or, with
+   *  `inputImage`, the edit instruction). */
   prompt: string;
   /** Target aspect ratio. Defaults to 1:1 when omitted. */
   aspect?: AspectRatio;
   /** Style preset that conditions the prompt. Defaults to illustration. */
   style?: ImageStyle;
+  /** When set (an image data URL), EDIT this image per `prompt` instead of
+   *  generating from scratch (Gemini image edit). */
+  inputImage?: string;
 }
 
 /** A single canvas edit operation applied to the working image. */

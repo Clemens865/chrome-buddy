@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildImagePrompt } from './generate';
-import { brightnessLut, clampCropRect, rotatedSize, applyBrightnessToPixels } from './canvas';
+import { brightnessLut, clampCropRect, rotatedSize, applyBrightnessToPixels, selectionToCrop, clampRadius } from './canvas';
 
 describe('buildImagePrompt', () => {
   it('trims the prompt and appends style + aspect directives', () => {
@@ -97,5 +97,27 @@ describe('applyBrightnessToPixels', () => {
 describe('rotatedSize', () => {
   it('swaps width and height', () => {
     expect(rotatedSize(16, 9)).toEqual({ width: 9, height: 16 });
+  });
+});
+
+describe('selectionToCrop', () => {
+  it('scales a displayed selection up to native canvas pixels', () => {
+    // preview shown at 200×200, real canvas 800×800 → 4× scale.
+    expect(selectionToCrop({ x: 10, y: 20, width: 50, height: 50 }, 200, 200, 800, 800)).toEqual({
+      x: 40, y: 80, width: 200, height: 200,
+    });
+  });
+  it('clamps a selection that runs past the edge', () => {
+    const r = selectionToCrop({ x: 150, y: 150, width: 100, height: 100 }, 200, 200, 200, 200);
+    expect(r.x + r.width).toBeLessThanOrEqual(200);
+    expect(r.y + r.height).toBeLessThanOrEqual(200);
+  });
+});
+
+describe('clampRadius', () => {
+  it('caps the radius at half the shortest side', () => {
+    expect(clampRadius(999, 400, 200)).toBe(100);
+    expect(clampRadius(20, 400, 200)).toBe(20);
+    expect(clampRadius(-5, 400, 200)).toBe(0);
   });
 });

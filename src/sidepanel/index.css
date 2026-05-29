@@ -765,6 +765,19 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .img-result-actions { position: absolute; bottom: 10px; right: 10px; display: flex; gap: 4px; padding: 4px; background: rgba(0,0,0,.55); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border-radius: 10px; }
 .img-tool { width: 26px; height: 26px; border: 0; padding: 0; background: transparent; border-radius: 6px; color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .img-tool .ic { width: 14px; height: 14px; }
+
+/* Image editor: crop stage + AI-edit row + rounded-corner control */
+.img-crop-stage { position: relative; display: block; line-height: 0; }
+/* In the editor the image must show at its TRUE ratio (no 1:1 forcing) so the
+   crop selection maps uniformly to canvas pixels. */
+.img-crop-stage img.art { aspect-ratio: auto; height: auto; }
+.img-result.is-cropping .img-crop-stage { cursor: crosshair; touch-action: none; }
+.img-crop-box { position: absolute; border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); pointer-events: none; box-sizing: border-box; }
+.img-edit-row { display: flex; gap: 6px; align-items: center; margin-top: 2px; }
+.img-edit-row .settings-input { flex: 1; }
+.img-radius { display: flex; align-items: center; gap: 8px; flex: 1; }
+.img-radius input[type='range'] { flex: 1; }
+.img-radius-val { font-size: 11px; color: var(--panel-muted-soft); white-space: nowrap; min-width: 64px; text-align: right; }
 .img-tool:hover { background: rgba(255,255,255,.18); }
 .img-variants { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .img-variants .art { border-radius: 8px; }
