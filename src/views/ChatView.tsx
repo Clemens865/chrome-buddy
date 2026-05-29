@@ -47,7 +47,7 @@ import {
   addSpend,
   isOverDailyCap,
 } from '../cost/budget';
-import { useResolvedModelId } from '../llm/modelPref';
+import { useResolvedModelId, useResolvedChatModelId } from '../llm/modelPref';
 import {
   isSTTSupported,
   isTTSSupported,
@@ -161,7 +161,8 @@ export function ChatView({
   // useful semantics; the user re-picks if they want to send again.
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
-  const activeModel = useResolvedModelId();
+  const activeModel = useResolvedModelId(); // heavy/task tier (agent, builder)
+  const chatModel = useResolvedChatModelId(); // basic chat tier (Best→Sonnet, never Opus)
   const [sessionCost, setSessionCost] = useState(0);
   const [perRunCap] = usePersistedState<number>(BUDGET_KEYS.perRun, BUDGET_DEFAULTS.perRun);
   const [perDayCap] = usePersistedState<number>(BUDGET_KEYS.perDay, BUDGET_DEFAULTS.perDay);
@@ -646,7 +647,7 @@ export function ChatView({
           setItems((prev) => [...prev, agentItem(placeholderId, '')]);
           const r = await runPlainChat(prompt, {
             context,
-            model: activeModel,
+            model: chatModel,
             preferNano,
             signal: aborter.signal,
             // Prior turns so the model has conversational memory across the
@@ -687,7 +688,7 @@ export function ChatView({
               ),
             );
             void persistRun(
-              buildRunRecord({ kind: 'chat', task: prompt, answer: r.text, model: activeModel, startedAt }),
+              buildRunRecord({ kind: 'chat', task: prompt, answer: r.text, model: chatModel, startedAt }),
             );
           } else {
             // No content + no no-key — drop the empty placeholder.
@@ -742,7 +743,7 @@ export function ChatView({
         setThinkHarder(false);
       }
     },
-    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments, githubDefaultRepo, libraryAutoContext, thinkHarder, visionConfirmAll],
+    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, chatModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments, githubDefaultRepo, libraryAutoContext, thinkHarder, visionConfirmAll],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -793,7 +794,7 @@ export function ChatView({
             : step.prompt;
 
           if (step.mode === 'chat') {
-            const r = await runPlainChat(fullPrompt, { model: activeModel, preferNano });
+            const r = await runPlainChat(fullPrompt, { model: chatModel, preferNano });
             if (r.outcome === 'no-key') { setNoKey(true); break; }
             recordCost(r.cost ?? 0);
             const text = r.text ?? '';
@@ -825,7 +826,7 @@ export function ChatView({
         setBusy(false);
       }
     },
-    [busy, makeOnConfirm, activeModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, githubDefaultRepo],
+    [busy, makeOnConfirm, activeModel, chatModel, recordCost, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, githubDefaultRepo],
   );
 
   // Resume an interrupted run (FR-AGENT-8): reuse the saved plan, skip done steps.

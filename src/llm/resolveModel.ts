@@ -9,6 +9,9 @@ import type { ModelConfig, ModelRegistry } from './types';
 export type ModelIntent = 'cheapest' | 'balanced' | 'best' | 'custom';
 
 export const OPUS_MODEL_ID = 'claude-opus-4-8';
+// Basic/plain chat never uses Opus (slow + costly for quick Q&A). On "Best"
+// with an Anthropic key, chat routes here — a fast, strong, much cheaper Claude.
+export const CHAT_BEST_MODEL_ID = 'claude-sonnet-4-6';
 const FALLBACK_MODEL = 'gemini-2.5-flash';
 const defaultId = (registry: ModelRegistry): string => registry.defaultModel ?? FALLBACK_MODEL;
 
@@ -67,4 +70,24 @@ export function resolveIntentModel(
     default:
       return defaultId(registry);
   }
+}
+
+/**
+ * Resolve the intent for BASIC/plain chat — same as resolveIntentModel except
+ * "Best" routes to a fast Claude (Sonnet) instead of Opus, so quick chat stays
+ * responsive + affordable. Opus is reserved for agent runs, the app builder,
+ * and other heavy/task work. 'custom' still honors the user's exact pick.
+ */
+export function resolveChatModel(
+  intent: ModelIntent,
+  hasAnthropicKey: boolean,
+  registry: ModelRegistry,
+  customModel?: string,
+): string {
+  if (intent === 'best') {
+    return hasAnthropicKey && registry.models[CHAT_BEST_MODEL_ID]?.enabled !== false
+      ? CHAT_BEST_MODEL_ID
+      : bestGeminiModelId(registry);
+  }
+  return resolveIntentModel(intent, hasAnthropicKey, registry, customModel);
 }

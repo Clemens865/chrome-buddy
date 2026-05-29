@@ -190,7 +190,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
             <> Add an Anthropic key above to use Opus 4.8 for “Best”; otherwise it uses the top Gemini.</>
           )}
           {modelIntent === 'best' && anthropicKey === 'set' && resolvedModel === OPUS_MODEL_ID && (
-            <> Opus is premium — “Best” bills at a higher rate than Gemini.</>
+            <> Opus is premium. Agent runs + the app builder use Opus; basic chat uses Claude Sonnet to stay fast.</>
           )}
         </div>
         <SettingsRow t="Pick an exact model" s="Advanced — overrides the choice above">

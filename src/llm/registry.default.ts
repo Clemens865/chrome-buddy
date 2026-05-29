@@ -62,6 +62,30 @@ export const DEFAULT_REGISTRY: ModelRegistry = {
       tier: 'pro',
       enabled: true,
     },
+    // Sonnet = the "Best" chat tier (fast + strong, far cheaper than Opus) so
+    // basic chat stays responsive when Best is selected; Haiku = cheapest Claude.
+    'claude-sonnet-4-6': {
+      id: 'claude-sonnet-4-6',
+      provider: ANTHROPIC,
+      displayName: 'Claude Sonnet 4.6',
+      contextWindow: 200_000,
+      maxOutputTokens: 16_000,
+      pricing: { inputPerMTok: 3.0, outputPerMTok: 15.0 },
+      capabilities: { vision: true, tools: true, thinking: true, jsonMode: true, streaming: true },
+      tier: 'standard',
+      enabled: true,
+    },
+    'claude-haiku-4-5-20251001': {
+      id: 'claude-haiku-4-5-20251001',
+      provider: ANTHROPIC,
+      displayName: 'Claude Haiku 4.5',
+      contextWindow: 200_000,
+      maxOutputTokens: 8_000,
+      pricing: { inputPerMTok: 1.0, outputPerMTok: 5.0 },
+      capabilities: { vision: true, tools: true, jsonMode: true, streaming: true },
+      tier: 'lite',
+      enabled: true,
+    },
     // ── Gemini 2.5 (stable GA — reliable workhorses) ─────────────────────────
     'gemini-2.5-flash': {
       id: 'gemini-2.5-flash',

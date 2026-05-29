@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveIntentModel, cheapestModelId, bestGeminiModelId, textModels, OPUS_MODEL_ID } from './resolveModel';
+import { resolveIntentModel, resolveChatModel, cheapestModelId, bestGeminiModelId, textModels, OPUS_MODEL_ID, CHAT_BEST_MODEL_ID } from './resolveModel';
 import { DEFAULT_REGISTRY } from './registry.default';
 import type { ModelRegistry } from './types';
 
@@ -52,5 +52,22 @@ describe('resolveIntentModel', () => {
   it('best falls back to Gemini when Opus is disabled even with a key', () => {
     const noOpus: ModelRegistry = { ...R, models: { ...R.models, [OPUS_MODEL_ID]: { ...R.models[OPUS_MODEL_ID], enabled: false } } };
     expect(resolveIntentModel('best', true, noOpus)).not.toBe(OPUS_MODEL_ID);
+  });
+});
+
+describe('resolveChatModel (basic chat never uses Opus)', () => {
+  it('best + Anthropic key → Sonnet, NOT Opus', () => {
+    const id = resolveChatModel('best', true, R);
+    expect(id).toBe(CHAT_BEST_MODEL_ID);
+    expect(id).not.toBe(OPUS_MODEL_ID);
+  });
+  it('best + no key → top Gemini (never Opus/Sonnet)', () => {
+    const id = resolveChatModel('best', false, R);
+    expect(R.models[id].provider).not.toBe('anthropic');
+  });
+  it('cheapest/balanced/custom match the task resolver', () => {
+    expect(resolveChatModel('cheapest', true, R)).toBe(resolveIntentModel('cheapest', true, R));
+    expect(resolveChatModel('balanced', true, R)).toBe(R.defaultModel);
+    expect(resolveChatModel('custom', false, R, 'gemini-2.5-pro')).toBe('gemini-2.5-pro');
   });
 });

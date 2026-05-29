@@ -6,7 +6,7 @@
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { useApiKey } from '../key/useApiKey';
 import { DEFAULT_REGISTRY } from './registry.default';
-import { resolveIntentModel, type ModelIntent } from './resolveModel';
+import { resolveIntentModel, resolveChatModel, type ModelIntent } from './resolveModel';
 import type { ModelConfig } from './types';
 
 export const MODEL_PREF_KEY = 'activeModel';
@@ -55,4 +55,16 @@ export function useResolvedModelId(): string {
   const [custom] = useActiveModel();
   const { keyStatus } = useApiKey('anthropic');
   return resolveIntentModel(intent, keyStatus === 'set', DEFAULT_REGISTRY, custom);
+}
+
+/**
+ * The model for BASIC/plain chat — like useResolvedModelId but "Best" routes to
+ * a fast Claude (Sonnet) instead of Opus so quick chat stays snappy + cheap.
+ * Agent runs, the builder, and quick-app generation keep the full intent.
+ */
+export function useResolvedChatModelId(): string {
+  const [intent] = useModelIntent();
+  const [custom] = useActiveModel();
+  const { keyStatus } = useApiKey('anthropic');
+  return resolveChatModel(intent, keyStatus === 'set', DEFAULT_REGISTRY, custom);
 }
