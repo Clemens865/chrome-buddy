@@ -112,9 +112,11 @@ export interface AudioTranscribeMessage {
   prompt?: string;
 }
 
-/** Capture a compact summary of the active page (for attaching to chat). */
+/** Capture a compact summary of a page (for attaching to chat). Defaults to the
+ *  active tab; pass tabId to capture a specific open tab (multi-tab context). */
 export interface PageContextMessage {
   type: 'PAGE_CONTEXT';
+  tabId?: number;
 }
 
 /** Run history (FR-MEM): owned by the SW so panel + overlay share one store. */

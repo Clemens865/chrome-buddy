@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildContextBlock, hasProfile } from './context';
+import { buildContextBlock, buildMultiPageContextBlock, hasProfile } from './context';
 
 describe('buildContextBlock', () => {
   it('returns empty when nothing to attach', () => {
@@ -30,6 +30,27 @@ describe('buildContextBlock', () => {
     expect(out).toContain('# Current page');
     expect(out).toContain('# About the user');
     expect(out).toContain('---');
+  });
+});
+
+describe('buildMultiPageContextBlock', () => {
+  it('returns empty for no usable pages', () => {
+    expect(buildMultiPageContextBlock([])).toBe('');
+    expect(buildMultiPageContextBlock([{ url: 'https://a.com', title: '', text: '   ' }])).toBe('');
+  });
+  it('headers each tab and counts them', () => {
+    const out = buildMultiPageContextBlock([
+      { url: 'https://a.com', title: 'Aurora', text: 'alpha' },
+      { url: 'https://b.com', title: 'Bravo', text: 'beta' },
+    ]);
+    expect(out).toContain('# Selected tabs (2)');
+    expect(out).toContain('## Aurora');
+    expect(out).toContain('## Bravo');
+    expect(out).toContain('alpha');
+    expect(out).toContain('---');
+  });
+  it('falls back to the url as heading when title is empty', () => {
+    expect(buildMultiPageContextBlock([{ url: 'https://a.com', title: '', text: 'x' }])).toContain('## https://a.com');
   });
 });
 

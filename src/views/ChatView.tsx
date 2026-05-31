@@ -23,7 +23,8 @@ import {
   type ChatAttachment,
 } from '../chat/attachments';
 import { usePersistedState } from '../sidepanel/usePersistedState';
-import { requestPageContext } from '../page/request';
+import { requestPageContext, requestPageContextFor } from '../page/request';
+import { hostOf } from '../tabs/manager';
 import { persistRun, fetchRuns } from '../memory/request';
 import { buildRunRecord } from '../memory/buildRecord';
 import { findSimilarRun } from '../memory/recall';
@@ -64,6 +65,7 @@ import {
   resolveConfirmation,
   resolveIntent,
   buildContextBlock,
+  buildMultiPageContextBlock,
   hasProfile,
   userItem,
   agentItem,
@@ -147,6 +149,9 @@ export function ChatView({
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [mode, setMode] = usePersistedState<ChatMode>('chatMode', 'auto');
   const [attachPage, setAttachPage] = usePersistedState<boolean>('attachPage', true);
+  // Multi-tab chat context: ids of other open tabs the user pinned as context.
+  // Sticky across turns; closed tabs are pruned at send time.
+  const [contextTabIds, setContextTabIds] = useState<number[]>([]);
   // H7 P3 — "Confirm every Vision action" toggle. Default OFF: only
   // safety_decision = require_confirmation actions gate (per docs).
   const [visionConfirmAll] = usePersistedState<boolean>('visionConfirmAll', false);
@@ -609,6 +614,16 @@ export function ChatView({
           const useProfile = attachProfile && hasProfile(active);
           const page = attachPage ? await requestPageContext() : null;
           let context = buildContextBlock(page, useProfile ? active : null, activeProfile);
+          // Multi-tab context: fold in each explicitly-picked open tab. Closed
+          // tabs resolve to null and drop out; the active page (already attached
+          // above) is skipped to avoid duplication.
+          if (contextTabIds.length > 0) {
+            const picked = (await Promise.all(contextTabIds.map((id) => requestPageContextFor(id)))).filter(
+              (p): p is NonNullable<typeof p> => !!p && p.url !== page?.url,
+            );
+            const tabsBlock = buildMultiPageContextBlock(picked);
+            if (tabsBlock) context = context ? `${tabsBlock}\n\n${context}` : tabsBlock;
+          }
           // Text-file attachments fold into the system context as fenced blocks;
           // image attachments stay on the user message as multimodal parts.
           if (attachments.length > 0) {
@@ -744,7 +759,7 @@ export function ChatView({
         setThinkHarder(false);
       }
     },
-    [busy, mode, attachPage, attachProfile, profiles, activeProfile, activeModel, chatModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments, githubDefaultRepo, libraryAutoContext, thinkHarder, visionConfirmAll],
+    [busy, mode, attachPage, contextTabIds, attachProfile, profiles, activeProfile, activeModel, chatModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments, githubDefaultRepo, libraryAutoContext, thinkHarder, visionConfirmAll],
   );
 
   const decide = useCallback((step: number, callId: string, approved: boolean) => {
@@ -1080,6 +1095,8 @@ export function ChatView({
         onMode={setMode}
         attachPage={attachPage}
         onAttachPage={() => setAttachPage(!attachPage)}
+        contextTabIds={contextTabIds}
+        onContextTabIds={setContextTabIds}
         thinkHarder={thinkHarder}
         onThinkHarder={() => setThinkHarder((v) => !v)}
         intent={modelIntent}
@@ -1677,6 +1694,8 @@ function ChatComposer({
   onMode,
   attachPage,
   onAttachPage,
+  contextTabIds,
+  onContextTabIds,
   thinkHarder,
   onThinkHarder,
   intent,
@@ -1696,6 +1715,8 @@ function ChatComposer({
   onMode: (m: ChatMode) => void;
   attachPage: boolean;
   onAttachPage: () => void;
+  contextTabIds: number[];
+  onContextTabIds: (ids: number[]) => void;
   thinkHarder: boolean;
   onThinkHarder: () => void;
   intent: ModelIntent;
@@ -1884,6 +1905,7 @@ function ChatComposer({
             <span className="ctx-chip-ic">{Ic.sparkle}</span>
             Think harder
           </button>
+          <TabContextPicker selected={contextTabIds} onChange={onContextTabIds} />
           <button
             type="button"
             className={'ctx-chip' + (attachPage ? ' is-on' : '')}
@@ -1897,6 +1919,74 @@ function ChatComposer({
         </div>
       </div>
     </div>
+  );
+}
+
+interface PickableTab { id: number; title: string; host: string }
+
+/**
+ * Multi-tab context picker (FR — Side Copilot parity). A composer chip that
+ * opens a checklist of other open http(s) tabs; the checked tabs are captured
+ * and folded into the chat context at send time. Selection lives in the parent
+ * so it survives turns; this component only lists tabs + toggles ids.
+ */
+function TabContextPicker({ selected, onChange }: { selected: number[]; onChange: (ids: number[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [tabs, setTabs] = useState<PickableTab[]>([]);
+
+  const toggleOpen = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && typeof chrome !== 'undefined' && chrome.tabs?.query) {
+      const all = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+      setTabs(
+        all
+          .filter((t): t is chrome.tabs.Tab & { id: number } => t.id !== undefined && !t.active)
+          .map((t) => ({ id: t.id, title: t.title ?? t.url ?? '(untitled)', host: hostOf(t.url ?? '') })),
+      );
+    }
+  };
+
+  const toggle = (id: number) =>
+    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+
+  return (
+    <span className="tabctx">
+      <button
+        type="button"
+        className={'ctx-chip' + (selected.length ? ' is-on' : '')}
+        onClick={() => void toggleOpen()}
+        aria-expanded={open}
+        title="Add other open tabs as context for this chat"
+        data-testid="tabctx-toggle"
+      >
+        <span className="ctx-chip-ic">{Ic.list}</span>
+        {selected.length ? `Tabs · ${selected.length}` : 'Tabs'}
+      </button>
+      {open && (
+        <div className="tabctx-pop" role="menu" data-testid="tabctx-pop">
+          <div className="tabctx-pop-h">
+            <span>Add tabs as context</span>
+            {selected.length > 0 && (
+              <button type="button" className="tabctx-clear" onClick={() => onChange([])}>Clear</button>
+            )}
+          </div>
+          {tabs.length === 0 ? (
+            <div className="tabctx-empty">No other open tabs.</div>
+          ) : (
+            tabs.map((t) => (
+              <label key={t.id} className="tabctx-item">
+                <input type="checkbox" checked={selected.includes(t.id)} onChange={() => toggle(t.id)} />
+                <span className="tabctx-item-text">
+                  <span className="tabctx-item-title">{t.title}</span>
+                  <span className="tabctx-item-host">{t.host}</span>
+                </span>
+              </label>
+            ))
+          )}
+        </div>
+      )}
+    </span>
   );
 }
 

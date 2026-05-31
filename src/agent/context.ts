@@ -58,3 +58,16 @@ export function buildContextBlock(
 export function hasProfile(profile: UserProfile | null | undefined): boolean {
   return !!profile && !!(profile.name?.trim() || profile.role?.trim() || profile.about?.trim());
 }
+
+/**
+ * Build a context block from several explicitly-picked tabs (multi-tab chat).
+ * Each tab is fenced under its own heading so the model can attribute facts to
+ * the right source. Tabs with no usable content are skipped; '' when none.
+ */
+export function buildMultiPageContextBlock(pages: PageSummaryLite[]): string {
+  const blocks = pages
+    .filter((p) => p && (p.text.trim() || p.title.trim()))
+    .map((p) => `## ${p.title || p.url}\nURL: ${p.url}\n\n${p.text}`.trim());
+  if (!blocks.length) return '';
+  return `# Selected tabs (${blocks.length})\n\n${blocks.join('\n\n---\n\n')}`;
+}

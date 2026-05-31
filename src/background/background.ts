@@ -409,7 +409,7 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
       }
 
       case 'PAGE_CONTEXT': {
-        const page = await capturePageContext();
+        const page = await capturePageContext(8000, message.tabId);
         return { type: 'PAGE_CONTEXT', ok: true, page };
       }
 

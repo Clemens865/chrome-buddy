@@ -10,9 +10,17 @@ export interface PageSummary {
 }
 
 export async function requestPageContext(): Promise<PageSummary | null> {
+  return requestPageContextFor();
+}
+
+/**
+ * Capture a specific open tab's content (multi-tab chat context). Omit tabId to
+ * capture the active tab. Returns null when the tab is gone or undriveable.
+ */
+export async function requestPageContextFor(tabId?: number): Promise<PageSummary | null> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return null;
   try {
-    const message: PageContextMessage = { type: 'PAGE_CONTEXT' };
+    const message: PageContextMessage = { type: 'PAGE_CONTEXT', ...(typeof tabId === 'number' ? { tabId } : {}) };
     const res = (await chrome.runtime.sendMessage(message)) as
       | PageContextResponse
       | ErrorResponse

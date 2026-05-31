@@ -72,8 +72,8 @@ export interface PageContextSummary {
  * (so plain chat can answer about the page without an agentic read_dom round-trip).
  * Returns null when there is no driveable active tab.
  */
-export async function capturePageContext(maxChars = 8000): Promise<PageContextSummary | null> {
-  const tabId = await resolveActiveTabId();
+export async function capturePageContext(maxChars = 8000, forTabId?: number): Promise<PageContextSummary | null> {
+  const tabId = forTabId ?? (await resolveActiveTabId());
   if (tabId === undefined) return null;
   try {
     const page = await getContext(tabId);

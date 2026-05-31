@@ -680,6 +680,19 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .ctx-chip-select select { border: 0; background: transparent; font: inherit; color: var(--panel-fg); cursor: pointer; outline: 0; padding: 2px; }
 .composer-model { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--panel-muted-soft); }
 
+/* Multi-tab context picker — popover anchored above the composer chip. */
+.tabctx { position: relative; display: inline-flex; }
+.tabctx-pop { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 30; width: 260px; max-height: 260px; overflow-y: auto; padding: 6px; border-radius: 10px; background: var(--panel-elev); border: 1px solid var(--panel-border-soft); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
+.tabctx-pop-h { display: flex; align-items: center; justify-content: space-between; padding: 2px 6px 6px; font-size: 11px; color: var(--panel-muted); }
+.tabctx-clear { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
+.tabctx-empty { padding: 8px 6px; font-size: 11.5px; color: var(--panel-muted-soft); }
+.tabctx-item { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 7px; cursor: pointer; }
+.tabctx-item:hover { background: var(--panel-elev-2); }
+.tabctx-item input { flex: 0 0 auto; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.tabctx-item-text { min-width: 0; display: flex; flex-direction: column; }
+.tabctx-item-title { font-size: 12px; color: var(--panel-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabctx-item-host { font-size: 10.5px; color: var(--panel-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ───────────────────────── APPS ──────────────────────────────────── */
 .apps { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px 20px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: var(--panel-border) transparent; }
 .apps-search-input { width: 100%; border: 1px solid var(--panel-border); border-radius: 9px; background: var(--panel-bg); font: inherit; font-size: 13px; padding: 8px 12px; color: var(--panel-fg); outline: 0; }
