@@ -447,7 +447,7 @@ function GeneratedApp({ app, onBack }: { app: AppConfig; onBack: () => void }) {
   );
 }
 
-export function AppHeader({ app, onBack }: { app: AppMeta; onBack: () => void }) {
+export function AppHeader({ app, onBack, onHandToAgent }: { app: AppMeta; onBack: () => void; onHandToAgent?: () => void }) {
   return (
     <div className="app-hd">
       <button type="button" className="app-hd-back" onClick={onBack} aria-label="Back to apps"><span className="ic">{Ic.collapse}</span></button>
@@ -456,7 +456,11 @@ export function AppHeader({ app, onBack }: { app: AppMeta; onBack: () => void })
         <div className="app-hd-name">{app.name}</div>
         <div className="app-hd-sub">{app.desc}</div>
       </div>
-      <button type="button" className="btn btn-ghost btn-sm">Hand to Agent</button>
+      {/* "Hand to Agent" only appears when an app wires a real handoff (opt-in);
+          a dead button that does nothing is worse than no button. */}
+      {onHandToAgent && (
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onHandToAgent}>Hand to Agent</button>
+      )}
     </div>
   );
 }
