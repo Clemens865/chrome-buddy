@@ -1165,7 +1165,10 @@ button.ctx-chip.is-on { color: var(--accent); background: var(--accent-soft); }
 .wf-row-name { font-weight: 600; font-size: 13.5px; color: var(--panel-fg); }
 .wf-row-meta { font-size: 11.5px; color: var(--panel-muted); margin-top: 2px; }
 .wf-row-meta code { background: var(--panel-elev-2); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
-.wf-row-actions { display: flex; gap: 4px; }
+.wf-row-actions { display: flex; gap: 4px; align-items: center; }
+/* Icon-only Edit/Delete buttons: square, centered icon (not wide like a text btn). */
+.wf-icon-btn { padding: 6px; }
+.wf-icon-btn .ic { width: 14px; height: 14px; }
 .wf-pill { font-size: 11px; margin-top: 4px; color: var(--panel-muted); }
 .wf-pill.is-active { color: var(--accent); }
 .wf-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 100; }

@@ -111,7 +111,7 @@ export function WebhookFlowsApp({ onBack }: { onBack: () => void }) {
             onClick={() => setEditing('new')}
             data-testid="wf-new-flow"
           >
-            {Ic.plus} New flow
+            <span className="ic ic-sm">{Ic.plus}</span> New flow
           </button>
           {webhooks.length === 0 && (
             <span className="wf-hint">
@@ -266,18 +266,18 @@ function FlowRow({
       </div>
       <div className="wf-row-actions">
         <button
-          className="btn-primary"
+          className="btn btn-primary btn-sm"
           onClick={onRun}
           disabled={status.kind === 'sending' && status.flowId === flow.id}
           data-testid={`wf-run-${flow.name}`}
         >
-          {Ic.send} Run
+          <span className="ic ic-sm">{Ic.send}</span> Run
         </button>
-        <button className="btn-ghost" onClick={onEdit} title="Edit">
-          {Ic.settings}
+        <button className="btn btn-ghost btn-sm wf-icon-btn" onClick={onEdit} aria-label="Edit flow" title="Edit">
+          <span className="ic ic-sm">{Ic.settings}</span>
         </button>
-        <button className="btn-ghost" onClick={onDelete} title="Delete">
-          {Ic.x}
+        <button className="btn btn-ghost btn-sm wf-icon-btn" onClick={onDelete} aria-label="Delete flow" title="Delete">
+          <span className="ic ic-sm">{Ic.x}</span>
         </button>
       </div>
     </li>
@@ -445,11 +445,11 @@ function FlowEditor({
           )}
         </div>
         <div className="wf-modal-foot">
-          <button className="btn-ghost" onClick={onCancel}>
+          <button className="btn btn-ghost" onClick={onCancel}>
             Cancel
           </button>
           <button
-            className="btn-primary"
+            className="btn btn-primary"
             onClick={save}
             disabled={!canSave}
             data-testid="wf-save"
@@ -483,15 +483,15 @@ function PreviewModal({
           <pre>{JSON.stringify(payload, null, 2)}</pre>
         </div>
         <div className="wf-modal-foot">
-          <button className="btn-ghost" onClick={onCancel} data-testid="wf-preview-cancel">
+          <button className="btn btn-ghost" onClick={onCancel} data-testid="wf-preview-cancel">
             Cancel
           </button>
           <button
-            className="btn-primary"
+            className="btn btn-primary"
             onClick={onApprove}
             data-testid="wf-preview-approve"
           >
-            {Ic.send} Approve & send
+            <span className="ic ic-sm">{Ic.send}</span> Approve & send
           </button>
         </div>
       </div>
