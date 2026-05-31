@@ -151,6 +151,32 @@ export const readDomTool: ToolDefinition = {
   handler: notWired('read_dom'),
 };
 
+// --- list_tabs (browser-native research) -----------------------------------
+export const listTabsTool: ToolDefinition = {
+  name: 'list_tabs',
+  description:
+    "List the user's other open browser tabs (id, title, url, host) so you can research ACROSS them — including pages behind their login that a server-side tool can't reach. Read-only; pair with read_tab.",
+  paramsSchema: objectSchema({}, []),
+  consequential: false,
+  handler: notWired('list_tabs'),
+};
+
+// --- read_tab (browser-native research) ------------------------------------
+export const readTabTool: ToolDefinition = {
+  name: 'read_tab',
+  description:
+    "Read the distilled text of a SPECIFIC open tab by its id (from list_tabs). Use this to gather context across the user's open tabs without navigating away from the current one. Read-only.",
+  paramsSchema: objectSchema(
+    {
+      tabId: { type: 'number', description: 'The tab id returned by list_tabs.' },
+      maxChars: { type: 'number', description: 'Cap on returned characters (default 8000).' },
+    },
+    ['tabId'],
+  ),
+  consequential: false,
+  handler: notWired('read_tab'),
+};
+
 // --- screenshot (FR-TOOLS-5) -----------------------------------------------
 export const screenshotTool: ToolDefinition = {
   name: 'screenshot',
@@ -711,6 +737,8 @@ export const stubToolDefs: ToolDefinition[] = [
   typeTool,
   scrollTool,
   readDomTool,
+  listTabsTool,
+  readTabTool,
   screenshotTool,
   extractTool,
   summarizeTool,

@@ -59,7 +59,7 @@ import type {
 } from '../key/messages';
 
 /** Page read/act tools that execute in the SW via TOOL_EXEC. */
-const PAGE_TOOLS = new Set(['read_dom', 'extract', 'screenshot', 'navigate', 'click', 'type', 'scroll']);
+const PAGE_TOOLS = new Set(['read_dom', 'extract', 'screenshot', 'navigate', 'click', 'type', 'scroll', 'list_tabs', 'read_tab']);
 
 /** Tools the agent may use: page tools + search_web + file + ask_user + consequential (HITL-gated). */
 const AGENT_TOOLS = new Set([

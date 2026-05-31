@@ -77,6 +77,39 @@ describe('executePageTool', () => {
     if (!res.ok) expect(res.error.code).toBe('not-found');
   });
 
+  it('list_tabs enumerates the open http(s) tabs with parsed host (no active tab needed)', async () => {
+    (globalThis as unknown as { chrome: unknown }).chrome = {
+      tabs: {
+        query: vi.fn(async () => [
+          { id: 7, title: 'Acme', url: 'https://www.acme.com/pricing', active: true },
+          { id: 8, title: 'Docs', url: 'https://docs.example.org/x' },
+        ]),
+      },
+    };
+    const res = await executePageTool('list_tabs', {});
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      const tabs = (res.data as { tabs: { tabId: number; host: string; active: boolean }[] }).tabs;
+      expect(tabs).toHaveLength(2);
+      expect(tabs[0]).toMatchObject({ tabId: 7, host: 'acme.com', active: true });
+      expect(tabs[1]).toMatchObject({ tabId: 8, host: 'docs.example.org' });
+    }
+  });
+
+  it('read_tab reads a SPECIFIC tab by id (not the active one) with provenance', async () => {
+    getContext.mockResolvedValue({ url: 'https://docs.example.org/x', title: 'Docs', text: 'content', interactiveElements: [], tables: [], provenance: { url: 'https://docs.example.org/x', distilledAt: 0 } });
+    const res = await executePageTool('read_tab', { tabId: 8 });
+    expect(getContext).toHaveBeenCalledWith(8); // the requested tab, not active id 7
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.meta?.provenance).toEqual(['https://docs.example.org/x']);
+  });
+
+  it('read_tab rejects a missing/non-numeric tabId', async () => {
+    const res = await executePageTool('read_tab', {});
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe('invalid-args');
+  });
+
   it('errors with undriveable when there is no active tab', async () => {
     (globalThis as unknown as { chrome: { tabs: { query: () => Promise<unknown[]> } } }).chrome = {
       tabs: { query: async () => [] },

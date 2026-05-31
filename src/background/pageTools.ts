@@ -36,6 +36,10 @@ const PAGE_TOOLS = new Set([
   'click',
   'type',
   'scroll',
+  // Browser-native research: operate over the user's OTHER open tabs, not just
+  // the active one. Read-only — no HITL gate.
+  'list_tabs',
+  'read_tab',
 ]);
 
 /** Whether a tool name is a background-executable page tool. */
@@ -92,6 +96,49 @@ function asString(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }
 
+/** Display host for a url ("example.com"), or '' for non-http/opaque urls. */
+function tabHost(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.hostname.replace(/^www\./, '') : '';
+  } catch {
+    return '';
+  }
+}
+
+/** list_tabs — enumerate the user's open http(s) tabs for cross-tab research. */
+async function listOpenTabs(): Promise<ToolResult> {
+  if (typeof chrome === 'undefined' || !chrome.tabs?.query) {
+    return err('undriveable', 'Tabs API unavailable.');
+  }
+  const active = await resolveActiveTabId();
+  const all = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+  const tabs = all
+    .filter((t): t is chrome.tabs.Tab & { id: number } => typeof t.id === 'number')
+    .map((t) => ({
+      tabId: t.id,
+      title: t.title ?? t.url ?? '(untitled)',
+      url: t.url ?? '',
+      host: tabHost(t.url ?? ''),
+      active: t.id === active,
+    }));
+  return ok({ tabs });
+}
+
+/** read_tab — read a specific open tab's distilled text by id (read-only). */
+async function readSpecificTab(args: Record<string, unknown>): Promise<ToolResult> {
+  const tabId = typeof args.tabId === 'number' ? args.tabId : Number(args.tabId);
+  if (!Number.isInteger(tabId)) {
+    return err('invalid-args', 'read_tab requires a numeric "tabId" (from list_tabs).');
+  }
+  const maxChars = typeof args.maxChars === 'number' && args.maxChars > 0 ? args.maxChars : 8000;
+  const page = await capturePageContext(maxChars, tabId);
+  if (!page) {
+    return err('undriveable', `Tab ${tabId} is gone or not a readable web page.`);
+  }
+  return ok(page, { provenance: page.url ? [page.url] : [] });
+}
+
 /**
  * Execute one page tool against the active tab. Always resolves to a
  * discriminated ToolResult — restricted URLs, missing tabs, and runtime faults
@@ -103,6 +150,15 @@ export async function executePageTool(
 ): Promise<ToolResult> {
   if (!isPageTool(tool)) {
     return err('not-found', `Tool "${tool}" is not a background page tool.`);
+  }
+
+  // Browser-native research tools operate over OTHER tabs (by id / enumeration),
+  // so they don't need — and must not require — a driveable active tab.
+  if (tool === 'list_tabs') {
+    return await listOpenTabs();
+  }
+  if (tool === 'read_tab') {
+    return await readSpecificTab(args);
   }
 
   const tabId = await resolveActiveTabId();
