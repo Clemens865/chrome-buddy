@@ -1457,6 +1457,16 @@ function TranscriptRow({
         </div>
       );
 
+    case 'subtask':
+      return (
+        <div className={'subtask-head is-' + item.status} aria-label={`Sub-task: ${item.goal}`} data-testid="subtask-head">
+          <span className="subtask-dot" />
+          <span className="subtask-goal">{item.goal}</span>
+          {item.role !== 'general' && <span className="subtask-role">{item.role}</span>}
+          {item.status === 'done' && <span className="ic ic-sm subtask-check">{Ic.check}</span>}
+        </div>
+      );
+
     case 'tool':
       return <ToolTrace item={item} />;
 

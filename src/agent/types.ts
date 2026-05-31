@@ -157,7 +157,12 @@ export type AgentEvent =
       cost: number;
       usage: UsageStats;
     }
-  | { type: 'error'; runId: string; step?: number; message: string };
+  | { type: 'error'; runId: string; step?: number; message: string }
+  // Phase 2 flat spine: sub-task boundaries within a decomposed run. The nested
+  // sub-task's own plan/tool events still stream (under its own runId); these
+  // bracket them so the transcript can render the decomposition as sections.
+  | { type: 'subtask_start'; runId: string; subId: string; goal: string; role: string }
+  | { type: 'subtask_result'; runId: string; subId: string; status: 'done' | 'failed'; digest: string };
 
 /** Callback the runtime invokes for every emitted event. */
 export type EventSink = (event: AgentEvent) => void;

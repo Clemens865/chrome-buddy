@@ -360,6 +360,16 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 
 .tc-mini { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--panel-bg); border: 1px solid var(--panel-border-soft); font-size: 12px; }
 .tc-mini-inline { margin-left: 34px; font-size: 11.5px; background: var(--panel-elev); border-color: var(--panel-border-soft); }
+/* Sub-task section header (Phase 2 decomposed runs) — a divider the following
+   plan/tool items read as belonging to. */
+.subtask-head { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; padding: 4px 0; border-top: 1px solid var(--panel-border-soft); font-size: 12px; color: var(--panel-fg); }
+.subtask-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
+.subtask-head.is-running .subtask-dot { animation: subtaskPulse 1.2s ease-in-out infinite; }
+.subtask-head.is-failed .subtask-dot { background: #B91C1C; }
+.subtask-goal { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtask-role { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; color: var(--panel-muted); text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 5px; background: var(--panel-elev); }
+.subtask-check { color: var(--accent); margin-left: auto; }
+@keyframes subtaskPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .tc-mini-name { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-weight: 500; color: var(--panel-fg); }
 .tc-mini-arg { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; color: var(--panel-muted); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

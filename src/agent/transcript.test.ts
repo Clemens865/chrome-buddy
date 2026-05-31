@@ -65,6 +65,21 @@ describe('reduceTranscript', () => {
     expect(items.find((i) => i.kind === 'confirm')).toMatchObject({ resolution: 'approved' });
   });
 
+  it('renders a sub-task section header and flips it to done on result', () => {
+    let items = fold([
+      { type: 'subtask_start', runId: 'dec1', subId: 'st1', goal: 'research pricing', role: 'researcher' },
+    ]);
+    const sub = items.find((i) => i.kind === 'subtask');
+    expect(sub).toMatchObject({ kind: 'subtask', goal: 'research pricing', role: 'researcher', status: 'running' });
+
+    items = fold(
+      [{ type: 'subtask_result', runId: 'dec1', subId: 'st1', status: 'done', digest: 'found it' }],
+      items,
+    );
+    expect(items.filter((i) => i.kind === 'subtask')).toHaveLength(1); // updated, not duplicated
+    expect(items.find((i) => i.kind === 'subtask')).toMatchObject({ status: 'done' });
+  });
+
   it('appends the final answer on done without duplicating a prior partial body', () => {
     const final = 'all done';
     const items = fold([

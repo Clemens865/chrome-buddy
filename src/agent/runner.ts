@@ -625,7 +625,19 @@ async function runDecomposedIfNeeded(
   const aggActions: ActionRecord[] = [];
   const aggProvenance: string[] = [];
   const results = await drainSubtasks(subtasks, {
-    onEvent: () => {},
+    onEvent: (e) => {
+      if (e.type === 'subtask_start') {
+        options.onEvent({ type: 'subtask_start', runId, subId: e.id, goal: e.goal, role: e.role });
+      } else {
+        options.onEvent({
+          type: 'subtask_result',
+          runId,
+          subId: e.id,
+          status: e.status === 'done' ? 'done' : 'failed',
+          digest: e.digest,
+        });
+      }
+    },
     checkStop: () => {
       if (options.signal?.aborted) return 'cancelled';
       return ledger.exceeded(Date.now());

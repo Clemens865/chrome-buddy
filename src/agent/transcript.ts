@@ -34,7 +34,14 @@ export type TranscriptItem =
       resolution?: 'approved' | 'denied';
     }
   | { kind: 'agent'; id: string; text: string }
-  | { kind: 'error'; id: string; text: string };
+  | { kind: 'error'; id: string; text: string }
+  | {
+      kind: 'subtask';
+      id: string;
+      goal: string;
+      role: string;
+      status: 'running' | 'done' | 'failed';
+    };
 
 /** A correlation key for a tool item: a tool call is unique by step + callId. */
 function toolKey(step: number, callId: string): string {
@@ -99,6 +106,16 @@ export function reduceTranscript(items: TranscriptItem[], event: AgentEvent): Tr
         };
       });
       return next;
+    }
+
+    case 'subtask_start': {
+      const id = `sub_${event.runId}_${event.subId}`;
+      return upsert(items, id, { kind: 'subtask', id, goal: event.goal, role: event.role, status: 'running' });
+    }
+
+    case 'subtask_result': {
+      const id = `sub_${event.runId}_${event.subId}`;
+      return items.map((it) => (it.kind === 'subtask' && it.id === id ? { ...it, status: event.status } : it));
     }
 
     case 'partial':
