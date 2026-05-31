@@ -655,6 +655,9 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .ctx-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .ctx-chip-ic { width: 12px; height: 12px; display: inline-flex; align-items: center; justify-content: center; color: currentColor; }
 .ctx-chip-ic svg { width: 12px; height: 12px; }
+/* Model-intent chip: a select dressed as a chip. */
+.ctx-chip-select { padding: 1px 4px 1px 8px; cursor: pointer; }
+.ctx-chip-select select { border: 0; background: transparent; font: inherit; color: var(--panel-fg); cursor: pointer; outline: 0; padding: 2px; }
 .composer-model { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--panel-muted-soft); }
 
 /* ───────────────────────── APPS ──────────────────────────────────── */

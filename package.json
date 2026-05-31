@@ -62,6 +62,7 @@
     "test:e2e:apptheme": "playwright test app-theme.spec.ts",
     "test:e2e:imageedit": "playwright test image-edit.spec.ts",
     "test:e2e:modelintent": "playwright test model-intent.spec.ts",
+    "test:e2e:modelchip": "playwright test model-intent-composer.spec.ts",
     "test:e2e:claudeskill": "playwright test claude-skill-import.spec.ts",
     "test:e2e:history": "playwright test history-detail.spec.ts",
     "test:e2e:stream": "playwright test chat-stream.spec.ts",

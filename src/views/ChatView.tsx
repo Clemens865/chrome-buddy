@@ -47,7 +47,7 @@ import {
   addSpend,
   isOverDailyCap,
 } from '../cost/budget';
-import { useResolvedModelId, useResolvedChatModelId } from '../llm/modelPref';
+import { useResolvedModelId, useResolvedChatModelId, useModelIntent, type ModelIntent } from '../llm/modelPref';
 import {
   isSTTSupported,
   isTTSSupported,
@@ -163,6 +163,7 @@ export function ChatView({
   const [attachError, setAttachError] = useState<string | null>(null);
   const activeModel = useResolvedModelId(); // heavy/task tier (agent, builder)
   const chatModel = useResolvedChatModelId(); // basic chat tier (Best→Sonnet, never Opus)
+  const [modelIntent, setModelIntent] = useModelIntent(); // overridable from the composer
   const [sessionCost, setSessionCost] = useState(0);
   const [perRunCap] = usePersistedState<number>(BUDGET_KEYS.perRun, BUDGET_DEFAULTS.perRun);
   const [perDayCap] = usePersistedState<number>(BUDGET_KEYS.perDay, BUDGET_DEFAULTS.perDay);
@@ -1081,6 +1082,8 @@ export function ChatView({
         onAttachPage={() => setAttachPage(!attachPage)}
         thinkHarder={thinkHarder}
         onThinkHarder={() => setThinkHarder((v) => !v)}
+        intent={modelIntent}
+        onIntent={setModelIntent}
         sessionCost={sessionCost}
         attachments={attachments}
         attachError={attachError}
@@ -1676,6 +1679,8 @@ function ChatComposer({
   onAttachPage,
   thinkHarder,
   onThinkHarder,
+  intent,
+  onIntent,
   sessionCost,
   attachments,
   attachError,
@@ -1693,6 +1698,8 @@ function ChatComposer({
   onAttachPage: () => void;
   thinkHarder: boolean;
   onThinkHarder: () => void;
+  intent: ModelIntent;
+  onIntent: (i: ModelIntent) => void;
   sessionCost: number;
   attachments: ChatAttachment[];
   attachError: string | null;
@@ -1855,6 +1862,14 @@ function ChatComposer({
                 : `≈ $${sessionCost < 0.01 ? sessionCost.toFixed(4) : sessionCost.toFixed(2)}`}
             </span>
           )}
+          <label className={'ctx-chip ctx-chip-select' + (intent !== 'cheapest' ? ' is-on' : '')} title="Model for this chat — overrides the Settings default">
+            <span className="ctx-chip-ic">{Ic.chart}</span>
+            <select aria-label="Model quality vs cost" value={intent === 'custom' ? 'balanced' : intent} onChange={(e) => onIntent(e.target.value as ModelIntent)}>
+              <option value="cheapest">Cheapest</option>
+              <option value="balanced">Balanced</option>
+              <option value="best">Best</option>
+            </select>
+          </label>
           <button
             type="button"
             className={'ctx-chip' + (thinkHarder ? ' is-on' : '')}
