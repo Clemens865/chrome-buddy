@@ -57,7 +57,11 @@ describe('reduceTranscript', () => {
     expect(confirm).toMatchObject({ kind: 'confirm' });
     expect(confirm && confirm.kind === 'confirm' ? confirm.resolution : 'x').toBeUndefined();
 
-    items = resolveConfirmation(items, 1, 'c1', 'approved');
+    items = resolveConfirmation(items, 'r', 1, 'c1', 'approved');
+    expect(items.find((i) => i.kind === 'confirm')).toMatchObject({ resolution: 'approved' });
+
+    // A different run's approval at the SAME step/callId must NOT resolve this card.
+    items = resolveConfirmation(items, 'other-run', 1, 'c1', 'denied');
     expect(items.find((i) => i.kind === 'confirm')).toMatchObject({ resolution: 'approved' });
   });
 

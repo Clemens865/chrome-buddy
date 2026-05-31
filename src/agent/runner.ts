@@ -175,6 +175,9 @@ const DEFAULT_WALLCLOCK_MS = 10 * 60_000; // absolute wall-clock per run tree
 export type ConfirmHandler = (request: {
   runId: string;
   step: number;
+  /** The real tool-call id — correlates the approval to the exact confirm card
+   *  (with runId + step) so concurrent/nested runs never cross-resolve. */
+  callId: string;
   tool: string;
   args: Record<string, unknown>;
   summary: string;
@@ -257,6 +260,11 @@ export interface CallSkillDeps {
   /** The outer run's shared ledger, so a nested skill run's spend counts toward
    *  the same tree-wide cost/call/wall-clock ceiling (no budget leak). */
   ledger?: BudgetLedger;
+  /** The outer run's event sink. Threaded into the nested run so its tool/plan
+   *  AND confirmation_required events render in the parent transcript — without
+   *  it, a consequential tool inside a saved skill emits a confirm the user
+   *  never sees and the run hangs awaiting an approval it can't give. */
+  onEvent?: (event: AgentEvent) => void;
 }
 
 /**
@@ -291,7 +299,7 @@ export function buildCallSkillTool(skills: Skill[], deps?: CallSkillDeps): ToolD
       // Share the parent's ledger so the nested run's spend counts toward the
       // same tree ceiling (closes the cost-discard leak this handler had).
       const result = await runAgentTask(skill.prompt, {
-        onEvent: () => {},
+        onEvent: deps.onEvent ?? (() => {}),
         onConfirm: deps.onConfirm,
         send: deps.send,
         model: deps.model,
@@ -488,7 +496,7 @@ export async function runAgentTask(
     send,
     options.makeRegistry ?? createDefaultRegistry,
     skills,
-    { send, onConfirm: options.onConfirm, model, ledger },
+    { send, onConfirm: options.onConfirm, model, ledger, onEvent: options.onEvent },
     options.onAskUser,
   );
   // Phase 2 routing: pull enabled MCP tools off the address-book and register
@@ -502,6 +510,7 @@ export async function runAgentTask(
     options.onConfirm({
       runId: request.runId,
       step: request.step,
+      callId: request.call.id,
       tool: request.call.name,
       args: request.call.arguments,
       summary: request.summary,

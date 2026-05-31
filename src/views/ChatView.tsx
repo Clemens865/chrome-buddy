@@ -93,6 +93,7 @@ interface LibraryAutoContextHit {
 }
 
 interface PendingConfirm {
+  runId: string;
   step: number;
   callId: string;
   tool: string;
@@ -518,6 +519,7 @@ export function ChatView({
       const onConfirm = (req: {
         runId: string;
         step: number;
+        callId: string;
         tool: string;
         args: Record<string, unknown>;
         summary: string;
@@ -526,7 +528,7 @@ export function ChatView({
         // confirmation_required before awaiting this resolver). We just hold the
         // resolver until the user clicks Approve/Cancel on the matching card.
         new Promise<ApprovalDecision>((resolve) => {
-          pendingRef.current = { step: req.step, callId: req.summary, tool: req.tool, resolve };
+          pendingRef.current = { runId: req.runId, step: req.step, callId: req.callId, tool: req.tool, resolve };
         });
 
       try {
@@ -540,15 +542,17 @@ export function ChatView({
             confirmAll: visionConfirmAll,
             onConfirm: async ({ call, summary }) =>
               new Promise<ApprovalDecision>((resolve) => {
-                pendingRef.current = { step: 0, callId: summary, tool: call.name, resolve };
+                const vcId = `vc_${seqRef.current++}`;
+                pendingRef.current = { runId: 'vision', step: 0, callId: vcId, tool: call.name, resolve };
                 // Render a confirm card by emitting a confirmation_required-ish item.
                 setItems((prev) => [
                   ...prev,
                   {
                     kind: 'confirm',
                     id: `vis_${seqRef.current++}`,
+                    runId: 'vision',
                     step: 0,
-                    call: { id: `vc_${seqRef.current++}`, name: call.name, arguments: call.args },
+                    call: { id: vcId, name: call.name, arguments: call.args },
                     summary,
                   },
                 ]);
@@ -762,7 +766,7 @@ export function ChatView({
     [busy, mode, attachPage, contextTabIds, attachProfile, profiles, activeProfile, activeModel, chatModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments, githubDefaultRepo, libraryAutoContext, thinkHarder, visionConfirmAll],
   );
 
-  const decide = useCallback((step: number, callId: string, approved: boolean) => {
+  const decide = useCallback((runId: string, step: number, callId: string, approved: boolean) => {
     const pending = pendingRef.current;
     const fileTool = pending?.tool === 'write_file' || pending?.tool === 'read_file';
     // File System Access permission resets each session and `requestPermission`
@@ -771,8 +775,8 @@ export function ChatView({
     // agent's deferred write/read run — otherwise it would prompt mid-loop with
     // no activation and stall. Started before any await to keep activation live.
     const permP = approved && fileTool ? ensureRootPermission('readwrite') : Promise.resolve(true);
-    setItems((prev) => resolveConfirmation(prev, step, callId, approved ? 'approved' : 'denied'));
-    if (pending && pending.step === step) {
+    setItems((prev) => resolveConfirmation(prev, runId, step, callId, approved ? 'approved' : 'denied'));
+    if (pending && pending.runId === runId && pending.step === step) {
       pendingRef.current = null;
       void permP.then((granted) => {
         // Deny cleanly if the folder permission couldn't be (re)granted, so the
@@ -786,9 +790,9 @@ export function ChatView({
   // Shared HITL confirm handler: holds the resolver until the user clicks a card.
   const makeOnConfirm = useCallback(
     () =>
-      (req: { runId: string; step: number; tool: string; args: Record<string, unknown>; summary: string }) =>
+      (req: { runId: string; step: number; callId: string; tool: string; args: Record<string, unknown>; summary: string }) =>
         new Promise<ApprovalDecision>((resolve) => {
-          pendingRef.current = { step: req.step, callId: req.summary, tool: req.tool, resolve };
+          pendingRef.current = { runId: req.runId, step: req.step, callId: req.callId, tool: req.tool, resolve };
         }),
     [],
   );
@@ -1399,7 +1403,7 @@ function TranscriptRow({
   onOpenArtifact,
 }: {
   item: TranscriptItem;
-  onDecide: (step: number, callId: string, approved: boolean) => void;
+  onDecide: (runId: string, step: number, callId: string, approved: boolean) => void;
   onOpenArtifact: (a: Artifact) => void;
 }) {
   switch (item.kind) {
@@ -1486,7 +1490,7 @@ function ConfirmCard({
   onDecide,
 }: {
   item: Extract<TranscriptItem, { kind: 'confirm' }>;
-  onDecide: (step: number, callId: string, approved: boolean) => void;
+  onDecide: (runId: string, step: number, callId: string, approved: boolean) => void;
 }) {
   const resolved = item.resolution !== undefined;
   const allEntries = Object.entries(item.call.arguments);
@@ -1542,7 +1546,7 @@ function ConfirmCard({
             type="button"
             className="suggest-chip"
             aria-label="Cancel action"
-            onClick={() => onDecide(item.step, item.call.id, false)}
+            onClick={() => onDecide(item.runId, item.step, item.call.id, false)}
           >
             Cancel
           </button>
@@ -1551,7 +1555,7 @@ function ConfirmCard({
             className="composer-send"
             style={{ width: 'auto', padding: '0 12px', borderRadius: 8 }}
             aria-label="Approve action"
-            onClick={() => onDecide(item.step, item.call.id, true)}
+            onClick={() => onDecide(item.runId, item.step, item.call.id, true)}
           >
             Approve
           </button>

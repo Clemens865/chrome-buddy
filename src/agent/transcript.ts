@@ -24,6 +24,9 @@ export type TranscriptItem =
   | {
       kind: 'confirm';
       id: string;
+      /** Owning run — lets the card resolve back to the exact pending call
+       *  without colliding across concurrent/nested runs. */
+      runId: string;
       step: number;
       call: NormalizedToolCall;
       summary: string;
@@ -37,8 +40,11 @@ export type TranscriptItem =
 function toolKey(step: number, callId: string): string {
   return `tool_${step}_${callId}`;
 }
-function confirmKey(step: number, callId: string): string {
-  return `confirm_${step}_${callId}`;
+/** Confirm cards are correlated by runId + step + callId so concurrent or
+ *  nested runs (sub-agents) can't collide on the same key and mis-route an
+ *  approval to the wrong pending action. */
+function confirmKey(runId: string, step: number, callId: string): string {
+  return `confirm_${runId}_${step}_${callId}`;
 }
 
 /**
@@ -69,10 +75,11 @@ export function reduceTranscript(items: TranscriptItem[], event: AgentEvent): Tr
     }
 
     case 'confirmation_required': {
-      const id = confirmKey(event.step, event.call.id);
+      const id = confirmKey(event.runId, event.step, event.call.id);
       const item: TranscriptItem = {
         kind: 'confirm',
         id,
+        runId: event.runId,
         step: event.step,
         call: event.call,
         summary: event.summary,
@@ -128,11 +135,12 @@ export function reduceTranscript(items: TranscriptItem[], event: AgentEvent): Tr
 /** Mark a pending confirmation item resolved (called when the user decides). */
 export function resolveConfirmation(
   items: TranscriptItem[],
+  runId: string,
   step: number,
   callId: string,
   resolution: 'approved' | 'denied',
 ): TranscriptItem[] {
-  const id = confirmKey(step, callId);
+  const id = confirmKey(runId, step, callId);
   return items.map((it) => (it.kind === 'confirm' && it.id === id ? { ...it, resolution } : it));
 }
 
