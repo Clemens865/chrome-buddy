@@ -8,6 +8,8 @@ import type { ChatMessage } from '../llm/types';
 export const UI_APP_BUILDER_SYSTEM = `You build a small self-contained web "micro-app" that runs INSIDE an opaque-origin sandboxed iframe in a Chrome extension side panel (~400px wide). You return ONLY JSON — no prose, no markdown fences — of the shape:
 {"name": string, "description": string, "html": string, "css": string, "ui": string, "permissions": string[]}
 
+If the request is genuinely too vague to build a good app, respond INSTEAD with {"clarify": ["question 1", "question 2"]} — 1-3 short, specific questions — and NOTHING else. Ask only when the answer materially changes the app; otherwise just build with sensible defaults.
+
 THE RUNTIME CONTRACT (follow EXACTLY — most bugs come from breaking these):
 - "html": the app's UI markup (structure only). It is set as innerHTML on a \`root\` element. Give interactive elements ids.
     ⛔ NEVER use inline handlers like onclick="..." — they CANNOT see your functions and will silently do nothing.
@@ -139,4 +141,34 @@ export function repairMessage(error: string): ChatMessage {
     role: 'user',
     content: `The app failed to run with this error:\n${error}\nReturn the COMPLETE corrected app JSON (same shape). Fix the cause; do not explain.`,
   };
+}
+
+/** The answers to clarifying questions, fed back so the model builds the app. */
+export function answersMessage(answers: string): ChatMessage {
+  return { role: 'user', content: `Here are my answers:\n${answers}\nNow build the app (return the app JSON).` };
+}
+
+export type BuilderReply = { kind: 'app'; app: ParsedUiApp } | { kind: 'clarify'; questions: string[] };
+
+/**
+ * Parse a builder turn into either a buildable app spec or a set of clarifying
+ * questions (the model asks for directions when the request is too vague).
+ */
+export function parseBuilderReply(jsonText: string): BuilderReply | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(stripFence(jsonText));
+  } catch {
+    const m = /\{[\s\S]*\}/.exec(jsonText);
+    if (m) { try { data = JSON.parse(m[0]); } catch { data = undefined; } }
+  }
+  if (data && typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    if (Array.isArray(o.clarify) && !o.html && !o.ui) {
+      const questions = o.clarify.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 3);
+      if (questions.length) return { kind: 'clarify', questions };
+    }
+  }
+  const app = parseUiApp(jsonText);
+  return app ? { kind: 'app', app } : null;
 }

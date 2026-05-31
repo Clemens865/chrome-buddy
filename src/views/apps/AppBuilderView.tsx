@@ -13,11 +13,12 @@ import { generateViaBackground } from '../../llm/instance';
 import { persistApp } from '../../apps/request';
 import { useResolvedModelId, modelLabel } from '../../llm/modelPref';
 import {
-  parseUiApp,
+  parseBuilderReply,
   toAppConfig,
   describeMessages,
   iterateMessage,
   repairMessage,
+  answersMessage,
   UI_APP_BUILDER_SYSTEM,
 } from '../../apps/uiBuild';
 import { SandboxAppFrame, describeCaps, type AppStatus } from './SandboxAppFrame';
@@ -44,6 +45,9 @@ export function AppBuilderView({ onBack, onSaved, initial }: { onBack: () => voi
   const [status, setStatus] = useState<AppStatus>('loading');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phase, setPhase] = useState<string>('');           // what the builder is doing now
+  const [clarify, setClarify] = useState<string[] | null>(null); // questions from the model
+  const [answer, setAnswer] = useState('');
   const messages = useRef<ChatMessage[]>(initial ? seedMessages(initial) : []);
   const repairs = useRef(0);
 
@@ -53,25 +57,32 @@ export function AppBuilderView({ onBack, onSaved, initial }: { onBack: () => voi
 
   // Run a builder turn: send the accumulated messages, parse the app spec,
   // record the assistant turn (so the next edit builds on it), and preview it.
-  const runTurn = async () => {
+  const runTurn = async (phaseLabel: string) => {
     setBusy(true);
     setError(null);
+    setPhase(phaseLabel);
     try {
       const res = await generateViaBackground({ messages: messages.current, model, params: { jsonMode: true } });
       messages.current.push({ role: 'assistant', content: res.text });
-      const parsed = parseUiApp(res.text);
-      if (!parsed) {
+      const reply = parseBuilderReply(res.text);
+      if (!reply) {
         setError('The builder didn’t return a valid app. Try rephrasing or run it again.');
         return;
       }
+      if (reply.kind === 'clarify') {
+        setClarify(reply.questions); // the builder is asking for directions
+        return;
+      }
+      setClarify(null);
       const id = draft?.id ?? `app_${Date.now().toString(36)}`;
-      setDraft(toAppConfig(parsed, id));
+      setDraft(toAppConfig(reply.app, id));
       setVersion((v) => v + 1);
       setStatus('loading');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setPhase('');
     }
   };
 
@@ -79,7 +90,15 @@ export function AppBuilderView({ onBack, onSaved, initial }: { onBack: () => voi
     if (!desc.trim()) return;
     messages.current = describeMessages(desc.trim());
     repairs.current = 0;
-    await runTurn();
+    await runTurn('Designing your app…');
+  };
+
+  const sendAnswers = async () => {
+    if (!answer.trim()) return;
+    messages.current.push(answersMessage(answer.trim()));
+    setAnswer('');
+    setClarify(null);
+    await runTurn('Building from your answers…');
   };
 
   const iterate = async () => {
@@ -87,7 +106,7 @@ export function AppBuilderView({ onBack, onSaved, initial }: { onBack: () => voi
     messages.current.push(iterateMessage(instruction.trim()));
     setInstruction('');
     repairs.current = 0;
-    await runTurn();
+    await runTurn('Applying your change…');
   };
 
   const autoFix = async () => {
@@ -98,7 +117,7 @@ export function AppBuilderView({ onBack, onSaved, initial }: { onBack: () => voi
     }
     repairs.current += 1;
     messages.current.push(repairMessage(lastRunError.current ?? 'The app failed to run.'));
-    await runTurn();
+    await runTurn('Fixing it…');
   };
 
   const lastRunError = useRef<string | null>(null);
@@ -149,6 +168,26 @@ export function AppBuilderView({ onBack, onSaved, initial }: { onBack: () => voi
               </button>
               <span className="builder-model-note">Building with {modelLabel(model)} · change in Settings → Model</span>
             </div>
+            {busy && phase && <div className="builder-phase" data-testid="builder-phase">{phase}</div>}
+            {clarify && (
+              <div className="builder-clarify" data-testid="builder-clarify">
+                <div className="scrape-section-h">A couple of questions first</div>
+                <ul className="builder-clarify-list">{clarify.map((q, i) => <li key={i}>{q}</li>)}</ul>
+                <textarea
+                  className="settings-input"
+                  style={{ resize: 'none', marginTop: 4 }}
+                  rows={2}
+                  placeholder="Answer here…"
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  aria-label="Answers"
+                />
+                <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 6 }} disabled={busy || !answer.trim()} onClick={() => void sendAnswers()}>
+                  {busy ? 'Building…' : 'Continue'}
+                </button>
+              </div>
+            )}
+            {error && <div className="empty-state-desc" style={{ color: '#B91C1C', marginTop: 6 }}>{error}</div>}
           </div>
         ) : (
           <>
@@ -156,7 +195,7 @@ export function AppBuilderView({ onBack, onSaved, initial }: { onBack: () => voi
               <SandboxAppFrame key={version} app={draft} onStatus={onStatus} />
             </div>
             <div className="sandbox-app-bar">
-              <span className="sandbox-badge">{Ic.warn}Live preview — sandboxed</span>
+              <span className="sandbox-badge">{Ic.warn}{busy && phase ? phase : `${draft.name} — live preview`}</span>
               {(draft.permissions ?? []).length > 0 && <span className="sandbox-caps">Uses: {describeCaps(draft.permissions ?? [])}</span>}
             </div>
             {status === 'error' && (

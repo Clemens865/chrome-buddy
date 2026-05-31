@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseUiApp, toAppConfig, describeMessages, iterateMessage, repairMessage } from './uiBuild';
+import { parseUiApp, toAppConfig, describeMessages, iterateMessage, repairMessage, parseBuilderReply, answersMessage } from './uiBuild';
 
 const valid = JSON.stringify({
   name: 'Counter',
@@ -50,6 +50,29 @@ describe('toAppConfig', () => {
   });
 });
 
+describe('parseBuilderReply', () => {
+  it('returns an app when the reply is a valid spec', () => {
+    const r = parseBuilderReply(valid);
+    expect(r?.kind).toBe('app');
+    if (r?.kind === 'app') expect(r.app.name).toBe('Counter');
+  });
+  it('returns clarifying questions when the model asks for directions', () => {
+    const r = parseBuilderReply('{"clarify":["Which platform?","One image or batch?"]}');
+    expect(r).toEqual({ kind: 'clarify', questions: ['Which platform?', 'One image or batch?'] });
+  });
+  it('prefers an app over clarify when both-ish (has html/ui)', () => {
+    const r = parseBuilderReply(JSON.stringify({ name: 'X', html: '<div></div>', ui: 'x', clarify: ['ignored'] }));
+    expect(r?.kind).toBe('app');
+  });
+  it('caps clarify at 3 questions and drops blanks', () => {
+    const r = parseBuilderReply('{"clarify":["a","","b","c","d"]}');
+    expect(r).toEqual({ kind: 'clarify', questions: ['a', 'b', 'c'] });
+  });
+  it('returns null for junk', () => {
+    expect(parseBuilderReply('not json')).toBeNull();
+  });
+});
+
 describe('message builders', () => {
   it('describeMessages carries the system contract + the ask', () => {
     const msgs = describeMessages('a tip calculator');
@@ -62,5 +85,9 @@ describe('message builders', () => {
   });
   it('repairMessage feeds the error back', () => {
     expect(String(repairMessage('TypeError: x is undefined').content)).toContain('TypeError: x is undefined');
+  });
+  it('answersMessage carries the answers + asks to build', () => {
+    expect(String(answersMessage('iOS, batch of 4').content)).toContain('iOS, batch of 4');
+    expect(String(answersMessage('x').content)).toMatch(/build the app/i);
   });
 });
