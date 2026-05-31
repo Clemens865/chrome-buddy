@@ -55,6 +55,7 @@
     "test:e2e:viz": "playwright test viz.spec.ts",
     "test:e2e:tabmanager": "playwright test tab-manager.spec.ts",
     "test:e2e:tabcontext": "playwright test composer-tab-context.spec.ts",
+    "test:e2e:composerfoot": "playwright test composer-foot-layout.spec.ts",
     "test:e2e:sandboxui": "playwright test sandbox-ui-app.spec.ts",
     "test:e2e:appbuilder": "playwright test app-builder.spec.ts",
     "test:e2e:appedit": "playwright test app-edit.spec.ts",

@@ -668,8 +668,12 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .live-stamp { font-size: 10.5px; color: var(--panel-muted-soft); font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; padding-top: 2px; }
 .live-text { word-break: break-word; }
 .theme-graphite .composer-send { color: #0F1115; }
-.composer-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 11px; color: var(--panel-muted); }
-.composer-foot-r { display: inline-flex; align-items: center; gap: 8px; }
+/* Two-tier foot: mode segment on its own line, model + toggle chips wrap on the
+   line below — so every control stays visible and one-tap even in a narrow
+   side panel (no horizontal scroll, nothing clipped). */
+.composer-foot { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin-top: 8px; font-size: 11px; color: var(--panel-muted); }
+.composer-foot > .seg { align-self: flex-start; max-width: 100%; flex-wrap: wrap; }
+.composer-foot-r { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cost-chip { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--panel-muted); padding: 3px 6px; border-radius: 6px; background: var(--panel-elev); white-space: nowrap; }
 .ctx-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; background: var(--panel-elev); font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; }
 .ctx-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
