@@ -341,7 +341,7 @@ export class AgentRuntime {
       params: { jsonMode: true, thinking: 'low', responseSchema: PLAN_SCHEMA },
       signal: options.signal,
     });
-    this.account(state, res);
+    this.account(state, res, options);
 
     const parsed = this.parsePlannerOutput(res.text);
     return parsed.steps.map((s, i) => ({ index: i + 1, intent: s.intent }));
@@ -400,7 +400,7 @@ export class AgentRuntime {
       params: { jsonMode: true, thinking: 'low', responseSchema: PLAN_SCHEMA },
       signal: options.signal,
     });
-    this.account(state, res);
+    this.account(state, res, options);
     const parsed = this.parsePlannerOutput(res.text);
     const base = sp.plan.length;
     return parsed.steps.map((s, i) => ({ index: base + i + 1, intent: s.intent }));
@@ -525,7 +525,7 @@ export class AgentRuntime {
       params: { thinking: 'medium' },
       signal: options.signal,
     });
-    this.account(state, res);
+    this.account(state, res, options);
     return res.toolCalls;
   }
 
@@ -700,7 +700,14 @@ export class AgentRuntime {
     if (state.stepsUsed >= options.stepBudget) {
       return `Step budget reached (${options.stepBudget} steps).`;
     }
-    if (state.costUsed >= options.costBudget) {
+    // When a shared BudgetLedger is threaded (top-level + nested children all
+    // share one instance), it is the authority for cost/call/wall-clock — so
+    // nested spend counts toward the tree ceiling. Fall back to the per-state
+    // cost cap only when no ledger is present (e.g. direct-runtime tests).
+    if (options.ledger) {
+      const reason = options.ledger.exceeded(Date.now());
+      if (reason) return reason;
+    } else if (state.costUsed >= options.costBudget) {
       return `Cost budget reached ($${options.costBudget.toFixed(4)}).`;
     }
     return null;
@@ -715,7 +722,11 @@ export class AgentRuntime {
     }
   }
 
-  private account(state: RunState, res: NormalizedResponse & { cost: { totalCost: number } }): void {
+  private account(
+    state: RunState,
+    res: NormalizedResponse & { cost: { totalCost: number } },
+    options: RunOptions,
+  ): void {
     state.costUsed += res.cost.totalCost;
     state.usage.inputTokens += res.usage.inputTokens;
     state.usage.outputTokens += res.usage.outputTokens;
@@ -726,6 +737,9 @@ export class AgentRuntime {
     if (res.usage.thoughtsTokens) {
       state.usage.thoughtsTokens = (state.usage.thoughtsTokens ?? 0) + res.usage.thoughtsTokens;
     }
+    // Mirror cost + tokens into the shared ledger so nested runs count toward
+    // the same tree-wide ceiling (the per-state totals above stay for display).
+    options.ledger?.record(res.cost.totalCost, res.usage);
   }
 
   private cancelled(options: RunOptions): boolean {
@@ -784,7 +798,7 @@ export class AgentRuntime {
         params: { thinking: options.thinkHarder ? 'high' : 'low' },
         signal: options.signal,
       });
-      this.account(state, res);
+      this.account(state, res, options);
       const text = res.text?.trim();
       if (!text) return this.summarize(sp);
       return `${text}${this.citationsFooter(sp)}`;

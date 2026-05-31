@@ -8,6 +8,7 @@ import type { NormalizedToolCall, UsageStats } from '../llm';
 import type { CostEstimate } from '../llm';
 import type { AllowedTools } from '../tools';
 import type { ToolResult } from '../types';
+import type { BudgetLedger } from './budget-ledger';
 
 /** A single numbered step in the Planner's visible plan (FR-AGENT-2). */
 export interface PlanStep {
@@ -71,6 +72,11 @@ export interface RunOptions {
   stepBudget: number;
   /** Hard cap on accumulated USD spend; on reach, stop and report. */
   costBudget: number;
+  /** Shared spend ledger across this run AND any nested child runs (sub-agents
+   *  / call_skill). When present it is the authority for cost/call/wall-clock
+   *  ceilings (so nested cost counts), and `costBudget` is the per-state
+   *  fallback used only when no ledger is threaded (e.g. direct-runtime tests). */
+  ledger?: BudgetLedger;
   /** Per-caller whitelist threaded into every tool invocation (FR-TOOLS-14). */
   allowedTools?: AllowedTools;
   /** Max bounded retries per step before failing it (FR-AGENT-10). */

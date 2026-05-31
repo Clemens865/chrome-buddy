@@ -22,6 +22,7 @@
 
 import { AgentRuntime } from './runtime';
 import type { RuntimeLlm } from './runtime';
+import { BudgetLedger } from './budget-ledger';
 import type { ComputerUseHook } from './computerUse';
 import type { ApprovalResolver } from './hitl';
 import type { AgentEvent, ApprovalDecision, PlanApprover, RunOutcome, RunState } from './types';
@@ -165,6 +166,10 @@ const GEMINI_PROVIDER = 'google-gemini';
 /** Default per-run caps (FR-AGENT-9; NFR-COST-1). */
 const DEFAULT_STEP_BUDGET = 24;
 const DEFAULT_COST_BUDGET = 0.5;
+/** Shared-ledger runaway backstops (generous — the cost/step caps fire first in
+ *  normal runs). They exist to bound a tree that fans out via sub-agents. */
+const DEFAULT_CALL_BUDGET = 200; // total model calls across a run + its children
+const DEFAULT_WALLCLOCK_MS = 10 * 60_000; // absolute wall-clock per run tree
 
 /** The decision the UI returns when the HITL gate fires. */
 export type ConfirmHandler = (request: {
@@ -202,6 +207,10 @@ export interface RunAgentTaskOptions {
   stepBudget?: number;
   /** Per-run dollar cap (NFR-COST-1). Defaults to DEFAULT_COST_BUDGET. */
   costBudget?: number;
+  /** Shared spend ledger. Omit for a top-level run (one is created); a nested
+   *  run (e.g. call_skill / future sub-agents) receives its parent's ledger so
+   *  the whole tree shares one cost/call/wall-clock ceiling. */
+  ledger?: BudgetLedger;
   /** Recent chat turns (oldest→newest) for planner reference resolution. */
   history?: string;
   /** "Think harder" — synthesis at `thinking: 'high'`. (H2.) */
@@ -245,6 +254,9 @@ export interface CallSkillDeps {
   /** The outer run's model, so a nested skill inherits the user's choice
    *  (e.g. Opus) instead of silently dropping to the cheap default. */
   model?: string;
+  /** The outer run's shared ledger, so a nested skill run's spend counts toward
+   *  the same tree-wide cost/call/wall-clock ceiling (no budget leak). */
+  ledger?: BudgetLedger;
 }
 
 /**
@@ -276,11 +288,14 @@ export function buildCallSkillTool(skills: Skill[], deps?: CallSkillDeps): ToolD
         return ok({ name: skill.name, answer: r.text ?? '' });
       }
       // Agent skill: run the loop with skills suppressed (no recursion).
+      // Share the parent's ledger so the nested run's spend counts toward the
+      // same tree ceiling (closes the cost-discard leak this handler had).
       const result = await runAgentTask(skill.prompt, {
         onEvent: () => {},
         onConfirm: deps.onConfirm,
         send: deps.send,
         model: deps.model,
+        ledger: deps.ledger,
         exposeSkills: false,
       });
       if (result.outcome === 'no-key') return err('runtime-error', 'No API key set for the skill run.');
@@ -456,12 +471,24 @@ export async function runAgentTask(
   }
 
   const model = options.model ?? DEFAULT_REGISTRY.defaultModel;
+  // Top-level run mints the shared ledger; a nested run reuses its parent's so
+  // the whole tree shares ONE cost/call/wall-clock ceiling (no per-child reset).
+  const ledger =
+    options.ledger ??
+    new BudgetLedger(
+      {
+        costCeiling: options.costBudget ?? DEFAULT_COST_BUDGET,
+        callCeiling: DEFAULT_CALL_BUDGET,
+        wallClockMs: DEFAULT_WALLCLOCK_MS,
+      },
+      Date.now(),
+    );
   const skills = options.exposeSkills === false ? [] : await listSavedSkills(send);
   const registry = wireRegistry(
     send,
     options.makeRegistry ?? createDefaultRegistry,
     skills,
-    { send, onConfirm: options.onConfirm, model },
+    { send, onConfirm: options.onConfirm, model, ledger },
     options.onAskUser,
   );
   // Phase 2 routing: pull enabled MCP tools off the address-book and register
@@ -499,6 +526,7 @@ export async function runAgentTask(
     model,
     stepBudget: options.stepBudget ?? DEFAULT_STEP_BUDGET,
     costBudget: options.costBudget ?? DEFAULT_COST_BUDGET,
+    ledger,
     signal: options.signal,
     history: options.history,
     thinkHarder: options.thinkHarder,
