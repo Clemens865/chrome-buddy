@@ -14,6 +14,24 @@ export interface TabLite {
   windowId: number;
   favIconUrl?: string;
   active?: boolean;
+  pinned?: boolean;
+  /** True when Chrome has discarded (suspended) the tab to free memory. */
+  discarded?: boolean;
+}
+
+/** Clipboard export format for a set of tabs. */
+export type UrlFormat = 'markdown' | 'text' | 'json';
+
+/**
+ * Render a list of tabs as a copy-pasteable string. Tabs without a url are
+ * dropped (nothing useful to paste). Markdown → `- [title](url)`, text → one
+ * url per line, json → a pretty array of {title,url}.
+ */
+export function formatTabUrls(tabs: { title: string; url: string }[], format: UrlFormat): string {
+  const items = tabs.filter((t) => t.url);
+  if (format === 'json') return JSON.stringify(items.map((t) => ({ title: t.title, url: t.url })), null, 2);
+  if (format === 'markdown') return items.map((t) => `- [${t.title || t.url}](${t.url})`).join('\n');
+  return items.map((t) => t.url).join('\n');
 }
 
 /** A saved session: a named snapshot of tab URLs + titles. */

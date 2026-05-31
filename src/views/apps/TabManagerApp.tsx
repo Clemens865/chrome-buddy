@@ -1,46 +1,54 @@
 // Tab Manager: list every open tab (across windows), search, activate, close,
-// close duplicates, save/restore sessions, and AI-group by topic. Earns a
-// dedicated surface via the chrome.tabs device API + stateful sessions —
-// neither is chat-coverable.
+// close duplicates, pin, suspend (free memory), move to a new window, copy all
+// URLs, AI-group by topic, and organize tabs into Spaces (named workspaces you
+// switch between). Earns a dedicated surface via the chrome.tabs device API +
+// stateful Spaces — neither is chat-coverable.
 //
 // v1 uses only the existing "tabs" permission (no chrome.tabGroups, which would
-// grow the Web Store review footprint). Sessions persist in chrome.storage.local;
+// grow the Web Store review footprint). Spaces persist in chrome.storage.local;
 // AI grouping is rendered in our UI, not the browser tab strip. The optional
 // "Group" action posts LLM_GENERATE to the SW (key custody preserved).
 import { useEffect, useState } from 'react';
 import { AppHeader, appById } from '../AppsView';
+import { Ic } from '../../ui/icons';
 import type { LlmGenerateResponse, ErrorResponse } from '../../key/messages';
 import {
   type TabLite,
   type TabSession,
   type TabGroupResult,
+  type UrlFormat,
   hostOf,
   filterTabs,
   groupByWindow,
   findDuplicateTabIds,
   toSession,
+  formatTabUrls,
   parseTabGroups,
 } from '../../tabs/manager';
 
-const SESSIONS_KEY = 'tabSessions';
+// Spaces persist under the original key so existing saved sets carry over; the
+// on-disk shape is unchanged (id/name/createdAt/tabs) — only the UI evolved.
+const SPACES_KEY = 'tabSessions';
 
 async function send(msg: unknown): Promise<unknown> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return undefined;
   return chrome.runtime.sendMessage(msg);
 }
 
-async function loadSessions(): Promise<TabSession[]> {
+async function loadSpaces(): Promise<TabSession[]> {
   if (typeof chrome === 'undefined' || !chrome.storage?.local) return [];
-  const r = await chrome.storage.local.get(SESSIONS_KEY);
-  return (r[SESSIONS_KEY] as TabSession[]) ?? [];
+  const r = await chrome.storage.local.get(SPACES_KEY);
+  return (r[SPACES_KEY] as TabSession[]) ?? [];
 }
 
 export function TabManagerApp({ onBack }: { onBack: () => void }) {
   const app = appById('tabs');
   const [tabs, setTabs] = useState<TabLite[]>([]);
   const [filter, setFilter] = useState('');
-  const [sessions, setSessions] = useState<TabSession[]>([]);
-  const [sessionName, setSessionName] = useState('');
+  const [spaces, setSpaces] = useState<TabSession[]>([]);
+  const [spaceName, setSpaceName] = useState('');
+  const [copyFmt, setCopyFmt] = useState<UrlFormat>('markdown');
+  const [copied, setCopied] = useState(false);
   const [groups, setGroups] = useState<TabGroupResult[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +66,8 @@ export function TabManagerApp({ onBack }: { onBack: () => void }) {
           windowId: t.windowId,
           favIconUrl: t.favIconUrl,
           active: t.active,
+          pinned: t.pinned,
+          discarded: t.discarded,
         })),
     );
     setGroups(null);
@@ -65,7 +75,7 @@ export function TabManagerApp({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     void refresh();
-    void loadSessions().then(setSessions);
+    void loadSpaces().then(setSpaces);
   }, []);
 
   const activate = async (t: TabLite) => {
@@ -75,6 +85,27 @@ export function TabManagerApp({ onBack }: { onBack: () => void }) {
 
   const close = async (id: number) => {
     await chrome.tabs?.remove(id);
+    await refresh();
+  };
+
+  const togglePin = async (t: TabLite) => {
+    await chrome.tabs?.update(t.id, { pinned: !t.pinned });
+    await refresh();
+  };
+
+  const suspend = async (t: TabLite) => {
+    if (t.active) { setError('Switch away from a tab before suspending it.'); return; }
+    if (t.discarded) return;
+    try {
+      await chrome.tabs?.discard(t.id);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not suspend that tab.');
+    }
+  };
+
+  const moveToNewWindow = async (t: TabLite) => {
+    await chrome.windows?.create({ tabId: t.id });
     await refresh();
   };
 
@@ -88,27 +119,56 @@ export function TabManagerApp({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const saveSession = async () => {
-    const name = sessionName.trim() || `Session ${sessions.length + 1}`;
-    // Date.now is fine here (app runtime, not a workflow script).
-    const session = toSession(`sess_${Date.now()}`, name, Date.now(), tabs);
-    const next = [session, ...sessions];
-    await chrome.storage?.local?.set({ [SESSIONS_KEY]: next });
-    setSessions(next);
-    setSessionName('');
+  const copyUrls = async () => {
+    const text = formatTabUrls(shown, copyFmt);
+    if (!text) { setError('No tabs to copy.'); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setError('Clipboard blocked — could not copy.');
+    }
   };
 
-  const restoreSession = async (s: TabSession) => {
+  const saveSpace = async () => {
+    const name = spaceName.trim() || `Space ${spaces.length + 1}`;
+    // Date.now is fine here (app runtime, not a workflow script).
+    const space = toSession(`space_${Date.now()}`, name, Date.now(), tabs);
+    const next = [space, ...spaces];
+    await chrome.storage?.local?.set({ [SPACES_KEY]: next });
+    setSpaces(next);
+    setSpaceName('');
+  };
+
+  // Open a space's tabs in the current window (additive).
+  const openSpace = async (s: TabSession) => {
     for (const t of s.tabs) {
       if (t.url && /^https?:/.test(t.url)) await chrome.tabs?.create({ url: t.url, active: false });
     }
     await refresh();
   };
 
-  const deleteSession = async (id: string) => {
-    const next = sessions.filter((s) => s.id !== id);
-    await chrome.storage?.local?.set({ [SESSIONS_KEY]: next });
-    setSessions(next);
+  // Switch to a space: open all its tabs in a fresh window.
+  const openSpaceInNewWindow = async (s: TabSession) => {
+    const urls = s.tabs.map((t) => t.url).filter((u) => u && /^https?:/.test(u));
+    if (!urls.length) { setError('This Space has no openable tabs.'); return; }
+    await chrome.windows?.create({ url: urls });
+    await refresh();
+  };
+
+  // Re-snapshot the current tabs into an existing space (keeps id + name).
+  const updateSpace = async (s: TabSession) => {
+    const updated = toSession(s.id, s.name, s.createdAt, tabs);
+    const next = spaces.map((x) => (x.id === s.id ? updated : x));
+    await chrome.storage?.local?.set({ [SPACES_KEY]: next });
+    setSpaces(next);
+  };
+
+  const deleteSpace = async (id: string) => {
+    const next = spaces.filter((s) => s.id !== id);
+    await chrome.storage?.local?.set({ [SPACES_KEY]: next });
+    setSpaces(next);
   };
 
   const groupByTopic = async () => {
@@ -142,7 +202,7 @@ export function TabManagerApp({ onBack }: { onBack: () => void }) {
   const windows = groupByWindow(shown);
 
   const TabRow = ({ t }: { t: TabLite }) => (
-    <div className={'tab-row' + (t.active ? ' is-active' : '')}>
+    <div className={'tab-row' + (t.active ? ' is-active' : '') + (t.discarded ? ' is-suspended' : '')}>
       <button type="button" className="tab-row-main" onClick={() => void activate(t)} title={t.url}>
         {t.favIconUrl ? <img className="tab-fav" src={t.favIconUrl} alt="" /> : <span className="tab-fav tab-fav-empty" />}
         <span className="tab-row-text">
@@ -150,7 +210,12 @@ export function TabManagerApp({ onBack }: { onBack: () => void }) {
           <span className="tab-row-host">{hostOf(t.url) || t.url}</span>
         </span>
       </button>
-      <button type="button" className="tab-row-close" aria-label={`Close ${t.title}`} onClick={() => void close(t.id)}>✕</button>
+      <div className="tab-row-actions">
+        <button type="button" className={'tab-row-act' + (t.pinned ? ' is-on' : '')} aria-label={t.pinned ? `Unpin ${t.title}` : `Pin ${t.title}`} title={t.pinned ? 'Unpin' : 'Pin'} onClick={() => void togglePin(t)}><span className="ic ic-sm">{Ic.pin}</span></button>
+        <button type="button" className="tab-row-act" aria-label={`Suspend ${t.title}`} title="Suspend (free memory)" disabled={t.active || t.discarded} onClick={() => void suspend(t)}><span className="ic ic-sm">{Ic.suspend}</span></button>
+        <button type="button" className="tab-row-act" aria-label={`Move ${t.title} to a new window`} title="Move to new window" onClick={() => void moveToNewWindow(t)}><span className="ic ic-sm">{Ic.popout}</span></button>
+        <button type="button" className="tab-row-close" aria-label={`Close ${t.title}`} onClick={() => void close(t.id)}>✕</button>
+      </div>
     </div>
   );
 
@@ -171,6 +236,14 @@ export function TabManagerApp({ onBack }: { onBack: () => void }) {
         <div className="tab-actions">
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void closeDuplicates()}>Close duplicates</button>
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy || tabs.length === 0} onClick={() => void groupByTopic()}>{busy ? 'Grouping…' : 'Group by topic'}</button>
+          <span className="tab-copy">
+            <select className="tab-copy-fmt" value={copyFmt} onChange={(e) => setCopyFmt(e.target.value as UrlFormat)} aria-label="Copy format">
+              <option value="markdown">Markdown</option>
+              <option value="text">Plain</option>
+              <option value="json">JSON</option>
+            </select>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={shown.length === 0} onClick={() => void copyUrls()}><span className="ic ic-sm">{Ic.copy}</span> {copied ? 'Copied' : 'Copy URLs'}</button>
+          </span>
           <span className="tab-count">{tabs.length} tab{tabs.length === 1 ? '' : 's'}</span>
         </div>
 
@@ -179,22 +252,24 @@ export function TabManagerApp({ onBack }: { onBack: () => void }) {
         <div className="tab-save">
           <input
             className="settings-input"
-            placeholder="Save these tabs as a session…"
-            value={sessionName}
-            onChange={(e) => setSessionName(e.target.value)}
-            aria-label="Session name"
+            placeholder="Save these tabs as a Space…"
+            value={spaceName}
+            onChange={(e) => setSpaceName(e.target.value)}
+            aria-label="Space name"
           />
-          <button type="button" className="btn btn-primary btn-sm" disabled={tabs.length === 0} onClick={() => void saveSession()}>Save</button>
+          <button type="button" className="btn btn-primary btn-sm" disabled={tabs.length === 0} onClick={() => void saveSpace()}>Save</button>
         </div>
 
-        {sessions.length > 0 && (
+        {spaces.length > 0 && (
           <div className="scrape-section">
-            <div className="scrape-section-h">Saved sessions</div>
-            {sessions.map((s) => (
-              <div key={s.id} className="tab-session-row">
-                <span className="tab-session-name">{s.name} · {s.tabs.length} tab{s.tabs.length === 1 ? '' : 's'}</span>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => void restoreSession(s)}>Restore</button>
-                <button type="button" className="tab-row-close" aria-label={`Delete ${s.name}`} onClick={() => void deleteSession(s.id)}>✕</button>
+            <div className="scrape-section-h">Spaces</div>
+            {spaces.map((s) => (
+              <div key={s.id} className="tab-space-row">
+                <span className="tab-space-name">{s.name} · {s.tabs.length} tab{s.tabs.length === 1 ? '' : 's'}</span>
+                <button type="button" className="btn btn-ghost btn-sm" title="Open these tabs in the current window" onClick={() => void openSpace(s)}>Open</button>
+                <button type="button" className="tab-row-act" aria-label={`Open ${s.name} in a new window`} title="Open in new window" onClick={() => void openSpaceInNewWindow(s)}><span className="ic ic-sm">{Ic.popout}</span></button>
+                <button type="button" className="tab-row-act" aria-label={`Update ${s.name} with current tabs`} title="Update with current tabs" onClick={() => void updateSpace(s)}><span className="ic ic-sm">{Ic.copy}</span></button>
+                <button type="button" className="tab-row-close" aria-label={`Delete ${s.name}`} onClick={() => void deleteSpace(s.id)}>✕</button>
               </div>
             ))}
           </div>

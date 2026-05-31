@@ -492,11 +492,27 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .tab-row-title { font-size: 12.5px; color: var(--panel-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-row-host { font-size: 11px; color: var(--panel-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-row-close { width: 30px; border: 0; background: transparent; color: var(--panel-muted-soft); cursor: pointer; opacity: 0; }
-.tab-row:hover .tab-row-close, .tab-session-row:hover .tab-row-close { opacity: 1; }
+.tab-row:hover .tab-row-close, .tab-session-row:hover .tab-row-close, .tab-space-row:hover .tab-row-close { opacity: 1; }
 .tab-row-close:hover { color: var(--panel-fg); }
+/* Per-row actions (pin / suspend / move) — revealed on hover; pinned stays lit. */
+.tab-row-actions { display: flex; align-items: center; }
+.tab-row-act { width: 26px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--panel-muted-soft); cursor: pointer; opacity: 0; }
+.tab-row:hover .tab-row-act, .tab-space-row:hover .tab-row-act { opacity: 1; }
+.tab-row-act:hover { color: var(--panel-fg); }
+.tab-row-act:disabled { cursor: default; }
+.tab-row:hover .tab-row-act:disabled { opacity: 0.3; }
+.tab-row-act.is-on { opacity: 1; color: var(--accent); }
+.tab-row.is-suspended .tab-row-main { opacity: 0.55; }
+/* Copy-URLs format picker in the tab toolbar. */
+.tab-copy { display: inline-flex; align-items: center; gap: 4px; }
+.tab-copy-fmt { font: inherit; font-size: 11px; border: 1px solid var(--panel-border-soft); border-radius: 6px; background: var(--panel-elev); color: var(--panel-fg); padding: 2px 4px; cursor: pointer; }
 .tab-session-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; }
 .tab-session-row:hover { background: var(--panel-elev); }
 .tab-session-name { flex: 1; min-width: 0; font-size: 12px; color: var(--panel-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Spaces row — named workspace you can open / open-in-new-window / update. */
+.tab-space-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; }
+.tab-space-row:hover { background: var(--panel-elev); }
+.tab-space-name { flex: 1; min-width: 0; font-size: 12px; color: var(--panel-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-group { margin-bottom: 8px; }
 .tab-group-h { font-size: 11.5px; font-weight: 600; color: var(--accent); margin: 4px 0; }
 

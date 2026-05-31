@@ -60,7 +60,7 @@ test('closes duplicate tabs', async ({ context, extensionId }) => {
   await expect(panel.locator('.tab-row-title', { hasText: 'Dup Page' })).toHaveCount(1);
 });
 
-test('saves a session to storage and restores it', async ({ context, extensionId }) => {
+test('saves a Space to storage and opens it', async ({ context, extensionId }) => {
   const p = await context.newPage();
   await p.goto('https://example.com/');
 
@@ -69,17 +69,17 @@ test('saves a session to storage and restores it', async ({ context, extensionId
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
   await openTabManager(panel);
 
-  await panel.getByLabel('Session name').fill('Work set');
+  await panel.getByLabel('Space name').fill('Work set');
   await panel.getByRole('button', { name: 'Save', exact: true }).click();
 
-  // Row appears + the session is persisted in chrome.storage.local.
-  await expect(panel.locator('.tab-session-name', { hasText: 'Work set' })).toBeVisible();
+  // Row appears + the Space is persisted in chrome.storage.local.
+  await expect(panel.locator('.tab-space-name', { hasText: 'Work set' })).toBeVisible();
   await expect
     .poll(async () => panel.evaluate(() => chrome.storage.local.get('tabSessions').then((r) => (r.tabSessions ?? []).length)))
     .toBeGreaterThan(0);
 
-  // Restore opens the saved http(s) tab(s); example.com should be present.
-  await panel.getByRole('button', { name: 'Restore' }).click();
+  // Open adds the saved http(s) tab(s) to the window; example.com should be present.
+  await panel.getByRole('button', { name: 'Open', exact: true }).click();
   await expect
     .poll(async () => panel.evaluate(() => chrome.tabs.query({}).then((ts) => ts.filter((t) => (t.url ?? '').includes('example.com')).length)), {
       timeout: 10_000,

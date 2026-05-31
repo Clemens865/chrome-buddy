@@ -7,6 +7,7 @@ import {
   groupByWindow,
   toSession,
   parseTabGroups,
+  formatTabUrls,
   type TabLite,
 } from './manager';
 
@@ -91,5 +92,27 @@ describe('parseTabGroups', () => {
   it('drops empty/nameless groups and returns [] for junk', () => {
     expect(parseTabGroups('{"groups":[{"name":"","tabIndices":[0]},{"name":"Y","tabIndices":[]}]}', 3)).toEqual([]);
     expect(parseTabGroups('nope', 3)).toEqual([]);
+  });
+});
+
+describe('formatTabUrls', () => {
+  const items = [
+    { title: 'Alpha', url: 'https://a.com/x' },
+    { title: 'Bravo', url: 'https://b.com/y' },
+  ];
+  it('renders markdown links', () => {
+    expect(formatTabUrls(items, 'markdown')).toBe('- [Alpha](https://a.com/x)\n- [Bravo](https://b.com/y)');
+  });
+  it('renders one url per line as plain text', () => {
+    expect(formatTabUrls(items, 'text')).toBe('https://a.com/x\nhttps://b.com/y');
+  });
+  it('renders a pretty json array of {title,url}', () => {
+    expect(JSON.parse(formatTabUrls(items, 'json'))).toEqual(items);
+  });
+  it('drops tabs without a url', () => {
+    expect(formatTabUrls([{ title: 'X', url: '' }, items[0]], 'text')).toBe('https://a.com/x');
+  });
+  it('falls back to the url when a markdown title is empty', () => {
+    expect(formatTabUrls([{ title: '', url: 'https://a.com' }], 'markdown')).toBe('- [https://a.com](https://a.com)');
   });
 });
