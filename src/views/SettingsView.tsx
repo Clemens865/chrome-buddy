@@ -55,6 +55,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   const [activeProfile, setActiveProfile] = usePersistedState<ProfileKind>('activeProfile', 'professional');
   const [attachProfile, setAttachProfile] = usePersistedState<boolean>('attachProfile', false);
   const [askBeforePlan, setAskBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
+  const [decomposeTasks, setDecomposeTasks] = usePersistedState<boolean>('decomposeTasks', false);
   const [visionConfirmAll, setVisionConfirmAll] = usePersistedState<boolean>('visionConfirmAll', false);
   const [fileSearchStores, setFileSearchStores] = usePersistedState<string[]>('fileSearchStores', []);
   const [githubDefaultRepo, setGithubDefaultRepo] = usePersistedState<string>('githubDefaultRepo', '');
@@ -254,6 +255,12 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
           s="Off (default): only confirm when the model flags an action (per ToS). On: gate every click/type."
         >
           <Toggle on={visionConfirmAll} onChange={setVisionConfirmAll} />
+        </SettingsRow>
+        <SettingsRow
+          t="Decompose complex tasks"
+          s="Experimental. Off (default): one agent loop. On: split a multi-phase Agent task into a sequential sub-task queue (focused context per phase, one shared budget). Simple tasks are never split."
+        >
+          <Toggle on={decomposeTasks} onChange={setDecomposeTasks} />
         </SettingsRow>
       </div>
 

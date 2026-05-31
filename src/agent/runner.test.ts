@@ -81,6 +81,64 @@ describe('runAgentTask', () => {
     expect(toolExecCalls.length).toBeGreaterThanOrEqual(1);
     expect((toolExecCalls[0][0] as { tool: string }).tool).toBe('read_dom');
   });
+
+  // Decompose phase (Phase 2). The decomposer is gated behind decompose:true.
+  const llmResult = (text: string, toolCalls: unknown[] = []) => ({
+    type: 'LLM_GENERATE',
+    ok: true,
+    result: { text, toolCalls, finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, model: 'mock', cost: { totalCost: 0.001 } },
+  });
+
+  it('decompose:true but the floor opts out → runs the single loop unchanged', async () => {
+    let decomposerCalls = 0;
+    const send = mockSend({
+      KEY_STATUS: () => ({ type: 'KEY_STATUS', hasKey: true }),
+      SKILL_LIST: () => ({ type: 'SKILL_LIST', skills: [] }),
+      LLM_GENERATE: (msg) => {
+        const sys = String((msg.messages as { role: string; content: string }[])?.[0]?.content ?? '');
+        if (sys.includes('Decomposer')) { decomposerCalls += 1; return llmResult(JSON.stringify({ subtasks: [] })); }
+        if (sys.includes('Planner')) return llmResult(JSON.stringify({ steps: [{ intent: 'read the page' }] }));
+        return llmResult('', [{ id: 'c1', name: 'read_dom', arguments: {} }]);
+      },
+      TOOL_EXEC: (msg) => ({ type: 'TOOL_EXEC', ok: true, result: { ok: true, data: { tool: msg.tool }, meta: { provenance: ['https://acme.com'] } } }),
+    });
+    const events: AgentEvent[] = [];
+    const result = await runAgentTask('summarize this page', {
+      onEvent: (e) => events.push(e), onConfirm: async () => ({ approved: true }), send, decompose: true,
+    });
+    expect(decomposerCalls).toBe(1); // the decompose call DID run…
+    expect(result.outcome).not.toBe('no-key');
+    expect(events.some((e) => e.type === 'tool_call' && e.call.name === 'read_dom')).toBe(true); // …then floored to the single loop
+  });
+
+  it('decompose:true with 2 sub-tasks drains them sequentially and composes one answer', async () => {
+    const subtaskGoals: string[] = [];
+    const send = mockSend({
+      KEY_STATUS: () => ({ type: 'KEY_STATUS', hasKey: true }),
+      SKILL_LIST: () => ({ type: 'SKILL_LIST', skills: [] }),
+      LLM_GENERATE: (msg) => {
+        const messages = (msg.messages as { role: string; content: string }[]) ?? [];
+        const sys = String(messages[0]?.content ?? '');
+        const user = String(messages[messages.length - 1]?.content ?? '');
+        if (sys.includes('Decomposer')) return llmResult(JSON.stringify({ subtasks: [{ goal: 'research', role: 'researcher' }, { goal: 'compile', role: 'summarizer' }] }));
+        if (sys.includes('Composer')) return llmResult('FINAL: research + compile combined');
+        if (sys.includes('Planner')) { subtaskGoals.push(user); return llmResult(JSON.stringify({ steps: [{ intent: 'do it' }] })); }
+        // Sub-task executor: answer directly (no tool) so the step synthesizes.
+        return llmResult('sub-result');
+      },
+      TOOL_EXEC: () => ({ type: 'TOOL_EXEC', ok: true, result: { ok: true, data: {} } }),
+    });
+    const events: AgentEvent[] = [];
+    const result = await runAgentTask('research pricing then compile a table', {
+      onEvent: (e) => events.push(e), onConfirm: async () => ({ approved: true }), send, decompose: true,
+    });
+    expect(result.state?.finalAnswer).toBe('FINAL: research + compile combined');
+    // Both sub-tasks ran (two planner calls), carrying their role + goal.
+    expect(subtaskGoals.some((g) => g.includes('research'))).toBe(true);
+    expect(subtaskGoals.some((g) => g.includes('compile'))).toBe(true);
+    // Exactly one top-level done (the composed answer), not one per sub-task.
+    expect(events.filter((e) => e.type === 'done')).toHaveLength(1);
+  });
 });
 
 describe('buildCallSkillTool', () => {

@@ -23,9 +23,16 @@
 import { AgentRuntime } from './runtime';
 import type { RuntimeLlm } from './runtime';
 import { BudgetLedger } from './budget-ledger';
+import {
+  DECOMPOSE_SYSTEM,
+  parseDecomposition,
+  drainSubtasks,
+  composeContext,
+  type SubTask,
+} from './decompose';
 import type { ComputerUseHook } from './computerUse';
 import type { ApprovalResolver } from './hitl';
-import type { AgentEvent, ApprovalDecision, PlanApprover, RunOutcome, RunState } from './types';
+import type { AgentEvent, ApprovalDecision, PlanApprover, RunOutcome, RunState, ActionRecord } from './types';
 import { createDefaultRegistry, type ToolRegistry } from '../tools';
 import { callSkillTool } from '../tools/defs';
 import type { ToolDefinition } from '../tools/types';
@@ -206,6 +213,14 @@ export interface RunAgentTaskOptions {
   makeRegistry?: () => ToolRegistry;
   /** Expose call_skill (saved skills) to the model. Off for nested skill runs. */
   exposeSkills?: boolean;
+  /** Marks this as a sub-task execution within a decomposed run, so it does NOT
+   *  itself decompose (the flat spine is one level — no nested decomposition). */
+  subtask?: boolean;
+  /** Opt in to the Phase-2 decompose phase (split a multi-phase task into a
+   *  sequential sub-task queue). Off by default so simple runs + tests are
+   *  unchanged; the panel enables it for Agent-mode runs. The no-decomposition
+   *  floor still keeps simple tasks on the single loop even when enabled. */
+  decompose?: boolean;
   /** Per-run step cap (FR-AGENT-9). Defaults to DEFAULT_STEP_BUDGET. */
   stepBudget?: number;
   /** Per-run dollar cap (NFR-COST-1). Defaults to DEFAULT_COST_BUDGET. */
@@ -491,6 +506,17 @@ export async function runAgentTask(
       },
       Date.now(),
     );
+
+  // --- Decompose phase (Phase 2 flat spine) -------------------------------
+  // A top-level, multi-phase task is split into a SEQUENTIAL sub-task queue.
+  // Simple tasks hit the no-decomposition floor and fall through to the normal
+  // single loop unchanged. Sub-task runs (subtask:true) and resumes never
+  // re-decompose (the spine is one level deep).
+  if (options.decompose && options.exposeSkills !== false && !options.subtask && !options.resume) {
+    const decomposed = await runDecomposedIfNeeded(prompt, { options, send, model, ledger });
+    if (decomposed) return decomposed;
+  }
+
   const skills = options.exposeSkills === false ? [] : await listSavedSkills(send);
   const registry = wireRegistry(
     send,
@@ -548,6 +574,130 @@ export async function runAgentTask(
   if (topLevel) void clearCheckpoint();
 
   return { outcome: state.outcome ?? 'failed', state };
+}
+
+const COMPOSE_SYSTEM =
+  'You are the Composer of a browser agent. The user gave a task that was split into ' +
+  'sub-tasks; each ran and produced the results below. Write the final answer to the ' +
+  'ORIGINAL task by integrating those results. Be direct and complete; do not mention ' +
+  'the sub-tasks or that the work was split.';
+
+/**
+ * Phase 2 flat-spine orchestration. Asks the decomposer whether the task needs a
+ * sequential sub-task queue; returns null on the no-decomposition floor (caller
+ * runs the normal single loop). Otherwise drains the sub-tasks one at a time —
+ * each a bounded, isolated-context nested runAgentTask sharing this run's
+ * BudgetLedger (so the whole tree honors ONE cost/call/wall-clock ceiling) — and
+ * composes a single final answer. Sequential by construction (no tab races / no
+ * concurrent HITL). Sub-tasks never re-decompose (subtask:true) and never
+ * checkpoint (exposeSkills:false).
+ */
+async function runDecomposedIfNeeded(
+  task: string,
+  ctx: {
+    options: RunAgentTaskOptions;
+    send: (m: unknown) => Promise<unknown>;
+    model: string | undefined;
+    ledger: BudgetLedger;
+  },
+): Promise<RunAgentTaskResult | null> {
+  const { options, send, model, ledger } = ctx;
+  const llm = makeLlm(send, model);
+  const runId = `dec_${Date.now().toString(36)}`;
+
+  // 1) Decompose — one cheap call. Floor (null) → caller runs the single loop.
+  const dec = await llm.generate({
+    model,
+    messages: [
+      { role: 'system', content: DECOMPOSE_SYSTEM },
+      { role: 'user', content: `Task: ${task}` },
+    ],
+    params: { jsonMode: true, thinking: 'low' },
+    signal: options.signal,
+  });
+  ledger.record(dec.cost.totalCost, dec.usage);
+  const subtasks = parseDecomposition(dec.text);
+  if (!subtasks) return null;
+
+  // 2) Drain sequentially. Each sub-task is an isolated-context nested run; its
+  //    done/partial bubbles are suppressed (we capture the digest instead) so
+  //    only the final composed answer renders as THE answer.
+  const aggActions: ActionRecord[] = [];
+  const aggProvenance: string[] = [];
+  const results = await drainSubtasks(subtasks, {
+    onEvent: () => {},
+    checkStop: () => {
+      if (options.signal?.aborted) return 'cancelled';
+      return ledger.exceeded(Date.now());
+    },
+    runSubtask: async (st: SubTask, prior: string) => {
+      const sub = await runAgentTask(`[Acting as ${st.role}] ${st.goal}`, {
+        onEvent: (e) => {
+          if (e.type !== 'done' && e.type !== 'partial') options.onEvent(e);
+        },
+        onConfirm: options.onConfirm,
+        onPlanReview: options.onPlanReview,
+        onAskUser: options.onAskUser,
+        onHumanGate: options.onHumanGate,
+        model,
+        send,
+        makeRegistry: options.makeRegistry,
+        ledger,
+        subtask: true,
+        exposeSkills: false,
+        stepBudget: options.stepBudget,
+        history: [options.history, prior].filter(Boolean).join('\n\n') || undefined,
+        signal: options.signal,
+        defaults: options.defaults,
+      });
+      if (sub.state) {
+        aggActions.push(...sub.state.scratchpad.actions);
+        aggProvenance.push(...sub.state.scratchpad.provenance);
+      }
+      const ok = sub.outcome === 'completed' || sub.outcome === 'partial';
+      return { digest: sub.state?.finalAnswer ?? '', ok };
+    },
+  });
+
+  // 3) Compose one final answer from the sub-task digests.
+  const comp = await llm.generate({
+    model,
+    messages: [
+      { role: 'system', content: COMPOSE_SYSTEM },
+      { role: 'user', content: `Original task: ${task}\n\nSub-task results:\n${composeContext(results)}` },
+    ],
+    params: { thinking: options.thinkHarder ? 'high' : 'low' },
+    signal: options.signal,
+  });
+  ledger.record(comp.cost.totalCost, comp.usage);
+  const finalAnswer = comp.text;
+
+  const allDone = results.every((r) => r.status === 'done');
+  const anyDone = results.some((r) => r.status === 'done');
+  const outcome: RunOutcome = options.signal?.aborted
+    ? 'cancelled'
+    : allDone
+      ? 'completed'
+      : anyDone
+        ? 'partial'
+        : 'failed';
+
+  const snap = ledger.snapshot(Date.now());
+  const state: RunState = {
+    runId,
+    scratchpad: { task, plan: [], actions: aggActions, notes: [], provenance: aggProvenance, completedSteps: [] },
+    stepsUsed: 0,
+    costUsed: ledger.spend,
+    usage: {
+      inputTokens: snap.usage.inputTokens,
+      outputTokens: snap.usage.outputTokens,
+      totalTokens: snap.usage.totalTokens,
+    },
+    outcome,
+    finalAnswer,
+  };
+  options.onEvent({ type: 'done', runId, outcome, finalAnswer, cost: state.costUsed, usage: state.usage });
+  return { outcome, state };
 }
 
 /** Cheap, fast model for plain (non-agentic) chat answers — token-efficient. */

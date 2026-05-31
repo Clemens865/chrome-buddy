@@ -156,6 +156,10 @@ export function ChatView({
   // H7 P3 — "Confirm every Vision action" toggle. Default OFF: only
   // safety_decision = require_confirmation actions gate (per docs).
   const [visionConfirmAll] = usePersistedState<boolean>('visionConfirmAll', false);
+  // Phase 2: split a multi-phase Agent task into a sequential sub-task queue.
+  // Off by default — opt in via Settings; the no-decomposition floor still keeps
+  // simple tasks on the single loop even when enabled.
+  const [decomposeTasks] = usePersistedState<boolean>('decomposeTasks', false);
   // H2 — per-turn "Think harder" toggle: synthesis runs at thinking:'high'.
   // Not persisted; resets to off after each submit so the user opts in per turn.
   const [thinkHarder, setThinkHarder] = useState(false);
@@ -722,6 +726,7 @@ export function ChatView({
             onAskUser,
             onHumanGate,
             model: activeModel,
+            decompose: decomposeTasks,
             costBudget: perRunCap,
             stepBudget,
             history: recentHistory(itemsRef.current),
@@ -763,7 +768,7 @@ export function ChatView({
         setThinkHarder(false);
       }
     },
-    [busy, mode, attachPage, contextTabIds, attachProfile, profiles, activeProfile, activeModel, chatModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments, githubDefaultRepo, libraryAutoContext, thinkHarder, visionConfirmAll],
+    [busy, mode, attachPage, contextTabIds, attachProfile, profiles, activeProfile, activeModel, chatModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments, githubDefaultRepo, libraryAutoContext, thinkHarder, visionConfirmAll, decomposeTasks],
   );
 
   const decide = useCallback((runId: string, step: number, callId: string, approved: boolean) => {
