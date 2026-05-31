@@ -103,3 +103,70 @@ export function parseDecomposition(text: string, max = MAX_SUBTASKS): SubTask[] 
     status: 'pending' as SubTaskStatus,
   }));
 }
+
+// --- Sequential drain (pure orchestration; the runner injects the I/O) -------
+
+/** The outcome of running one sub-task: its result digest + whether it succeeded. */
+export interface SubtaskOutcome {
+  digest: string;
+  ok: boolean;
+}
+
+/** Events the drain emits so the transcript can render the sub-task tree. */
+export type SubtaskEvent =
+  | { type: 'subtask_start'; id: string; goal: string; role: SubTaskRole }
+  | { type: 'subtask_result'; id: string; status: SubTaskStatus; digest: string };
+
+export interface DrainHooks {
+  /** Execute one sub-task given the accumulated digests of the prior ones;
+   *  returns this sub-task's own result digest. The runner wires this to a
+   *  bounded, isolated-context runAgentTask sharing the run's BudgetLedger. */
+  runSubtask: (subtask: SubTask, priorContext: string) => Promise<SubtaskOutcome>;
+  /** Surfaced to the transcript (start/result per sub-task). */
+  onEvent?: (event: SubtaskEvent) => void;
+  /** Returns a reason when the shared budget/cancel is tripped, else null.
+   *  Checked BEFORE each sub-task so a drained-dry budget stops cleanly. */
+  checkStop?: () => string | null;
+}
+
+/**
+ * Drain sub-tasks SEQUENTIALLY (never concurrent — the safety property that
+ * avoids tab races + HITL collisions). Each sub-task receives the accumulated
+ * digests of the ones before it (isolated-context-with-handoff), and its own
+ * digest is appended for the next. A failed sub-task does NOT abort the drain
+ * (graceful partial); a tripped budget/cancel marks the remaining sub-tasks
+ * skipped without spending. Pure: all I/O is injected via hooks.
+ */
+export async function drainSubtasks(subtasks: SubTask[], hooks: DrainHooks): Promise<SubTask[]> {
+  const results: SubTask[] = [];
+  let context = '';
+  for (const st of subtasks) {
+    const stop = hooks.checkStop?.();
+    if (stop) {
+      results.push({ ...st, status: 'failed', digest: `(skipped — ${stop})` });
+      continue;
+    }
+    hooks.onEvent?.({ type: 'subtask_start', id: st.id, goal: st.goal, role: st.role });
+    let outcome: SubtaskOutcome;
+    try {
+      outcome = await hooks.runSubtask(st, context);
+    } catch (e) {
+      outcome = { digest: e instanceof Error ? e.message : String(e), ok: false };
+    }
+    const status: SubTaskStatus = outcome.ok ? 'done' : 'failed';
+    results.push({ ...st, status, digest: outcome.digest });
+    if (outcome.digest) {
+      context += `${context ? '\n\n' : ''}[Result of sub-task "${st.goal}":\n${outcome.digest}\n]`;
+    }
+    hooks.onEvent?.({ type: 'subtask_result', id: st.id, status, digest: outcome.digest });
+  }
+  return results;
+}
+
+/** Join completed sub-task digests into the context block for a final compose. */
+export function composeContext(results: SubTask[]): string {
+  return results
+    .filter((s) => s.digest)
+    .map((s) => `## ${s.goal}\n${s.digest}`)
+    .join('\n\n');
+}
