@@ -59,6 +59,26 @@ describe('splitMessages', () => {
     const { msgs } = splitMessages([{ role: 'tool', content: '42', toolCallId: 'call_1' }]);
     expect(msgs[0]).toEqual({ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'call_1', content: '42' }] });
   });
+  it('replays an assistant turn that called tools as tool_use blocks (agent loop)', () => {
+    const { msgs } = splitMessages([
+      { role: 'user', content: 'open reddit' },
+      { role: 'assistant', content: 'On it.', toolCalls: [{ id: 'tu_1', name: 'navigate', arguments: { url: 'https://reddit.com' } }] },
+      { role: 'tool', content: 'ok', toolCallId: 'tu_1' },
+    ]);
+    // assistant turn carries text + the tool_use block (id matches the result).
+    expect(msgs[1]).toEqual({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'On it.' },
+        { type: 'tool_use', id: 'tu_1', name: 'navigate', input: { url: 'https://reddit.com' } },
+      ],
+    });
+    expect(msgs[2].content).toEqual([{ type: 'tool_result', tool_use_id: 'tu_1', content: 'ok' }]);
+  });
+  it('omits an empty text block when the assistant turn is tool-only', () => {
+    const { msgs } = splitMessages([{ role: 'assistant', content: '', toolCalls: [{ id: 't', name: 'read_dom', arguments: {} }] }]);
+    expect(msgs[0].content).toEqual([{ type: 'tool_use', id: 't', name: 'read_dom', input: {} }]);
+  });
 });
 
 describe('buildRequest', () => {

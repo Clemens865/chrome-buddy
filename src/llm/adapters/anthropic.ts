@@ -66,6 +66,7 @@ export function mapStopReason(reason: string | null | undefined): FinishReason {
 type AnthropicBlock =
   | { type: 'text'; text: string }
   | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; tool_use_id: string; content: string };
 
 function partsToBlocks(content: string | ContentPart[]): string | AnthropicBlock[] {
@@ -102,6 +103,21 @@ export function splitMessages(messages: ChatMessage[]): {
         role: 'user',
         content: [{ type: 'tool_result', tool_use_id: m.toolCallId ?? '', content: typeof m.content === 'string' ? m.content : '' }],
       });
+    } else if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length) {
+      // An assistant turn that called tools MUST replay its tool_use blocks, or
+      // the following tool_result references a missing id and Anthropic 400s
+      // (which breaks agent loops on Claude). Include any text first, then the
+      // tool_use blocks.
+      const blocks: AnthropicBlock[] = [];
+      if (typeof m.content === 'string') {
+        if (m.content.trim()) blocks.push({ type: 'text', text: m.content });
+      } else {
+        for (const b of partsToBlocks(m.content) as AnthropicBlock[]) {
+          if (b.type !== 'text' || b.text.trim()) blocks.push(b);
+        }
+      }
+      for (const c of m.toolCalls) blocks.push({ type: 'tool_use', id: c.id, name: c.name, input: c.arguments ?? {} });
+      msgs.push({ role: 'assistant', content: blocks });
     } else {
       msgs.push({ role: m.role, content: partsToBlocks(m.content) });
     }
