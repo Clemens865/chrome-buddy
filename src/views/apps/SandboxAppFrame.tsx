@@ -77,11 +77,16 @@ export function SandboxAppFrame({
           return { ok: true, result: res.text };
         }
         if (op === 'image') {
-          const a = (args ?? {}) as { prompt?: string; model?: string };
+          // inputImage (a data URL, e.g. an uploaded photo) restyles/edits that
+          // image instead of generating from scratch — enables upload→transform
+          // apps (portrait restyler, background swap, …).
+          const a = (args ?? {}) as { prompt?: string; model?: string; inputImage?: string; aspect?: string };
           const r = (await chrome.runtime.sendMessage({
             type: 'IMAGE_GENERATE',
             model: a.model ?? 'gemini-2.5-flash-image',
             prompt: String(a.prompt ?? ''),
+            ...(typeof a.inputImage === 'string' && a.inputImage ? { inputImage: a.inputImage } : {}),
+            ...(a.aspect ? { aspect: a.aspect } : {}),
           })) as { type?: string; ok?: boolean; dataUrl?: string; error?: string } | undefined;
           if (r?.type === 'IMAGE_GENERATE' && r.ok && r.dataUrl) return { ok: true, result: r.dataUrl };
           return { ok: false, error: r?.error ?? 'Image generation failed.' };

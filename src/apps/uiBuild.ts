@@ -24,7 +24,8 @@ THE RUNTIME CONTRACT (follow EXACTLY — most bugs come from breaking these):
     Add your own CSS as needed; it overrides the base. Keep it compact + mobile-narrow (~400px).
 - Capabilities reach the app ONLY via \`bridge\` and \`api\`, and ONLY if declared in "permissions":
     • bridge.gemini(promptString) -> Promise<string>   // an LLM text completion (declare "gemini")
-    • bridge.image({prompt}) -> Promise<dataUrl>        // a generated image data URL (declare "image")
+    • bridge.image({prompt, inputImage?}) -> Promise<dataUrl>  // generate an image; pass inputImage (a data URL, e.g. an uploaded photo) to RESTYLE/EDIT it instead (declare "image")
+        For an upload→transform app (e.g. restyle a portrait): add <input type="file" accept="image/*">, read it with FileReader as a data URL, then call bridge.image({prompt: "...style...", inputImage: thatDataUrl}). The returned data URL is the result — show it in an <img> and offer api.download.
     • api.download(filename, content, mime?)            // trigger a file download (declare "download")
     • bridge.storage({action,key,value}) -> Promise     // persist app state across sessions (declare "storage")
         actions: 'get'|'set'|'remove'|'keys'|'clear'; get returns the value (or null)
