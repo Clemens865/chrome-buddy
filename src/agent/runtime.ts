@@ -20,6 +20,7 @@ import type { ChatMessage, ContentPart, NormalizedResponse, NormalizedToolCall, 
 import type { ToolRegistry } from '../tools';
 import type { ToolContext } from '../tools';
 import type { ToolResult } from '../types';
+import { ok } from '../types';
 import {
   gateConsequentialAction,
   type ApprovalResolver,
@@ -209,6 +210,7 @@ export class AgentRuntime {
       notes: [],
       provenance: [],
       completedSteps: [],
+      dispatchedConsequential: [],
     };
     const state: RunState = options.resume ?? {
       runId,
@@ -320,6 +322,10 @@ export class AgentRuntime {
           'finish and answer — do not stop at gathering a detail. For files in the ' +
           "user's folder, prefer list_files then read_file; only use ask_user when " +
           'genuinely ambiguous, and if you ask, still include the follow-up read step. ' +
+          'When the task refers to the user\'s open tabs, "my tabs", or research ACROSS ' +
+          'several pages they already have open, prefer list_tabs then read_tab(tabId) ' +
+          'to gather from THOSE tabs (incl. pages behind their login) instead of ' +
+          'search_web/fetch_url, which only see the public web. ' +
           'Use the prior conversation to resolve references like "this file" or "it" ' +
           '(e.g. a filename already mentioned) instead of re-asking. ' +
           'Respond ONLY with JSON: {"steps":[{"intent":"..."}]}.',
@@ -583,6 +589,26 @@ export class AgentRuntime {
       const args = gate.kind === 'execute' ? gate.args : call.arguments;
       // Approval flows into the tool context so the registry's own gate passes.
       const approved = gate.kind === 'execute';
+
+      // Resume-safety (NFR-REL-3): a consequential action is recorded as
+      // DISPATCHED and checkpointed BEFORE its side effect fires. If this step
+      // is re-running after an interruption and the action was already
+      // dispatched, do NOT re-fire it — surface a skipped result instead. We err
+      // toward not double-sending a webhook/commit/write over guaranteeing it
+      // ran (the user sees the skip note and can re-run deliberately).
+      if (approved && def?.consequential) {
+        const key = consequentialKey(step.index, call.name, args);
+        const dispatched = (state.scratchpad.dispatchedConsequential ??= []);
+        if (dispatched.includes(key)) {
+          const skipped = ok({ skipped: true, note: 'Already dispatched before an interruption — not re-sent on resume.' });
+          this.recordAction(state, step.index, call, skipped, 'succeeded', false);
+          this.emit({ type: 'step_result', runId, step: step.index, verdict: 'succeeded', result: skipped });
+          continue;
+        }
+        dispatched.push(key);
+        this.checkpoint(state); // persist the intent-to-dispatch BEFORE the side effect
+      }
+
       const ctx: ToolContext = {
         caller: 'agent',
         callerId: runId,
@@ -910,4 +936,22 @@ function safeStringify(value: unknown): string {
   } catch {
     return '';
   }
+}
+
+/** Stable JSON (object keys sorted) so the same args hash to the same string
+ *  across re-proposals on resume — the basis for the consequential-dispatch key. */
+function stableStringify(v: unknown): string {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null';
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
+  const obj = v as Record<string, unknown>;
+  return `{${Object.keys(obj)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`)
+    .join(',')}}`;
+}
+
+/** Deterministic key for a consequential action: step + tool + stable args.
+ *  Survives resume (callIds don't) so a re-run can detect an already-fired action. */
+function consequentialKey(step: number, tool: string, args: Record<string, unknown>): string {
+  return `${step}:${tool}:${stableStringify(args)}`;
 }

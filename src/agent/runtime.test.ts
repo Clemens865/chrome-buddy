@@ -134,6 +134,65 @@ describe('AgentRuntime', () => {
     expect(checkpoints.length).toBeGreaterThan(0); // checkpointed during the run
   });
 
+  it('records a consequential action as dispatched + checkpoints it BEFORE firing (NFR-REL-3)', async () => {
+    const registry = makeRegistry();
+    const sendHandler = registry.get('send_webhook')!.handler as ReturnType<typeof vi.fn>;
+    let dispatchedBeforeSideEffect = false;
+    const llm = scriptedLlm([
+      planResp(['send it']),
+      resp({ toolCalls: [call('send_webhook', { url: 'x' })] }),
+      resp({ text: 'done' }),
+    ]);
+    const runtime = new AgentRuntime({
+      llm,
+      registry,
+      approve: async () => ({ approved: true }),
+      onCheckpoint: (s) => {
+        // The dispatch key is persisted while the side effect has NOT yet run.
+        if ((s.scratchpad.dispatchedConsequential ?? []).includes('1:send_webhook:{"url":"x"}') && sendHandler.mock.calls.length === 0) {
+          dispatchedBeforeSideEffect = true;
+        }
+      },
+      newRunId: () => 'r',
+    });
+
+    const state = await runtime.run('send a webhook', { stepBudget: 20, costBudget: 1 });
+    expect(sendHandler).toHaveBeenCalledTimes(1); // fired once on a fresh run
+    expect(state.scratchpad.dispatchedConsequential).toContain('1:send_webhook:{"url":"x"}');
+    expect(dispatchedBeforeSideEffect).toBe(true); // checkpoint-before-side-effect ordering
+  });
+
+  it('does NOT re-fire a consequential action already dispatched before an interruption (NFR-REL-3)', async () => {
+    const registry = makeRegistry();
+    const sendHandler = registry.get('send_webhook')!.handler as ReturnType<typeof vi.fn>;
+    // Step 1 is NOT completed (so it re-runs on resume), but send_webhook with
+    // these exact args was already dispatched before the panel closed.
+    const resume = {
+      runId: 'r2',
+      scratchpad: {
+        task: 'send a webhook',
+        plan: [{ index: 1, intent: 'send it' }],
+        actions: [],
+        notes: [],
+        provenance: [],
+        completedSteps: [],
+        dispatchedConsequential: ['1:send_webhook:{"url":"x"}'],
+      },
+      stepsUsed: 0,
+      costUsed: 0,
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    };
+    const llm = scriptedLlm([
+      resp({ toolCalls: [call('send_webhook', { url: 'x' })] }), // re-proposes the same call
+      resp({ text: 'done' }),
+    ]);
+    const runtime = new AgentRuntime({ llm, registry, approve: async () => ({ approved: true }), newRunId: () => 'x' });
+
+    const state = await runtime.run('send a webhook', { stepBudget: 20, costBudget: 1, resume });
+    expect(sendHandler).not.toHaveBeenCalled(); // skipped on resume — not re-sent
+    expect(state.scratchpad.actions.some((a) => a.toolName === 'send_webhook')).toBe(true); // surfaced as a (skipped) action
+  });
+
   it('cancels before any execution when the plan gate is denied (FR-AGENT-3)', async () => {
     const registry = makeRegistry();
     const readHandler = registry.get('read_dom')!.handler as ReturnType<typeof vi.fn>;

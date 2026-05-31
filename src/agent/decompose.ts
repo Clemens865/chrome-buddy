@@ -38,6 +38,8 @@ export const DECOMPOSE_SYSTEM =
   'runs with its own clean context and hands a short result to the next. ' +
   'If the task is simple, single-phase, or needs at most one tool action, DO NOT ' +
   'decompose — return {"subtasks":[]} and the agent will handle it directly. ' +
+  'For research across the user\'s OPEN TABS or authenticated pages, prefer ' +
+  'sub-tasks that sweep those tabs (list_tabs + read_tab) over generic web search. ' +
   `Never exceed ${MAX_SUBTASKS} sub-tasks. ` +
   'Each sub-task is {"goal":"concise imperative","role":"researcher|summarizer|general"}. ' +
   'Respond ONLY with JSON: {"subtasks":[...]}.';

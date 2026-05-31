@@ -62,6 +62,11 @@ export interface Scratchpad {
   provenance: string[];
   /** Steps fully completed, used to skip them on resume (FR-AGENT-8). */
   completedSteps: number[];
+  /** Deterministic keys of consequential actions already DISPATCHED (recorded
+   *  before the side effect fires + checkpointed). On resume these are skipped
+   *  so a panel close mid-action can't re-fire a webhook/commit/write
+   *  (NFR-REL-3). Optional for back-compat with older checkpoints. */
+  dispatchedConsequential?: string[];
 }
 
 /** Per-run configuration and caps (FR-AGENT-9; NFR-COST-1). */

@@ -58,6 +58,7 @@
     "test:e2e:composerfoot": "playwright test composer-foot-layout.spec.ts",
     "test:e2e:decompose": "playwright test decompose-flow.spec.ts",
     "test:e2e:research": "playwright test browser-research-tools.spec.ts",
+    "test:e2e:liveresearch": "playwright test live-browser-research.spec.ts",
     "test:e2e:sandboxui": "playwright test sandbox-ui-app.spec.ts",
     "test:e2e:appbuilder": "playwright test app-builder.spec.ts",
     "test:e2e:appedit": "playwright test app-edit.spec.ts",
