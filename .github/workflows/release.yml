@@ -43,6 +43,7 @@ jobs:
         run: |
           mkdir -p pack/chrome-buddy
           cp -R dist/* pack/chrome-buddy/
+          cp README.md pack/chrome-buddy/
           cd pack
           zip -rq "chrome-buddy-${GITHUB_REF_NAME}.zip" chrome-buddy/
           ls -la

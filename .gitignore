@@ -23,3 +23,6 @@ ruvector.db
 screenshots/
 test-results/
 playwright-report/
+
+# Local release packaging output
+pack/
