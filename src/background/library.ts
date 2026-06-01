@@ -3,7 +3,23 @@
 // SW-side. The UI calls these through TOOL_EXEC.
 
 import { ok, err, type ToolResult } from '../types';
-import { indexDoc, searchLibrary, type SearchHit, type LibrarySource } from '../library';
+import {
+  indexDoc,
+  searchLibrary,
+  findSimilarDocs,
+  deleteDoc,
+  getDoc,
+  makeDocId,
+  type SearchHit,
+  type LibrarySource,
+  type IndexInput,
+} from '../library';
+import {
+  consolidateAndIndex,
+  type ConsolidateDeps,
+  type ConsolidateResult,
+} from '../library/consolidate';
+import { getLlmClient } from '../llm/instance';
 import { renderConversationAsMarkdown } from '../library/mirror';
 import { getDB } from '../db';
 import type { Conversation } from '../chat/store';
@@ -61,10 +77,68 @@ export async function executeIndexDoc(
 ): Promise<ToolResult> {
   try {
     const maxDocs = await readMaxDocsSetting();
+    // LLM-driven consolidation (opt-in): only for NEW, user-curated docs
+    // (manual snippets + notes). Auto-mirrored chats are keyed by chat id and
+    // update in place, so consolidating them is noise + cost.
+    if ((args.source === 'manual' || args.source === 'note') && (await readConsolidateSetting())) {
+      const existing = await getDoc(makeDocId(args.source, args.sourceRef));
+      if (!existing) {
+        const res = await consolidateIndex(args, geminiKey(getKey), maxDocs);
+        return ok(res);
+      }
+    }
     const r = await indexDoc(args, geminiKey(getKey), { maxDocs });
     return ok(r);
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Cheap SW-side judge for the consolidation decision (Gemini flash-lite, JSON). */
+async function judgeConsolidation(system: string, user: string): Promise<string> {
+  const client = getLlmClient(PROVIDER);
+  const r = await client.generate({
+    model: 'gemini-2.5-flash-lite',
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    params: { jsonMode: true, thinking: 'low' },
+  });
+  return r.text ?? '';
+}
+
+/** Index `args` with consolidation against the most similar existing doc. */
+async function consolidateIndex(
+  args: { source: LibrarySource; sourceRef?: string; title: string; content: string },
+  getKey: () => Promise<string | undefined>,
+  maxDocs: number | undefined,
+): Promise<ConsolidateResult> {
+  const excludeId = makeDocId(args.source, args.sourceRef);
+  const deps: ConsolidateDeps = {
+    findSimilar: async (content) => {
+      const sims = await findSimilarDocs(content, getKey, { k: 1, excludeId });
+      return sims.map((s) => ({ id: s.doc.id, title: s.doc.title, content: s.doc.content, score: s.score }));
+    },
+    judge: judgeConsolidation,
+    index: async (input) => {
+      await indexDoc({ ...input, source: input.source as LibrarySource } as IndexInput, getKey, { maxDocs });
+    },
+    remove: async (id) => {
+      await deleteDoc(id);
+    },
+  };
+  return consolidateAndIndex(args, deps);
+}
+
+/** Read the opt-in "consolidate library on save" setting (default off). */
+async function readConsolidateSetting(): Promise<boolean> {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return false;
+    const r = await chrome.storage.local.get('libraryConsolidate');
+    return r.libraryConsolidate === true;
+  } catch {
+    return false;
   }
 }
 

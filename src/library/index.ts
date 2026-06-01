@@ -10,7 +10,7 @@
 // the chunker / embedder / store stay pure / single-purpose for testability.
 
 import { chunkMarkdown, type ChunkOptions } from './chunk';
-import { embedBatch, embedText, cosineSimAll } from './embed';
+import { embedBatch, embedText, cosineSim, cosineSimAll } from './embed';
 import {
   saveDoc,
   getDoc,
@@ -184,7 +184,46 @@ export async function searchLibrary(
   });
 }
 
+export interface SimilarDocHit {
+  doc: LibraryDoc;
+  /** Max cosine similarity of any of this doc's chunks to the query content. */
+  score: number;
+}
+
+/**
+ * Find existing docs most similar to `content` (for consolidation). Embeds a
+ * representative slice of the content, then ranks each OTHER doc by its single
+ * best-matching chunk (max-pool) — cheap and good enough to surface a likely
+ * duplicate. `excludeId` keeps a re-save of one doc from matching itself.
+ */
+export async function findSimilarDocs(
+  content: string,
+  getKey: () => Promise<string | undefined>,
+  opts: { k?: number; excludeId?: string } = {},
+): Promise<SimilarDocHit[]> {
+  if (!content?.trim()) return [];
+  const apiKey = await getKey();
+  if (!apiKey) return [];
+  const vec = await embedText(content.slice(0, 8000), apiKey);
+  const chunks = await getAllChunks();
+  if (chunks.length === 0) return [];
+  const best = new Map<string, number>();
+  for (const c of chunks) {
+    if (opts.excludeId && c.docId === opts.excludeId) continue;
+    const s = cosineSim(vec, c.embedding);
+    const prev = best.get(c.docId);
+    if (prev === undefined || s > prev) best.set(c.docId, s);
+  }
+  const ranked = [...best.entries()].sort((a, b) => b[1] - a[1]).slice(0, opts.k ?? 3);
+  const out: SimilarDocHit[] = [];
+  for (const [docId, score] of ranked) {
+    const d = await getDoc(docId);
+    if (d) out.push({ doc: d, score });
+  }
+  return out;
+}
+
 // Re-export the public types so the SW handler + UI don't need to import
 // from store.ts directly.
 export type { LibraryDoc, LibraryChunk, LibrarySource } from './store';
-export { listDocs, deleteDoc, clearLibrary } from './store';
+export { listDocs, deleteDoc, clearLibrary, getDoc, makeDocId } from './store';

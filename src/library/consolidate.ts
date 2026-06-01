@@ -108,3 +108,87 @@ export function parseConsolidationDecision(text: string): ConsolidationDecision 
   }
   return { action, reason };
 }
+
+// --- Orchestrator (I/O injected → unit-testable without IDB/network) ---------
+
+export interface SimilarDoc {
+  id: string;
+  title: string;
+  content: string;
+  /** Max cosine similarity of this doc to the incoming content. */
+  score: number;
+}
+
+export interface ConsolidateInput {
+  source: string;
+  sourceRef?: string;
+  title: string;
+  content: string;
+}
+
+export interface ConsolidateDeps {
+  /** Top similar EXISTING docs to this content (MUST already exclude the same
+   *  source+ref id so a re-save of one doc doesn't consolidate with itself). */
+  findSimilar: (content: string) => Promise<SimilarDoc[]>;
+  /** Cheap LLM judge → raw reply text (only called in the ambiguous band). */
+  judge: (system: string, user: string) => Promise<string>;
+  /** Index a doc (wraps the real indexDoc). */
+  index: (input: ConsolidateInput) => Promise<void>;
+  /** Delete a doc by id (wraps the real deleteDoc). */
+  remove: (id: string) => Promise<void>;
+}
+
+export interface ConsolidateResult {
+  action: ConsolidationAction;
+  /** Whether the incoming doc ended up in the library. */
+  indexed: boolean;
+  /** The existing doc that triggered consolidation (for the audit toast). */
+  matched?: { id: string; title: string; score: number };
+  reason?: string;
+}
+
+/**
+ * Index `input`, consolidating against the most similar existing doc:
+ *  - no similar doc → index as-is (keep_separate)
+ *  - obvious near-dup / clearly-distinct → decided by threshold (no LLM)
+ *  - ambiguous → one cheap judge call → MERGE / REPLACE / KEEP_SEPARATE / SKIP
+ * MERGE and REPLACE remove the matched doc; SKIP indexes nothing. Errs toward
+ * keeping data (parse failures fall back to keep_separate upstream).
+ */
+export async function consolidateAndIndex(
+  input: ConsolidateInput,
+  deps: ConsolidateDeps,
+): Promise<ConsolidateResult> {
+  const top = (await deps.findSimilar(input.content))[0];
+  if (!top) {
+    await deps.index(input);
+    return { action: 'keep_separate', indexed: true };
+  }
+
+  let decision = decideBySimilarity(top.score);
+  if (!decision) {
+    const reply = await deps.judge(
+      CONSOLIDATE_SYSTEM,
+      consolidatePrompt({ title: input.title, content: input.content }, { title: top.title, content: top.content }),
+    );
+    decision = parseConsolidationDecision(reply);
+  }
+
+  const matched = { id: top.id, title: top.title, score: top.score };
+  switch (decision.action) {
+    case 'skip':
+      return { action: 'skip', indexed: false, matched, reason: decision.reason };
+    case 'replace':
+      await deps.remove(top.id);
+      await deps.index(input);
+      return { action: 'replace', indexed: true, matched, reason: decision.reason };
+    case 'merge':
+      await deps.remove(top.id);
+      await deps.index({ ...input, content: decision.mergedContent ?? input.content });
+      return { action: 'merge', indexed: true, matched, reason: decision.reason };
+    case 'keep_separate':
+    default:
+      await deps.index(input);
+      return { action: 'keep_separate', indexed: true, matched, reason: decision.reason };
+  }
+}

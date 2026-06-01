@@ -61,6 +61,7 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
   const [githubDefaultRepo, setGithubDefaultRepo] = usePersistedState<string>('githubDefaultRepo', '');
   const [preferNano, setPreferNano] = usePersistedState<boolean>('preferNano', false);
   const [libraryAutoContext, setLibraryAutoContext] = usePersistedState<boolean>('libraryAutoContext', false);
+  const [libraryConsolidate, setLibraryConsolidate] = usePersistedState<boolean>('libraryConsolidate', false);
   const [libraryMaxDocs, setLibraryMaxDocs] = usePersistedState<number>('libraryMaxDocs', 1000);
   const current: UserProfile = profiles[activeProfile] ?? {};
   const updateProfile = (patch: Partial<UserProfile>) =>
@@ -331,6 +332,12 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
           s="When on, every message is embedded and the top 3 Library snippets are prepended to the LLM prompt. Off by default."
         >
           <Toggle on={libraryAutoContext} onChange={setLibraryAutoContext} />
+        </SettingsRow>
+        <SettingsRow
+          t="Consolidate on save"
+          s="Experimental. When you save a snippet or note, check the Library for a near-duplicate and merge / replace / skip it (one cheap call only when something similar exists) instead of piling up redundant entries. Off by default; never drops information."
+        >
+          <Toggle on={libraryConsolidate} onChange={setLibraryConsolidate} />
         </SettingsRow>
         <SettingsRow
           t="Max docs"
