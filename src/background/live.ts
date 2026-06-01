@@ -26,19 +26,18 @@ const LIVE_PATH = '/ws/google.ai.generativelanguage.v1beta.GenerativeService.Bid
 // 'gemini-2.5-flash-live-preview'; the maintained id is
 // 'gemini-2.5-flash-native-audio-preview-12-2025' (the older alias 404s
 // silently — connection opens but generation never fires).
+// The v1beta Gemini API (generativelanguage) serves Live on the native-audio
+// models. Half-cascade ids like 'gemini-2.0-flash-live-001' are Vertex-only and
+// 1008 ("not found for v1beta") here — so we use ONE model for both voice chat
+// and transcription. The transcriber doesn't need TEXT output; it relies on
+// inputAudioTranscription (the user's speech → text), which this model emits in
+// AUDIO mode while a "just listen" system prompt keeps it from speaking.
 const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
-// Transcription (Live Transcriber) asks for responseModalities:['TEXT']. The
-// NATIVE-AUDIO model above only outputs AUDIO, so a TEXT request is rejected at
-// setup (WS close 1007) — the "green for a moment, then red" symptom. A
-// half-cascade Live model supports TEXT output + inputAudioTranscription, so use
-// it whenever TEXT is requested.
-const TRANSCRIBE_MODEL = 'gemini-2.0-flash-live-001';
 
-/** Pick the Live model: an explicit override wins; otherwise the half-cascade
- *  TEXT model for transcription, or the native-audio model for voice chat. */
-export function pickLiveModel(explicit: string | undefined, responseModality: 'AUDIO' | 'TEXT'): string {
-  if (explicit) return explicit;
-  return responseModality === 'TEXT' ? TRANSCRIBE_MODEL : DEFAULT_MODEL;
+/** Pick the Live model: an explicit override wins; otherwise the native-audio
+ *  model that the v1beta Gemini API actually serves for bidiGenerateContent. */
+export function pickLiveModel(explicit: string | undefined, _responseModality: 'AUDIO' | 'TEXT'): string {
+  return explicit && explicit.trim() ? explicit : DEFAULT_MODEL;
 }
 
 type Port = chrome.runtime.Port;

@@ -1,7 +1,9 @@
-// LiveTranscriberApp — real-time speech-to-text using Gemini Live with
-// responseModalities=['TEXT'] so the model doesn't synthesise audio replies.
-// We consume only `inputTranscription` events from the server and append them
-// to a growing transcript. Save to Library / copy / clear actions on top.
+// LiveTranscriberApp — real-time speech-to-text using Gemini Live. We rely on
+// the server's inputAudioTranscription (the user's speech → text) and consume
+// ONLY the role:'user' transcript events. The v1beta Gemini API serves Live on
+// the native-audio model (AUDIO modality); a TEXT-output request 1008s there, so
+// we run AUDIO + a strict "just listen" system prompt to keep the model silent
+// and simply ignore any model output. Save to Library / copy / clear on top.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppHeader, appById } from '../AppsView';
@@ -16,8 +18,9 @@ interface TranscriptLine {
 
 const SAVE_TITLE_PREFIX = 'Live transcript';
 const SYSTEM_PROMPT =
-  'You are a transcription assistant. The user is dictating or recording a meeting. ' +
-  'Do not respond, do not summarise, do not add commentary. Just listen.';
+  'You are a silent transcription engine. The user is dictating or recording. ' +
+  'NEVER speak, reply, acknowledge, summarise, or output anything at all. Produce ' +
+  'no audio and no text. Simply listen — the system captures the transcript separately.';
 
 export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
   const app = appById('livescribe');
@@ -94,7 +97,10 @@ export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
     const session = new VoiceSession({
       onEvent,
       systemInstruction: SYSTEM_PROMPT,
-      responseModalities: 'TEXT',
+      // AUDIO modality: the v1beta Gemini API only serves Live on the
+      // native-audio model, which rejects TEXT output. We don't need TEXT —
+      // inputAudioTranscription gives us the user's speech as text.
+      responseModalities: 'AUDIO',
     });
     sessionRef.current = session;
     try {

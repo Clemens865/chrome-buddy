@@ -5,23 +5,16 @@ import { ok, err } from '../types';
 const { routeServerFrame, dispatchFunctionCalls, sanitizeForOpenApi, pickLiveModel, buildLiveSetup } = __testing;
 
 describe('Gemini Live — model + setup (transcriber TEXT vs voice AUDIO)', () => {
-  it('picks a TEXT-capable half-cascade model for transcription, native-audio for voice', () => {
-    expect(pickLiveModel(undefined, 'TEXT')).toBe('gemini-2.0-flash-live-001');
+  it('uses the v1beta native-audio Live model (half-cascade ids 1008 there); explicit wins', () => {
     expect(pickLiveModel(undefined, 'AUDIO')).toContain('native-audio');
-    expect(pickLiveModel('my-model', 'TEXT')).toBe('my-model'); // explicit override wins
+    expect(pickLiveModel(undefined, 'TEXT')).toContain('native-audio'); // no TEXT model on v1beta
+    expect(pickLiveModel('my-model', 'AUDIO')).toBe('my-model');
   });
 
-  it('TEXT setup requests TEXT modality + input transcription and OMITS outputAudioTranscription', () => {
-    const s = buildLiveSetup({ model: 'gemini-2.0-flash-live-001', responseModality: 'TEXT', systemText: 'listen' }).setup as Record<string, unknown>;
-    expect(s.model).toBe('models/gemini-2.0-flash-live-001');
-    expect((s.generationConfig as { responseModalities: string[] }).responseModalities).toEqual(['TEXT']);
-    expect(s.inputAudioTranscription).toBeDefined();
-    expect('outputAudioTranscription' in s).toBe(false); // the bug: native-audio + TEXT + this → 1007
-  });
-
-  it('AUDIO setup keeps outputAudioTranscription for the spoken reply', () => {
-    const s = buildLiveSetup({ model: 'x', responseModality: 'AUDIO', systemText: 'hi' }).setup as Record<string, unknown>;
+  it('AUDIO setup requests input + output transcription (transcriber relies on input transcription)', () => {
+    const s = buildLiveSetup({ model: 'x', responseModality: 'AUDIO', systemText: 'listen' }).setup as Record<string, unknown>;
     expect((s.generationConfig as { responseModalities: string[] }).responseModalities).toEqual(['AUDIO']);
+    expect(s.inputAudioTranscription).toBeDefined(); // ← the transcriber's source of text
     expect(s.outputAudioTranscription).toBeDefined();
   });
 
