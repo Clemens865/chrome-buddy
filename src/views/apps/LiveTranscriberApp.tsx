@@ -1,279 +1,378 @@
-// LiveTranscriberApp — real-time speech-to-text using Gemini Live. We rely on
-// the server's inputAudioTranscription (the user's speech → text) and consume
-// ONLY the role:'user' transcript events. The v1beta Gemini API serves Live on
-// the native-audio model (AUDIO modality); a TEXT-output request 1008s there, so
-// we run AUDIO + a strict "just listen" system prompt to keep the model silent
-// and simply ignore any model output. Save to Library / copy / clear on top.
+// Voice Transcriber — record → transcribe → sessions → transforms.
+//
+// Robust record-then-transcribe flow (NOT the flaky Live WebSocket): the mic is
+// captured as 16 kHz mono PCM, encoded to a WAV blob on stop, and transcribed in
+// one shot via Gemini audio understanding. Each recording is saved as a SESSION
+// (title · date · time · length) in IndexedDB, listed like chat history. From a
+// session the user runs post-processing TRANSFORMS — summarize, clean up, meeting
+// notes, add speakers — each saved back onto the session as its own tab.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppHeader, appById } from '../AppsView';
 import { Ic } from '../../ui/icons';
-import { VoiceSession, isVoiceSupported, type VoiceEvent } from '../../voice/liveSession';
+import { MicRecorder } from '../../transcribe/recorder';
+import { fileToBase64, transcribeAudio } from '../../audio/request';
+import { generateViaBackground } from '../../llm/instance';
+import {
+  listSessions, saveSession, deleteSession as deleteSessionDb, type TranscriptSession,
+} from '../../transcribe/store';
+import {
+  TRANSFORMS, transformDef, deriveTitle, formatDuration, type TransformKind,
+} from '../../transcribe/transforms';
 
-interface TranscriptLine {
-  /** Wall-clock ms relative to session start. */
-  ts: number;
-  text: string;
+type RecState = 'idle' | 'recording' | 'transcribing';
+type Tab = 'transcript' | TransformKind;
+
+function genId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  } catch { /* fall through */ }
+  return `ts-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 }
 
-const SAVE_TITLE_PREFIX = 'Live transcript';
-const SYSTEM_PROMPT =
-  'You are a silent transcription engine. The user is dictating or recording. ' +
-  'NEVER speak, reply, acknowledge, summarise, or output anything at all. Produce ' +
-  'no audio and no text. Simply listen — the system captures the transcript separately.';
+function formatWhen(epochMs: number): string {
+  const d = new Date(epochMs);
+  return d.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
 
 export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
   const app = appById('livescribe');
-  const sessionRef = useRef<VoiceSession | null>(null);
-  const startedAtRef = useRef<number>(0);
-  /** Working buffer for the in-flight user phrase — replaced (not appended)
-   *  as the server streams partial transcripts; promoted to a settled line
-   *  when `isFinal` arrives. */
-  const partialRef = useRef<string>('');
-  const [state, setState] = useState<'idle' | 'connecting' | 'live' | 'error'>('idle');
+  const recorderRef = useRef<MicRecorder | null>(null);
+  const timerRef = useRef<number | null>(null);
+
+  const [recState, setRecState] = useState<RecState>('idle');
+  const [elapsed, setElapsed] = useState<number>(0);
   const [error, setError] = useState<string | undefined>();
-  const [lines, setLines] = useState<TranscriptLine[]>([]);
-  const [partial, setPartial] = useState<string>('');
-  const [saved, setSaved] = useState<boolean>(false);
-  const [copied, setCopied] = useState<boolean>(false);
-  /** Live audio flow counters — confirms mic chunks are going OUT and whether
-   *  the server is sending anything back. Diagnoses "green but no transcript". */
-  const [flow, setFlow] = useState<{ sent: number; recv: number }>({ sent: 0, recv: 0 });
+  const [sessions, setSessions] = useState<TranscriptSession[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>('transcript');
+  const [running, setRunning] = useState<TransformKind | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-  // Auto-scroll the transcript area as new lines come in.
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const selected = useMemo(
+    () => sessions.find((s) => s.id === selectedId) ?? null,
+    [sessions, selectedId],
+  );
+
+  const refresh = useCallback(async () => {
+    try { setSessions(await listSessions()); } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  // Tick the elapsed timer while recording.
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [lines.length, partial]);
-
-  const onEvent = useCallback((e: VoiceEvent) => {
-    switch (e.kind) {
-      case 'open':
-        setState('live');
-        break;
-      case 'transcript':
-        if (e.role !== 'user') return; // ignore model output (we asked for TEXT but it may still emit)
-        if (e.isFinal) {
-          // Final chunks REPLACE the interim — they contain the full phrase
-          // the server settled on, not a delta. Using `partialRef + text`
-          // duplicated the prefix.
-          const text = e.text.trim();
-          partialRef.current = '';
-          setPartial('');
-          if (text) {
-            setLines((prev) => [...prev, { ts: Date.now() - startedAtRef.current, text }]);
-          }
-        } else {
-          partialRef.current = e.text;
-          setPartial(e.text);
-        }
-        break;
-      case 'flow':
-        setFlow({ sent: e.sentChunks, recv: e.recvChunks });
-        break;
-      case 'error':
-        setError(e.message);
-        setState('error');
-        break;
-      case 'closed':
-        // A failing session fires ERROR then CLOSED in quick succession. Don't
-        // let the close snap us back to the idle prompt — that wiped the error
-        // text before it could be read (the "flash red then default" mystery).
-        // Keep the error visible; only a clean close returns to idle.
-        setState((s) => (s === 'error' ? 'error' : 'idle'));
-        sessionRef.current = null;
-        // Promote any in-flight partial as a final line so nothing is lost.
-        if (partialRef.current.trim()) {
-          const text = partialRef.current.trim();
-          partialRef.current = '';
-          setPartial('');
-          setLines((prev) => [...prev, { ts: Date.now() - startedAtRef.current, text }]);
-        }
-        break;
-      default:
-        break;
+    if (recState !== 'recording') {
+      if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; }
+      return;
     }
-  }, []);
+    const startedAt = Date.now();
+    setElapsed(0);
+    timerRef.current = window.setInterval(() => setElapsed(Date.now() - startedAt), 250);
+    return () => { if (timerRef.current) window.clearInterval(timerRef.current); };
+  }, [recState]);
 
-  const start = useCallback(async () => {
-    if (sessionRef.current) return;
+  // Stop the mic if the view unmounts mid-recording.
+  useEffect(() => () => { void recorderRef.current?.cancel(); }, []);
+
+  const startRec = useCallback(async () => {
     setError(undefined);
-    setFlow({ sent: 0, recv: 0 });
-    setState('connecting');
-    if (lines.length === 0) startedAtRef.current = Date.now();
-    const session = new VoiceSession({
-      onEvent,
-      systemInstruction: SYSTEM_PROMPT,
-      // AUDIO modality: the v1beta Gemini API only serves Live on the
-      // native-audio model, which rejects TEXT output. We don't need TEXT —
-      // inputAudioTranscription gives us the user's speech as text.
-      responseModalities: 'AUDIO',
-    });
-    sessionRef.current = session;
+    const rec = new MicRecorder();
+    recorderRef.current = rec;
     try {
-      await session.start();
+      await rec.start();
+      setRecState('recording');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start the transcriber.');
-      setState('error');
-      sessionRef.current = null;
+      setError(e instanceof Error ? e.message : 'Could not access the microphone.');
+      recorderRef.current = null;
+      setRecState('idle');
     }
-  }, [lines.length, onEvent]);
-
-  const stop = useCallback(async () => {
-    const s = sessionRef.current;
-    sessionRef.current = null;
-    setState('idle');
-    if (s) await s.stop();
   }, []);
 
-  const clear = useCallback(() => {
-    setLines([]);
-    setPartial('');
-    partialRef.current = '';
-    startedAtRef.current = 0;
-    setSaved(false);
-    setCopied(false);
-  }, []);
+  const stopRec = useCallback(async () => {
+    const rec = recorderRef.current;
+    if (!rec) return;
+    recorderRef.current = null;
+    setRecState('transcribing');
+    try {
+      const out = await rec.stop();
+      if (out.sampleCount === 0) {
+        setError('No audio was captured — check your microphone and try again.');
+        setRecState('idle');
+        return;
+      }
+      const base64 = await fileToBase64(new Blob([out.wav as BlobPart], { type: out.mimeType }));
+      const res = await transcribeAudio(base64, out.mimeType);
+      if (!res.ok || !res.text?.trim()) {
+        setError(res.error ?? 'Transcription returned nothing.');
+        setRecState('idle');
+        return;
+      }
+      const transcript = res.text.trim();
+      const createdAt = Date.now() - out.durationMs;
+      const session: TranscriptSession = {
+        id: genId(),
+        title: deriveTitle(transcript, createdAt),
+        createdAt,
+        durationMs: out.durationMs,
+        transcript,
+        transforms: {},
+        updatedAt: Date.now(),
+      };
+      await saveSession(session);
+      await refresh();
+      setSelectedId(session.id);
+      setTab('transcript');
+      setRecState('idle');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Transcription failed.');
+      setRecState('idle');
+    }
+  }, [refresh]);
 
-  // Cleanup on unmount.
-  useEffect(() => () => { void sessionRef.current?.stop(); }, []);
+  const runTransform = useCallback(async (kind: TransformKind) => {
+    if (!selected || running) return;
+    setRunning(kind);
+    setError(undefined);
+    try {
+      const def = transformDef(kind);
+      const result = await generateViaBackground({
+        messages: [{ role: 'user', content: def.prompt(selected.transcript) }],
+      });
+      const text = (result.text ?? '').trim();
+      if (!text) throw new Error('The model returned nothing.');
+      const updated: TranscriptSession = {
+        ...selected,
+        transforms: { ...selected.transforms, [kind]: text },
+        updatedAt: Date.now(),
+      };
+      await saveSession(updated);
+      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      setTab(kind);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Transform failed.');
+    } finally {
+      setRunning(null);
+    }
+  }, [selected, running]);
 
-  const fullText = useMemo(() => {
-    const out: string[] = [];
-    for (const l of lines) out.push(`[${formatStamp(l.ts)}] ${l.text}`);
-    return out.join('\n');
-  }, [lines]);
+  const removeSession = useCallback(async (id: string) => {
+    try { await deleteSessionDb(id); } catch { /* ignore */ }
+    if (selectedId === id) setSelectedId(null);
+    await refresh();
+  }, [selectedId, refresh]);
+
+  // The text currently shown in the detail (transcript or a transform output).
+  const activeText = useMemo(() => {
+    if (!selected) return '';
+    return tab === 'transcript' ? selected.transcript : selected.transforms[tab] ?? '';
+  }, [selected, tab]);
 
   const onCopy = useCallback(async () => {
-    if (!fullText) return;
+    if (!activeText) return;
     try {
-      await navigator.clipboard.writeText(fullText);
+      await navigator.clipboard.writeText(activeText);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
-    } catch {
-      /* ignore */
-    }
-  }, [fullText]);
+    } catch { /* ignore */ }
+  }, [activeText]);
 
   const onSaveToLibrary = useCallback(async () => {
-    if (!fullText) return;
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const title = `${SAVE_TITLE_PREFIX} ${stamp}`;
-    const content = `# ${title}\n\n${fullText}`;
+    if (!selected || !activeText) return;
+    const label = tab === 'transcript' ? 'Transcript' : transformDef(tab).label;
+    const title = `${selected.title} — ${label}`;
     try {
       const r = (await chrome.runtime.sendMessage({
-        type: 'LIBRARY_INDEX',
-        source: 'manual',
-        sourceRef: `livescribe-${stamp}`,
-        title,
-        content,
+        type: 'LIBRARY_INDEX', source: 'manual', sourceRef: `voice-${selected.id}-${tab}`,
+        title, content: `# ${title}\n\n${activeText}`,
       })) as { ok: boolean; result: { ok: boolean } } | undefined;
-      if (r?.ok && r.result.ok) {
-        setSaved(true);
-        window.setTimeout(() => setSaved(false), 1800);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [fullText]);
+      if (r?.ok && r.result.ok) { setSaved(true); window.setTimeout(() => setSaved(false), 1800); }
+    } catch { /* ignore */ }
+  }, [selected, activeText, tab]);
 
-  const supported = isVoiceSupported();
-  const isOn = state === 'live' || state === 'connecting';
-  const isEmpty = lines.length === 0 && !partial;
+  const isBusy = recState === 'recording' || recState === 'transcribing';
 
   return (
     <div className="micro">
       <AppHeader app={app} onBack={onBack} />
+
+      {/* Record bar — always visible. */}
       <div className="live-bar">
         <button
           type="button"
-          className={'voice-btn' + (isOn ? ' is-on' : '')}
-          disabled={!supported}
-          onClick={isOn ? () => void stop() : () => void start()}
-          data-testid={isOn ? 'live-stop' : 'live-start'}
+          className={'voice-btn' + (recState === 'recording' ? ' is-on' : '')}
+          disabled={recState === 'transcribing'}
+          onClick={recState === 'recording' ? () => void stopRec() : () => void startRec()}
+          data-testid={recState === 'recording' ? 'rec-stop' : 'rec-start'}
         >
-          <span className="ic">{isOn ? Ic.stop : Ic.mic}</span>
-          <span>{isOn ? 'Stop' : 'Record'}</span>
+          <span className="ic">{recState === 'recording' ? Ic.stop : Ic.mic}</span>
+          <span>{recState === 'recording' ? 'Stop' : 'Record'}</span>
         </button>
-        <span className={'voice-state voice-state-' + state}>
-          {!supported
-            ? 'Live transcription unavailable in this context.'
-            : state === 'connecting'
-              ? 'Connecting…'
-              : state === 'live'
-                ? `● Listening · ↑${flow.sent} ↓${flow.recv}`
-                : state === 'error'
-                  ? error ?? 'Error'
-                  : isEmpty ? 'Press Record to start.' : 'Idle.'}
+        <span className={'voice-state voice-state-' + recState}>
+          {recState === 'recording'
+            ? `● Recording · ${formatDuration(elapsed)}`
+            : recState === 'transcribing'
+              ? 'Transcribing…'
+              : error
+                ? error
+                : 'Press Record to capture audio.'}
         </span>
-        <span className="live-bar-spacer" />
-        <button
-          type="button"
-          className="btn btn-sm"
-          onClick={onCopy}
-          disabled={!fullText}
-          data-testid="live-copy"
-        >
-          {copied ? 'Copied ✓' : 'Copy'}
-        </button>
-        <button
-          type="button"
-          className="btn btn-sm"
-          onClick={onSaveToLibrary}
-          disabled={!fullText}
-          data-testid="live-save"
-          title="Save the transcript as a doc in your Library."
-        >
-          {saved ? 'Saved ✓' : '+ Library'}
-        </button>
-        <button
-          type="button"
-          className="btn btn-sm"
-          onClick={clear}
-          disabled={isEmpty || isOn}
-          data-testid="live-clear"
-        >
-          Clear
-        </button>
       </div>
-      <div className="live-scroll" ref={scrollRef} data-testid="live-transcript">
-        {isEmpty && state !== 'live' ? (
-          <div className="empty-state">
-            <span className="ic" style={{ width: 28, height: 28 }}>{Ic.mic}</span>
-            <div className="empty-state-title">Live Transcriber</div>
-            <div className="empty-state-desc">
-              Press Record to start a Gemini Live streaming transcription. Buddy is told
-              to just listen — no replies, no summaries. Save the result to your Library
-              when you're done.
+
+      {selected ? (
+        <SessionDetail
+          session={selected}
+          tab={tab}
+          setTab={setTab}
+          running={running}
+          onRun={runTransform}
+          onBackToList={() => setSelectedId(null)}
+          activeText={activeText}
+          onCopy={onCopy}
+          copied={copied}
+          onSaveToLibrary={onSaveToLibrary}
+          saved={saved}
+          onDelete={() => void removeSession(selected.id)}
+          disabled={isBusy}
+        />
+      ) : (
+        <SessionList
+          sessions={sessions}
+          onOpen={(id) => { setSelectedId(id); setTab('transcript'); setCopied(false); setSaved(false); }}
+          onDelete={(id) => void removeSession(id)}
+        />
+      )}
+    </div>
+  );
+}
+
+function SessionList({ sessions, onOpen, onDelete }: {
+  sessions: TranscriptSession[];
+  onOpen: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  if (sessions.length === 0) {
+    return (
+      <div className="live-scroll" data-testid="voice-sessions">
+        <div className="empty-state">
+          <span className="ic" style={{ width: 28, height: 28 }}>{Ic.mic}</span>
+          <div className="empty-state-title">Voice Transcriber</div>
+          <div className="empty-state-desc">
+            Press Record to capture audio. When you stop, it's transcribed and saved as a
+            session — then you can summarize it, clean it up, or turn it into meeting notes.
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="live-scroll" data-testid="voice-sessions">
+      <div className="list-col">
+        {sessions.map((s) => (
+          <button key={s.id} type="button" className="session-card" onClick={() => onOpen(s.id)} data-testid="voice-session">
+            <div className="session-card-main">
+              <div className="session-card-title">{s.title}</div>
+              <div className="session-card-meta">
+                {formatWhen(s.createdAt)} · {formatDuration(s.durationMs)}
+                {Object.keys(s.transforms).length > 0 && ` · ${Object.keys(s.transforms).length} transform(s)`}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="live-body">
-            {lines.map((l, i) => (
-              <div key={i} className="live-line">
-                <span className="live-stamp">{formatStamp(l.ts)}</span>
-                <span className="live-text">{l.text}</span>
-              </div>
-            ))}
-            {partial && (
-              <div className="live-line live-line-partial">
-                <span className="live-stamp">…</span>
-                <span className="live-text">{partial}</span>
-              </div>
-            )}
-          </div>
-        )}
+            <span
+              className="session-card-del"
+              role="button"
+              tabIndex={0}
+              title="Delete session"
+              onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onDelete(s.id); } }}
+            >
+              ×
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );
 }
 
-/** Format ms relative to session start as HH:MM:SS or MM:SS. */
-function formatStamp(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+function SessionDetail({
+  session, tab, setTab, running, onRun, onBackToList,
+  activeText, onCopy, copied, onSaveToLibrary, saved, onDelete, disabled,
+}: {
+  session: TranscriptSession;
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  running: TransformKind | null;
+  onRun: (k: TransformKind) => void;
+  onBackToList: () => void;
+  activeText: string;
+  onCopy: () => void;
+  copied: boolean;
+  onSaveToLibrary: () => void;
+  saved: boolean;
+  onDelete: () => void;
+  disabled: boolean;
+}) {
+  const tabs: Tab[] = ['transcript', ...(Object.keys(session.transforms) as TransformKind[])];
+  return (
+    <div className="live-scroll" data-testid="voice-detail">
+      <div className="session-head">
+        <button type="button" className="btn btn-sm" onClick={onBackToList} data-testid="voice-back-list">‹ Sessions</button>
+        <div className="session-head-info">
+          <div className="session-card-title">{session.title}</div>
+          <div className="session-card-meta">{formatWhen(session.createdAt)} · {formatDuration(session.durationMs)}</div>
+        </div>
+      </div>
+
+      {/* Transform actions. */}
+      <div className="transform-actions">
+        {TRANSFORMS.map((t) => (
+          <button
+            key={t.kind}
+            type="button"
+            className="btn btn-sm"
+            disabled={disabled || running !== null}
+            onClick={() => onRun(t.kind)}
+            data-testid={`voice-run-${t.kind}`}
+            title={session.transforms[t.kind] ? `Re-run ${t.label}` : t.label}
+          >
+            {running === t.kind ? '…' : session.transforms[t.kind] ? `↻ ${t.label}` : t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tabs: transcript + each completed transform. */}
+      <div className="transform-tabs">
+        {tabs.map((tk) => (
+          <button
+            key={tk}
+            type="button"
+            className={'transform-tab' + (tab === tk ? ' is-active' : '')}
+            onClick={() => setTab(tk)}
+            data-testid={`voice-tab-${tk}`}
+          >
+            {tk === 'transcript' ? 'Transcript' : transformDef(tk).label}
+          </button>
+        ))}
+      </div>
+
+      <div className="transform-body" data-testid="voice-content">{activeText}</div>
+
+      <div className="session-foot">
+        <button type="button" className="btn btn-sm" onClick={onCopy} disabled={!activeText} data-testid="voice-copy">
+          {copied ? 'Copied ✓' : 'Copy'}
+        </button>
+        <button type="button" className="btn btn-sm" onClick={onSaveToLibrary} disabled={!activeText} data-testid="voice-library"
+          title="Save the current text as a doc in your Library.">
+          {saved ? 'Saved ✓' : '+ Library'}
+        </button>
+        <span className="live-bar-spacer" />
+        <button type="button" className="btn btn-sm btn-danger" onClick={onDelete} disabled={disabled} data-testid="voice-delete">
+          Delete
+        </button>
+      </div>
+    </div>
+  );
 }

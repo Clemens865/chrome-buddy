@@ -41,7 +41,7 @@ export const APPS: AppMeta[] = [
   { id: 'console', icon: Ic.console, name: 'Console Inspector', desc: 'Read console logs and explain errors.', color: '#10B981' },
   { id: 'image', icon: Ic.image, name: 'Image Generator', desc: 'Generate images from a prompt.', color: '#A78BFA' },
   { id: 'transcriber', icon: Ic.mic, name: 'Audio Transcriber', desc: 'Turn an audio file into text.', color: '#0EA5E9' },
-  { id: 'livescribe', icon: Ic.mic, name: 'Live Transcriber', desc: 'Live mic → text in real time (Gemini Live).', color: '#06B6D4' },
+  { id: 'livescribe', icon: Ic.mic, name: 'Voice Transcriber', desc: 'Record → transcript → summarize, clean up, meeting notes.', color: '#06B6D4' },
   { id: 'webhooks', icon: Ic.hook, name: 'Webhook Flows', desc: 'One-tap: snapshot a page → POST to a saved webhook.', color: '#F59E0B' },
   { id: 'scrape', icon: Ic.scrape, name: 'Scrape to Table', desc: 'Extract structured data to CSV.', color: '#F43F5E' },
   { id: 'viz', icon: Ic.chart, name: 'Data Visualizer', desc: 'Turn CSV, JSON or a page table into charts.', color: '#14B8A6' },

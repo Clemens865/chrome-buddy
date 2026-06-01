@@ -4,7 +4,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 export const DB_NAME = 'chrome-buddy';
-const VERSION = 12;
+const VERSION = 13;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -79,6 +79,10 @@ export function getDB(): Promise<IDBPDatabase> {
           const m = d.createObjectStore('mcpServers', { keyPath: 'id' });
           m.createIndex('name', 'name', { unique: true });
           m.createIndex('updatedAt', 'updatedAt');
+        }
+        // v13: Voice Transcriber sessions (recording → transcript + transforms).
+        if (!d.objectStoreNames.contains('transcriptSessions')) {
+          d.createObjectStore('transcriptSessions', { keyPath: 'id' }).createIndex('createdAt', 'createdAt');
         }
       },
     });

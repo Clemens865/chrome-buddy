@@ -688,6 +688,26 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .live-line-partial .live-text { color: var(--panel-muted); font-style: italic; }
 .live-stamp { font-size: 10.5px; color: var(--panel-muted-soft); font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; padding-top: 2px; }
 .live-text { word-break: break-word; }
+/* Voice Transcriber — session list + detail. */
+.list-col { display: flex; flex-direction: column; gap: 8px; }
+.session-card { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--panel-border-soft); border-radius: 10px; background: var(--panel-elev); color: var(--panel-fg); cursor: pointer; font: inherit; }
+.session-card:hover { border-color: var(--panel-border); background: var(--panel-elev-2); }
+.session-card-main { flex: 1; min-width: 0; }
+.session-card-title { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-card-meta { font-size: 11px; color: var(--panel-muted); margin-top: 2px; }
+.session-card-del { flex: none; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--panel-muted-soft); font-size: 16px; line-height: 1; cursor: pointer; }
+.session-card-del:hover { background: var(--panel-elev-2); color: #EF4444; }
+.session-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.session-head-info { min-width: 0; }
+.transform-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.transform-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--panel-border-soft); margin-bottom: 10px; }
+.transform-tab { border: 0; background: transparent; color: var(--panel-muted); font: inherit; font-size: 12px; padding: 6px 10px; border-bottom: 2px solid transparent; cursor: pointer; margin-bottom: -1px; }
+.transform-tab:hover { color: var(--panel-fg); }
+.transform-tab.is-active { color: var(--panel-fg); border-bottom-color: var(--accent); }
+.transform-body { font-size: 13.5px; line-height: 1.6; color: var(--panel-fg); white-space: pre-wrap; word-break: break-word; }
+.session-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--panel-border-soft); }
+.btn-danger { color: #EF4444; border-color: var(--panel-border-soft); }
+.btn-danger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.1); border-color: #EF4444; }
 .theme-graphite .composer-send { color: #0F1115; }
 /* Two-tier foot: mode segment on its own line, model + toggle chips wrap on the
    line below — so every control stays visible and one-tap even in a narrow
