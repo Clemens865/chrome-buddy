@@ -47,7 +47,15 @@ import {
   executeAnalyzeA11y,
   executeAnalyzeSeo,
 } from './inspector';
-import { executeSearchLibrary, executeIndexDoc, executeLibraryBackfill } from './library';
+import {
+  executeSearchLibrary,
+  executeIndexDoc,
+  executeLibraryBackfill,
+  executeListCollections,
+  executeSaveCollection,
+  executeDeleteCollection,
+  executeCapturePage,
+} from './library';
 import { ensureDefaultCollections } from '../library';
 import { executeSearchCatalog } from './catalog';
 import { registerVoiceStreamPort, type LiveFunctionDeclaration } from './live';
@@ -526,6 +534,8 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
             sourceRef: message.sourceRef,
             title: message.title,
             content: message.content,
+            collectionId: message.collectionId,
+            note: message.note,
           },
           getStoredKey,
         );
@@ -536,6 +546,35 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         // One-time walk over existing chats + notes; idempotent on re-run.
         const r = await executeLibraryBackfill(getStoredKey);
         return { type: 'LIBRARY_BACKFILL', ok: true, ...r };
+      }
+
+      case 'LIBRARY_COLLECTIONS': {
+        const collections = await executeListCollections(Date.now());
+        return { type: 'LIBRARY_COLLECTIONS', ok: true, collections };
+      }
+
+      case 'LIBRARY_COLLECTION_SAVE': {
+        const r = await executeSaveCollection(message.collection, Date.now());
+        if (!r.ok) return { type: 'ERROR', ok: false, error: r.error };
+        void refreshLibraryContextMenu();
+        return {
+          type: 'LIBRARY_COLLECTION_SAVE',
+          ok: true,
+          collection: { ...r.collection },
+        };
+      }
+
+      case 'LIBRARY_COLLECTION_DELETE': {
+        const r = await executeDeleteCollection(message.id, message.reassignTo ?? '', Date.now());
+        if (!r.ok) return { type: 'ERROR', ok: false, error: r.error };
+        void refreshLibraryContextMenu();
+        return { type: 'LIBRARY_COLLECTION_DELETE', ok: true };
+      }
+
+      case 'LIBRARY_CAPTURE_PAGE': {
+        const r = await executeCapturePage(message.collectionId, message.note, getStoredKey);
+        if (!r.ok) return { type: 'ERROR', ok: false, error: r.error };
+        return { type: 'LIBRARY_CAPTURE_PAGE', ok: true, result: r.result, title: r.title, url: r.url };
       }
 
       case 'IMAGE_GENERATE': {
@@ -647,6 +686,59 @@ chrome.runtime.onInstalled.addListener(() => void reconcileWorkflowAlarms());
 // hiccup never blocks SW startup.
 if (typeof indexedDB !== 'undefined') {
   void ensureDefaultCollections(Date.now()).catch(() => {});
+}
+
+// --- "Add page to Library ▸ <collection>" right-click menu -----------------
+const LIB_MENU_PARENT = 'cb-lib-add';
+const LIB_MENU_PREFIX = 'cb-lib-add:';
+
+/** Rebuild the context menu from the current collections (called on boot +
+ *  whenever collections change). One submenu item per collection. */
+async function refreshLibraryContextMenu(): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.contextMenus) return;
+  try {
+    await chrome.contextMenus.removeAll();
+    const collections = await executeListCollections(Date.now());
+    chrome.contextMenus.create({
+      id: LIB_MENU_PARENT,
+      title: 'Add page to Library',
+      contexts: ['page', 'selection'],
+      documentUrlPatterns: ['http://*/*', 'https://*/*'],
+    });
+    for (const c of collections) {
+      chrome.contextMenus.create({
+        id: `${LIB_MENU_PREFIX}${c.id}`,
+        parentId: LIB_MENU_PARENT,
+        title: c.name,
+        contexts: ['page', 'selection'],
+        documentUrlPatterns: ['http://*/*', 'https://*/*'],
+      });
+    }
+  } catch (e) {
+    console.error('[chrome-buddy] library context menu refresh failed', e);
+  }
+}
+
+if (typeof chrome !== 'undefined' && chrome.contextMenus) {
+  chrome.contextMenus.onClicked.addListener((info) => {
+    const id = String(info.menuItemId);
+    if (!id.startsWith(LIB_MENU_PREFIX)) return;
+    const collectionId = id.slice(LIB_MENU_PREFIX.length);
+    void (async () => {
+      const r = await executeCapturePage(collectionId, undefined, getStoredKey);
+      if (chrome.notifications) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icon-128.png',
+          title: r.ok ? 'Added to Library' : 'Could not add page',
+          message: r.ok ? `“${r.title}” saved to your Library.` : r.error,
+        });
+      }
+    })();
+  });
+  chrome.runtime.onInstalled.addListener(() => void refreshLibraryContextMenu());
+  chrome.runtime.onStartup?.addListener(() => void refreshLibraryContextMenu());
+  if (typeof indexedDB !== 'undefined') void refreshLibraryContextMenu();
 }
 
 // H4 — Streaming chat replies. The panel opens a Port named 'chat-stream',

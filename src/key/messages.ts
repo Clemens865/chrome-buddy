@@ -175,10 +175,14 @@ export interface AppDeleteMessage {
  * auto-mirror, note auto-mirror, folder import flow, and tests. */
 export interface LibraryIndexMessage {
   type: 'LIBRARY_INDEX';
-  source: 'chat' | 'note' | 'folder' | 'manual';
+  source: 'chat' | 'note' | 'folder' | 'manual' | 'file' | 'page';
   sourceRef?: string;
   title: string;
   content: string;
+  /** Target collection (defaults to 'general'). */
+  collectionId?: string;
+  /** Optional user framing surfaced with retrieved snippets. */
+  note?: string;
 }
 
 /** Library v1 — one-time backfill. Walks IDB chats + notes and indexes any
@@ -186,6 +190,35 @@ export interface LibraryIndexMessage {
  * counts so the UI can render a progress notice. */
 export interface LibraryBackfillMessage {
   type: 'LIBRARY_BACKFILL';
+}
+
+/** Library collections — list / save / delete (panel ↔ SW). */
+export interface LibraryCollectionsMessage {
+  type: 'LIBRARY_COLLECTIONS';
+}
+export interface LibraryCollectionSaveMessage {
+  type: 'LIBRARY_COLLECTION_SAVE';
+  collection: {
+    id?: string;
+    name: string;
+    description: string;
+    kind: 'profile' | 'project' | 'general';
+    autoContext: 'always' | 'active' | 'manual';
+  };
+}
+export interface LibraryCollectionDeleteMessage {
+  type: 'LIBRARY_COLLECTION_DELETE';
+  id: string;
+  /** Reassign the collection's docs to this collection instead of deleting them. */
+  reassignTo?: string;
+}
+
+/** One-click "add the active page to a collection" — SW distills the active tab
+ *  then indexes it. */
+export interface LibraryCapturePageMessage {
+  type: 'LIBRARY_CAPTURE_PAGE';
+  collectionId: string;
+  note?: string;
 }
 
 /** Vision Mode (Computer Use) — one model turn. Stateless: caller passes the
@@ -246,6 +279,10 @@ export type BuddyMessage =
   | AppDeleteMessage
   | LibraryIndexMessage
   | LibraryBackfillMessage
+  | LibraryCollectionsMessage
+  | LibraryCollectionSaveMessage
+  | LibraryCollectionDeleteMessage
+  | LibraryCapturePageMessage
   | McpTestMessage;
 
 // ---- Responses --------------------------------------------------------------
@@ -368,6 +405,40 @@ export interface LibraryIndexResponse {
   result: ToolResult;
 }
 
+export interface LibraryCollectionRecord {
+  id: string;
+  name: string;
+  description: string;
+  kind: 'profile' | 'project' | 'general';
+  autoContext: 'always' | 'active' | 'manual';
+  createdAt: number;
+  updatedAt: number;
+  /** Number of docs in this collection (for the UI). */
+  docCount?: number;
+}
+export interface LibraryCollectionsResponse {
+  type: 'LIBRARY_COLLECTIONS';
+  ok: true;
+  collections: LibraryCollectionRecord[];
+}
+export interface LibraryCollectionSaveResponse {
+  type: 'LIBRARY_COLLECTION_SAVE';
+  ok: true;
+  collection: LibraryCollectionRecord;
+}
+export interface LibraryCollectionDeleteResponse {
+  type: 'LIBRARY_COLLECTION_DELETE';
+  ok: true;
+}
+export interface LibraryCapturePageResponse {
+  type: 'LIBRARY_CAPTURE_PAGE';
+  ok: true;
+  result: ToolResult;
+  /** The captured page's title + url for a friendly confirmation. */
+  title: string;
+  url: string;
+}
+
 export interface LibraryBackfillResponse {
   type: 'LIBRARY_BACKFILL';
   ok: true;
@@ -479,6 +550,10 @@ export type BuddyResponse =
   | AppDeleteResponse
   | LibraryIndexResponse
   | LibraryBackfillResponse
+  | LibraryCollectionsResponse
+  | LibraryCollectionSaveResponse
+  | LibraryCollectionDeleteResponse
+  | LibraryCapturePageResponse
   | McpTestResponse
   | ErrorResponse;
 

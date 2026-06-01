@@ -127,6 +127,18 @@ export async function getAllChunks(collectionIds?: readonly string[]): Promise<L
   return (await db.getAll(CHUNKS)) as LibraryChunk[];
 }
 
+/** Move a doc (and all its chunks) to a different collection in one tx. Used
+ *  when a collection is deleted and its docs are reassigned. */
+export async function setDocCollection(docId: string, collectionId: string, now: number): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction([DOCS, CHUNKS], 'readwrite');
+  const doc = (await tx.objectStore(DOCS).get(docId)) as LibraryDoc | undefined;
+  if (doc) await tx.objectStore(DOCS).put({ ...doc, collectionId, updatedAt: now });
+  const chunks = (await tx.objectStore(CHUNKS).index('docId').getAll(docId)) as LibraryChunk[];
+  for (const c of chunks) await tx.objectStore(CHUNKS).put({ ...c, collectionId });
+  await tx.done;
+}
+
 export async function clearLibrary(): Promise<void> {
   const db = await getDB();
   const tx = db.transaction([DOCS, CHUNKS], 'readwrite');

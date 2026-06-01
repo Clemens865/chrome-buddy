@@ -10,10 +10,23 @@ import {
   deleteDoc,
   getDoc,
   makeDocId,
+  listDocs,
+  listCollections,
+  getCollection,
+  saveCollection,
+  deleteCollection,
+  ensureDefaultCollections,
+  makeCollectionId,
+  validateCollectionName,
+  DEFAULT_COLLECTION_ID,
   type SearchHit,
   type LibrarySource,
   type IndexInput,
+  type Collection,
+  type CollectionKind,
+  type AutoContextMode,
 } from '../library';
+import { capturePageContext } from './pageTools';
 import {
   consolidateAndIndex,
   type ConsolidateDeps,
@@ -21,6 +34,8 @@ import {
 } from '../library/consolidate';
 import { getLlmClient } from '../llm/instance';
 import { renderConversationAsMarkdown } from '../library/mirror';
+import { setDocCollection } from '../library/store';
+import type { LibraryCollectionRecord } from '../key/messages';
 import { getDB } from '../db';
 import type { Conversation } from '../chat/store';
 import type { Note } from '../notes/store';
@@ -72,26 +87,110 @@ export async function executeSearchLibrary(
  * directly — content flows in via mirror/import paths).
  */
 export async function executeIndexDoc(
-  args: { source: LibrarySource; sourceRef?: string; title: string; content: string },
+  args: { source: LibrarySource; sourceRef?: string; title: string; content: string; collectionId?: string; note?: string },
   getKey: GetKey,
 ): Promise<ToolResult> {
   try {
     const maxDocs = await readMaxDocsSetting();
+    const collectionId = args.collectionId ?? DEFAULT_COLLECTION_ID;
+    const input: IndexInput = { ...args, collectionId };
     // LLM-driven consolidation (opt-in): only for NEW, user-curated docs
     // (manual snippets + notes). Auto-mirrored chats are keyed by chat id and
-    // update in place, so consolidating them is noise + cost.
+    // update in place, so consolidating them is noise + cost. Consolidation is
+    // scoped to the SAME collection (don't merge a competitor into a profile).
     if ((args.source === 'manual' || args.source === 'note') && (await readConsolidateSetting())) {
       const existing = await getDoc(makeDocId(args.source, args.sourceRef));
       if (!existing) {
-        const res = await consolidateIndex(args, geminiKey(getKey), maxDocs);
+        const res = await consolidateIndex(input, geminiKey(getKey), maxDocs);
         return ok(res);
       }
     }
-    const r = await indexDoc(args, geminiKey(getKey), { maxDocs });
+    const r = await indexDoc(input, geminiKey(getKey), { maxDocs });
     return ok(r);
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
   }
+}
+
+// --- Collections -----------------------------------------------------------
+
+/** List collections (seeding defaults first) with per-collection doc counts. */
+export async function executeListCollections(now: number): Promise<LibraryCollectionRecord[]> {
+  await ensureDefaultCollections(now);
+  const [cols, docs] = await Promise.all([listCollections(), listDocs()]);
+  const counts = new Map<string, number>();
+  for (const d of docs) counts.set(d.collectionId, (counts.get(d.collectionId) ?? 0) + 1);
+  return cols.map((c) => ({ ...c, docCount: counts.get(c.id) ?? 0 }));
+}
+
+/** Create (validated) or update a collection. */
+export async function executeSaveCollection(
+  input: { id?: string; name: string; description: string; kind: CollectionKind; autoContext: AutoContextMode },
+  now: number,
+): Promise<{ ok: true; collection: Collection } | { ok: false; error: string }> {
+  const name = (input.name ?? '').trim();
+  const existing = await listCollections();
+  if (!input.id) {
+    const msg = validateCollectionName(name, existing);
+    if (msg) return { ok: false, error: msg };
+  } else if (name.length < 2) {
+    return { ok: false, error: 'Name must be at least 2 characters.' };
+  }
+  const id = input.id ?? makeCollectionId(name, now.toString(36));
+  const prior = input.id ? await getCollection(input.id) : null;
+  const collection: Collection = {
+    id,
+    name,
+    description: (input.description ?? '').trim(),
+    kind: input.kind,
+    autoContext: input.autoContext,
+    createdAt: prior?.createdAt ?? now,
+    updatedAt: now,
+  };
+  await saveCollection(collection);
+  return { ok: true, collection };
+}
+
+/** Delete a collection, reassigning its docs to `reassignTo` (default General). */
+export async function executeDeleteCollection(
+  id: string,
+  reassignTo: string,
+  now: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const target = reassignTo || DEFAULT_COLLECTION_ID;
+    const docs = (await listDocs()).filter((d) => d.collectionId === id);
+    for (const d of docs) await setDocCollection(d.id, target, now);
+    await deleteCollection(id); // throws on protected collections
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** One-click capture: distill the active tab and index it into a collection. */
+export async function executeCapturePage(
+  collectionId: string,
+  note: string | undefined,
+  getKey: GetKey,
+): Promise<{ ok: true; result: ToolResult; title: string; url: string } | { ok: false; error: string }> {
+  // Larger cap than chat-context capture — whitepapers/articles are long.
+  const page = await capturePageContext(60_000);
+  if (!page || !page.text.trim()) {
+    return { ok: false, error: 'No readable content in the active tab (restricted page, PDF viewer, or empty).' };
+  }
+  const result = await executeIndexDoc(
+    {
+      source: 'page',
+      sourceRef: page.url,
+      title: page.title || page.url,
+      content: page.text,
+      collectionId: collectionId || DEFAULT_COLLECTION_ID,
+      note,
+    },
+    getKey,
+  );
+  return { ok: true, result, title: page.title || page.url, url: page.url };
 }
 
 /** Cheap SW-side judge for the consolidation decision (Gemini flash-lite, JSON). */
@@ -108,21 +207,28 @@ async function judgeConsolidation(system: string, user: string): Promise<string>
   return r.text ?? '';
 }
 
-/** Index `args` with consolidation against the most similar existing doc. */
+/** Index `args` with consolidation against the most similar existing doc in the
+ *  SAME collection. */
 async function consolidateIndex(
-  args: { source: LibrarySource; sourceRef?: string; title: string; content: string },
+  args: IndexInput,
   getKey: () => Promise<string | undefined>,
   maxDocs: number | undefined,
 ): Promise<ConsolidateResult> {
   const excludeId = makeDocId(args.source, args.sourceRef);
+  const collectionId = args.collectionId ?? DEFAULT_COLLECTION_ID;
   const deps: ConsolidateDeps = {
     findSimilar: async (content) => {
-      const sims = await findSimilarDocs(content, getKey, { k: 1, excludeId });
+      const sims = await findSimilarDocs(content, getKey, { k: 1, excludeId, collectionIds: [collectionId] });
       return sims.map((s) => ({ id: s.doc.id, title: s.doc.title, content: s.doc.content, score: s.score }));
     },
     judge: judgeConsolidation,
     index: async (input) => {
-      await indexDoc({ ...input, source: input.source as LibrarySource } as IndexInput, getKey, { maxDocs });
+      // Keep the merged doc in this collection + carry the user note forward.
+      await indexDoc(
+        { ...input, source: input.source as LibrarySource, collectionId, note: args.note } as IndexInput,
+        getKey,
+        { maxDocs },
+      );
     },
     remove: async (id) => {
       await deleteDoc(id);
