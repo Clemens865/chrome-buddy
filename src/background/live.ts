@@ -26,13 +26,13 @@ const LIVE_PATH = '/ws/google.ai.generativelanguage.v1beta.GenerativeService.Bid
 // 'gemini-2.5-flash-live-preview'; the maintained id is
 // 'gemini-2.5-flash-native-audio-preview-12-2025' (the older alias 404s
 // silently — connection opens but generation never fires).
-// The v1beta Gemini API (generativelanguage) serves Live on the native-audio
-// models. Half-cascade ids like 'gemini-2.0-flash-live-001' are Vertex-only and
-// 1008 ("not found for v1beta") here — so we use ONE model for both voice chat
-// and transcription. The transcriber doesn't need TEXT output; it relies on
-// inputAudioTranscription (the user's speech → text), which this model emits in
-// AUDIO mode while a "just listen" system prompt keeps it from speaking.
-const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
+// Current Live model on the v1beta Gemini API — the one Google's own
+// get-started WebSocket example uses (gemini-3.1-flash-live-preview), AUDIO
+// modality + input/output transcription. Half-cascade ids like
+// 'gemini-2.0-flash-live-001' are Vertex-only and 1008 here. One model serves
+// both voice chat and the transcriber: the transcriber needs no TEXT output, it
+// reads inputAudioTranscription while a "just listen" prompt keeps it silent.
+const DEFAULT_MODEL = 'gemini-3.1-flash-live-preview';
 
 /** Pick the Live model: an explicit override wins; otherwise the native-audio
  *  model that the v1beta Gemini API actually serves for bidiGenerateContent. */

@@ -5,9 +5,9 @@ import { ok, err } from '../types';
 const { routeServerFrame, dispatchFunctionCalls, sanitizeForOpenApi, pickLiveModel, buildLiveSetup } = __testing;
 
 describe('Gemini Live — model + setup (transcriber TEXT vs voice AUDIO)', () => {
-  it('uses the v1beta native-audio Live model (half-cascade ids 1008 there); explicit wins', () => {
-    expect(pickLiveModel(undefined, 'AUDIO')).toContain('native-audio');
-    expect(pickLiveModel(undefined, 'TEXT')).toContain('native-audio'); // no TEXT model on v1beta
+  it('uses the v1beta Live model from the docs (gemini-3.1-flash-live-preview); explicit wins', () => {
+    expect(pickLiveModel(undefined, 'AUDIO')).toBe('gemini-3.1-flash-live-preview');
+    expect(pickLiveModel(undefined, 'TEXT')).toBe('gemini-3.1-flash-live-preview'); // one served model
     expect(pickLiveModel('my-model', 'AUDIO')).toBe('my-model');
   });
 
