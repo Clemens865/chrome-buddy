@@ -33,9 +33,11 @@ test('BrandSnap AI mounts its cb-* UI in the sandbox and the ui runs', async ({ 
 
   // The sandboxed app frame loads and renders BrandSnap's own UI.
   const frame = panel.frameLocator('.sandbox-app-frame');
-  await expect(frame.getByRole('button', { name: 'Generate' })).toBeVisible({ timeout: 15_000 });
-  // The `ui` function ran: it populated the Style <select> with presets.
-  await expect(frame.locator('#style option', { hasText: 'Lifestyle' })).toHaveCount(1);
-  await expect(frame.getByRole('button', { name: 'Download' })).toBeHidden(); // hidden until a generation exists
+  await expect(frame.getByRole('button', { name: 'Generate Asset' })).toBeVisible({ timeout: 15_000 });
+  // The brand-mark upload is a first-class, always-visible step (the prior bug).
+  await expect(frame.getByRole('button', { name: 'Upload mark' })).toBeVisible();
+  // The `ui` ran: Style select populated + a palette was rolled (5 swatches).
+  await expect(frame.locator('#style option', { hasText: 'Product Shot' })).toHaveCount(1);
+  await expect(frame.locator('#palette .sw')).toHaveCount(5);
   await panel.screenshot({ path: join(process.cwd(), 'screenshots', 'brandsnap-app.png') });
 });

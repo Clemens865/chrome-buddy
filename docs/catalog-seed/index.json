@@ -7,7 +7,7 @@
       "description": "Generate a styled brand/product image, auto-extract its color palette, overlay your logo, and export.",
       "kind": "app",
       "tier": 3,
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "Chrome Buddy",
       "permissions": ["image", "download"],
       "dataPath": "apps/brandsnap-ai.json"
