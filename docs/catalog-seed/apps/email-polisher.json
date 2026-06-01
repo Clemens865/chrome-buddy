@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 2,
+  "apps": [
+    {
+      "id": "email-polisher",
+      "name": "Email Polisher",
+      "description": "Rewrite a rough email draft in the tone you choose.",
+      "tier": 1,
+      "inputs": [
+        { "id": "draft", "label": "Your draft", "type": "textarea", "placeholder": "Paste the email you want to polish…" },
+        { "id": "tone", "label": "Tone", "type": "text", "placeholder": "friendly · formal · concise · apologetic" }
+      ],
+      "promptTemplate": "Rewrite the following email to be {{tone}} and clear while keeping the original meaning and every key detail. Return only the rewritten email, nothing else.\n\n{{draft}}",
+      "createdAt": 0
+    }
+  ]
+}

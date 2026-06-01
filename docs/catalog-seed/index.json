@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "email-polisher",
+      "name": "Email Polisher",
+      "description": "Rewrite a rough email draft in the tone you choose — clear, concise, ready to send.",
+      "kind": "app",
+      "tier": 1,
+      "version": "1.0.0",
+      "author": "Chrome Buddy",
+      "dataPath": "apps/email-polisher.json"
+    },
+    {
+      "id": "regex-explainer",
+      "name": "Regex Explainer",
+      "description": "Paste a regular expression and get a plain-English breakdown of what it matches.",
+      "kind": "app",
+      "tier": 1,
+      "version": "1.0.0",
+      "author": "Chrome Buddy",
+      "dataPath": "apps/regex-explainer.json"
+    }
+  ]
+}

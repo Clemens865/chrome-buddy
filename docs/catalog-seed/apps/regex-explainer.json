@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 2,
+  "apps": [
+    {
+      "id": "regex-explainer",
+      "name": "Regex Explainer",
+      "description": "Explain a regular expression in plain English.",
+      "tier": 1,
+      "inputs": [
+        { "id": "pattern", "label": "Regular expression", "type": "text", "placeholder": "^(\\d{4})-(\\d{2})-(\\d{2})$" }
+      ],
+      "promptTemplate": "Explain what the following regular expression matches, in plain English. Break it down piece by piece, then give one example string that matches and one that does not.\n\nRegex: {{pattern}}",
+      "createdAt": 0
+    }
+  ]
+}
