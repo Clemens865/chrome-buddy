@@ -1226,6 +1226,25 @@ button.library-doc-open:hover { color: var(--accent); text-decoration: underline
 .library-source-folder { background: rgba(245,158,11,.16); color: #B45309; }
 .theme-graphite .library-source-folder { color: #FBBF24; }
 .library-source-manual { background: var(--panel-elev-2); color: var(--panel-muted); }
+.library-source-file { background: rgba(20,184,166,.16); color: #0F766E; }
+.theme-graphite .library-source-file { color: #5EEAD4; }
+.library-source-page { background: rgba(168,85,247,.16); color: #7E22CE; }
+.theme-graphite .library-source-page { color: #D8B4FE; }
+
+/* --- Library collections + ingest -------------------------------------- */
+.library-cols { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px 4px; }
+.library-col-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid var(--panel-border-soft); border-radius: 999px; background: var(--panel-elev); color: var(--panel-fg); font: inherit; font-size: 12px; cursor: pointer; }
+.library-col-pill:hover { border-color: var(--panel-border); }
+.library-col-pill.is-active { background: var(--accent); border-color: transparent; color: #fff; }
+.library-col-count { font-size: 10px; opacity: .7; }
+.library-col-dot { width: 6px; height: 6px; border-radius: 50%; background: #10B981; }
+.library-col-new { border-style: dashed; color: var(--panel-muted); }
+.library-newcol { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; background: var(--panel-elev); border-bottom: 1px solid var(--panel-border-soft); }
+.library-newcol-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.library-newcol-row .settings-input { flex: 0 1 auto; }
+.library-ingest { display: flex; align-items: center; gap: 6px; padding: 6px 12px; flex-wrap: wrap; }
+.library-note { flex: 1 1 160px; min-width: 120px; }
+.library-doc-note { font-size: 10px; color: var(--panel-muted); background: var(--panel-elev-2); padding: 2px 6px; border-radius: 4px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* --- WebhookFlowsApp ---------------------------------------------------- */
 .wf-body { gap: 12px; }

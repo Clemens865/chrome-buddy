@@ -587,6 +587,10 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'VISION_CAPTURE' ||
     t === 'LIBRARY_INDEX' ||
     t === 'LIBRARY_BACKFILL' ||
+    t === 'LIBRARY_COLLECTIONS' ||
+    t === 'LIBRARY_COLLECTION_SAVE' ||
+    t === 'LIBRARY_COLLECTION_DELETE' ||
+    t === 'LIBRARY_CAPTURE_PAGE' ||
     t === 'MCP_TEST'
   );
 }
