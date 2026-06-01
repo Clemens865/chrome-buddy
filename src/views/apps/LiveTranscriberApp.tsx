@@ -67,7 +67,11 @@ export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
         setState('error');
         break;
       case 'closed':
-        setState('idle');
+        // A failing session fires ERROR then CLOSED in quick succession. Don't
+        // let the close snap us back to the idle prompt — that wiped the error
+        // text before it could be read (the "flash red then default" mystery).
+        // Keep the error visible; only a clean close returns to idle.
+        setState((s) => (s === 'error' ? 'error' : 'idle'));
         sessionRef.current = null;
         // Promote any in-flight partial as a final line so nothing is lost.
         if (partialRef.current.trim()) {
