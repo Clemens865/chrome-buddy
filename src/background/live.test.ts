@@ -2,7 +2,35 @@ import { describe, it, expect, vi } from 'vitest';
 import { __testing } from './live';
 import { ok, err } from '../types';
 
-const { routeServerFrame, dispatchFunctionCalls, sanitizeForOpenApi } = __testing;
+const { routeServerFrame, dispatchFunctionCalls, sanitizeForOpenApi, pickLiveModel, buildLiveSetup } = __testing;
+
+describe('Gemini Live — model + setup (transcriber TEXT vs voice AUDIO)', () => {
+  it('picks a TEXT-capable half-cascade model for transcription, native-audio for voice', () => {
+    expect(pickLiveModel(undefined, 'TEXT')).toBe('gemini-2.0-flash-live-001');
+    expect(pickLiveModel(undefined, 'AUDIO')).toContain('native-audio');
+    expect(pickLiveModel('my-model', 'TEXT')).toBe('my-model'); // explicit override wins
+  });
+
+  it('TEXT setup requests TEXT modality + input transcription and OMITS outputAudioTranscription', () => {
+    const s = buildLiveSetup({ model: 'gemini-2.0-flash-live-001', responseModality: 'TEXT', systemText: 'listen' }).setup as Record<string, unknown>;
+    expect(s.model).toBe('models/gemini-2.0-flash-live-001');
+    expect((s.generationConfig as { responseModalities: string[] }).responseModalities).toEqual(['TEXT']);
+    expect(s.inputAudioTranscription).toBeDefined();
+    expect('outputAudioTranscription' in s).toBe(false); // the bug: native-audio + TEXT + this → 1007
+  });
+
+  it('AUDIO setup keeps outputAudioTranscription for the spoken reply', () => {
+    const s = buildLiveSetup({ model: 'x', responseModality: 'AUDIO', systemText: 'hi' }).setup as Record<string, unknown>;
+    expect((s.generationConfig as { responseModalities: string[] }).responseModalities).toEqual(['AUDIO']);
+    expect(s.outputAudioTranscription).toBeDefined();
+  });
+
+  it('includes sanitized function declarations when tools are wired', () => {
+    const s = buildLiveSetup({ model: 'x', responseModality: 'AUDIO', systemText: 'hi', declarations: [{ name: 'navigate', description: 'go', parameters: { type: 'object', additionalProperties: false, properties: {} } }] }).setup as Record<string, unknown>;
+    const fd = (s.tools as { functionDeclarations: { parameters: Record<string, unknown> }[] }[])[0].functionDeclarations[0];
+    expect('additionalProperties' in fd.parameters).toBe(false); // sanitized
+  });
+});
 
 describe('Gemini Live — server frame parser', () => {
   it('emits AUDIO_OUT for inlineData with an audio/* mime type', () => {

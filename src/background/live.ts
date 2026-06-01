@@ -27,6 +27,19 @@ const LIVE_PATH = '/ws/google.ai.generativelanguage.v1beta.GenerativeService.Bid
 // 'gemini-2.5-flash-native-audio-preview-12-2025' (the older alias 404s
 // silently — connection opens but generation never fires).
 const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
+// Transcription (Live Transcriber) asks for responseModalities:['TEXT']. The
+// NATIVE-AUDIO model above only outputs AUDIO, so a TEXT request is rejected at
+// setup (WS close 1007) — the "green for a moment, then red" symptom. A
+// half-cascade Live model supports TEXT output + inputAudioTranscription, so use
+// it whenever TEXT is requested.
+const TRANSCRIBE_MODEL = 'gemini-2.0-flash-live-001';
+
+/** Pick the Live model: an explicit override wins; otherwise the half-cascade
+ *  TEXT model for transcription, or the native-audio model for voice chat. */
+export function pickLiveModel(explicit: string | undefined, responseModality: 'AUDIO' | 'TEXT'): string {
+  if (explicit) return explicit;
+  return responseModality === 'TEXT' ? TRANSCRIBE_MODEL : DEFAULT_MODEL;
+}
 
 type Port = chrome.runtime.Port;
 
@@ -130,7 +143,6 @@ async function onPortConnected(
         return;
       }
       session.ws = ws;
-      const model = typeof msg.model === 'string' ? msg.model : DEFAULT_MODEL;
       const systemText = typeof msg.systemInstruction === 'string'
         ? msg.systemInstruction
         : (
@@ -156,32 +168,14 @@ async function onPortConnected(
           'After a tool runs, summarise the result briefly in your spoken reply, then proceed to the next step if the user\'s request implies one.'
         );
       // Output modality — 'AUDIO' for voice chat, 'TEXT' for the Live
-      // Transcriber (no synthesised replies; cheaper + faster).
+      // Transcriber (no synthesised replies; cheaper + faster). The model is
+      // chosen to MATCH the modality (TEXT → half-cascade, AUDIO → native-audio).
       const responseModality = msg.responseModalities === 'TEXT' ? 'TEXT' : 'AUDIO';
+      const model = pickLiveModel(typeof msg.model === 'string' ? msg.model : undefined, responseModality);
 
       ws.onopen = () => {
-        // Setup frame must be the first message. When `tools` are wired,
-        // surface the function declarations so the model can call them.
-        const setup: Record<string, unknown> = {
-          setup: {
-            model: `models/${model}`,
-            generationConfig: { responseModalities: [responseModality] },
-            systemInstruction: { parts: [{ text: systemText }] },
-            // Ask the server for both sides' transcripts so we can render them.
-            inputAudioTranscription: {},
-            outputAudioTranscription: {},
-            ...(tools && tools.declarations.length > 0
-              ? {
-                  tools: [{
-                    functionDeclarations: tools.declarations.map((d) => ({
-                      ...d,
-                      parameters: d.parameters ? sanitizeForOpenApi(d.parameters) : undefined,
-                    })),
-                  }],
-                }
-              : {}),
-          },
-        };
+        // Setup frame must be the first message.
+        const setup = buildLiveSetup({ model, responseModality, systemText, declarations: tools?.declarations });
         try {
           ws.send(JSON.stringify(setup));
           send({ type: 'OPEN' });
@@ -387,6 +381,39 @@ async function dispatchFunctionCalls(
 }
 
 /**
+ * Build the Live setup frame. `outputAudioTranscription` is included ONLY for
+ * AUDIO output (there's no synthesized audio to transcribe in TEXT mode, and
+ * sending it there can trip the server's setup validation). Pure + testable.
+ */
+export function buildLiveSetup(args: {
+  model: string;
+  responseModality: 'AUDIO' | 'TEXT';
+  systemText: string;
+  declarations?: LiveFunctionDeclaration[];
+}): Record<string, unknown> {
+  const { model, responseModality, systemText, declarations } = args;
+  return {
+    setup: {
+      model: `models/${model}`,
+      generationConfig: { responseModalities: [responseModality] },
+      systemInstruction: { parts: [{ text: systemText }] },
+      inputAudioTranscription: {},
+      ...(responseModality === 'AUDIO' ? { outputAudioTranscription: {} } : {}),
+      ...(declarations && declarations.length > 0
+        ? {
+            tools: [{
+              functionDeclarations: declarations.map((d) => ({
+                ...d,
+                parameters: d.parameters ? sanitizeForOpenApi(d.parameters) : undefined,
+              })),
+            }],
+          }
+        : {}),
+    },
+  };
+}
+
+/**
  * Strip JSON-Schema-only fields that Gemini Live's OpenAPI Schema parser
  * rejects. The Live server returns close-code 1007 with
  *   "Unknown name 'additionalProperties' at 'setup.tools[0].function_declarations[0].parameters'"
@@ -415,4 +442,4 @@ export function sanitizeForOpenApi<T extends Record<string, unknown>>(input: T):
 
 /** Test-only export — routeServerFrame is the pure parser; exposing it
  * lets the unit tests verify parsing behaviour without a real WS. */
-export const __testing = { routeServerFrame, dispatchFunctionCalls, sanitizeForOpenApi };
+export const __testing = { routeServerFrame, dispatchFunctionCalls, sanitizeForOpenApi, pickLiveModel, buildLiveSetup };
