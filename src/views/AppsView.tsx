@@ -17,6 +17,7 @@ import { AppBuilderView } from './apps/AppBuilderView';
 import { describeCaps } from './apps/SandboxAppFrame';
 import { toAppBundle, parseAppBundle, type AppImportReview } from '../apps/appBundle';
 import type { AppConfig } from '../apps/types';
+import { CatalogView } from './CatalogView';
 
 export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'webhooks' | 'scrape' | 'viz' | 'tabs' | 'svggen' | 'builder';
 
@@ -77,6 +78,7 @@ export function AppsView({
   const [genApps, setGenApps] = useState<AppConfig[]>([]);
   const [openGen, setOpenGen] = useState<AppConfig | null>(null);
   const [editApp, setEditApp] = useState<AppConfig | null>(null);
+  const [discover, setDiscover] = useState(false);
   const [importReview, setImportReview] = useState<AppImportReview | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
   const [creating, setCreating] = useState(false);
@@ -137,6 +139,16 @@ export function AppsView({
       setBusy(false);
     }
   };
+
+  if (discover) {
+    return (
+      <CatalogView
+        onBack={() => { setDiscover(false); void refresh(); }}
+        onInstall={async (apps) => { for (const a of apps) await persistApp(a); void refresh(); }}
+        installedNames={new Set(genApps.map((a) => a.name))}
+      />
+    );
+  }
 
   if (editApp) {
     return (
@@ -278,6 +290,7 @@ export function AppsView({
         </div>
       ) : (
         <div className="apps-foot">
+          <button type="button" className="apps-add" onClick={() => setDiscover(true)} data-testid="apps-discover"><span className="ic">{Ic.apps}</span>Discover apps in the marketplace</button>
           <button type="button" className="apps-add" onClick={() => onOpenApp('builder')}><span className="ic">{Ic.sparkle}</span>Build a full app with its own UI</button>
           <button type="button" className="apps-add" onClick={() => setCreating(true)}><span className="ic">{Ic.plus}</span>Generate a quick prompt/code app</button>
           <button type="button" className="apps-add" onClick={() => importRef.current?.click()}><span className="ic">{Ic.download}</span>Import shared apps</button>
