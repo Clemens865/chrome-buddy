@@ -222,6 +222,9 @@ export interface RunAgentTaskOptions {
    *  unchanged; the panel enables it for Agent-mode runs. The no-decomposition
    *  floor still keeps simple tasks on the single loop even when enabled. */
   decompose?: boolean;
+  /** Run-stable extra system context (e.g. the user's library collections)
+   *  injected into the planner + executor so the agent knows what it can search. */
+  extraContext?: string;
   /** Per-run step cap (FR-AGENT-9). Defaults to DEFAULT_STEP_BUDGET. */
   stepBudget?: number;
   /** Per-run dollar cap (NFR-COST-1). Defaults to DEFAULT_COST_BUDGET. */
@@ -556,6 +559,7 @@ export async function runAgentTask(
     onHumanGate: options.onHumanGate,
     onCheckpoint: topLevel ? (s) => void saveCheckpoint(s.scratchpad.task, s) : undefined,
     computerUse: buildVisionFallback(send, model),
+    extraContext: options.extraContext,
   });
 
   const state = await runtime.run(prompt, {

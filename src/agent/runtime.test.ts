@@ -544,3 +544,29 @@ describe('formatDefaults', () => {
     expect(formatDefaults({ githubRepo: '  user/repo  ' })).toContain('GitHub repo: user/repo —');
   });
 });
+
+describe('AgentRuntime extraContext', () => {
+  type GenCalls = { mock: { calls: Array<[{ messages: { role: string; content: string }[] }]> } };
+  it('injects the extraContext block into the planner prompt', async () => {
+    const llm = scriptedLlm([planResp(['Finish']), resp({ text: 'done' }), resp({ text: 'final' })]);
+    const runtime = new AgentRuntime({
+      llm,
+      registry: makeRegistry(),
+      approve: async () => ({ approved: true }),
+      newRunId: () => 'run_test',
+      extraContext: '# Knowledge collections\n- `acme`: Acme Project',
+    });
+    await runtime.run('what do I have on acme?', { stepBudget: 20, costBudget: 1 });
+    const planner = (llm.generate as unknown as GenCalls).mock.calls[0][0].messages;
+    expect(planner.some((m) => m.content.includes('`acme`: Acme Project'))).toBe(true);
+  });
+  it('omits the block when no extraContext is set (default unchanged)', async () => {
+    const llm = scriptedLlm([planResp(['Finish']), resp({ text: 'done' }), resp({ text: 'a' })]);
+    const runtime = new AgentRuntime({
+      llm, registry: makeRegistry(), approve: async () => ({ approved: true }), newRunId: () => 'x',
+    });
+    await runtime.run('t', { stepBudget: 20, costBudget: 1 });
+    const planner = (llm.generate as unknown as GenCalls).mock.calls[0][0].messages;
+    expect(planner.some((m) => m.content.includes('Knowledge collections'))).toBe(false);
+  });
+});

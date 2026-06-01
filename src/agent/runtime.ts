@@ -76,6 +76,9 @@ export interface RuntimeDeps {
   tabId?: number;
   /** Run id factory (overridable for deterministic tests). */
   newRunId?: () => string;
+  /** Run-stable extra system context (e.g. a list of the user's library
+   *  collections) appended to the planner + executor system messages. */
+  extraContext?: string;
 }
 
 const DEFAULT_MAX_RETRIES = 2;
@@ -180,6 +183,9 @@ export class AgentRuntime {
   private readonly onCheckpoint?: (state: RunState) => void;
   private readonly tabId?: number;
   private readonly newRunId: () => string;
+  /** Run-stable extra system context (e.g. the available library collections)
+   *  injected into the planner + executor so the model knows what it can do. */
+  private readonly extraContext?: string;
 
   constructor(deps: RuntimeDeps) {
     this.llm = deps.llm;
@@ -192,6 +198,7 @@ export class AgentRuntime {
     this.onCheckpoint = deps.onCheckpoint;
     this.tabId = deps.tabId;
     this.newRunId = deps.newRunId ?? (() => `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+    this.extraContext = deps.extraContext?.trim() || undefined;
   }
 
   /**
@@ -333,6 +340,7 @@ export class AgentRuntime {
       {
         role: 'user',
         content:
+          (this.extraContext ? `${this.extraContext}\n\n` : '') +
           (options.history ? `Recent conversation:\n${fenceUntrusted(options.history)}\n\n` : '') +
           (formatDefaults(options.defaults) ? `${formatDefaults(options.defaults)}\n\n` : '') +
           `Task: ${task}\n\nAvailable tools:\n${toolList}`,
@@ -516,9 +524,11 @@ export class AgentRuntime {
       { role: 'system', content: EXECUTOR_GUIDANCE },
       {
         role: 'user',
-        content: forceTool
-          ? `${this.buildStepContext(step, state.scratchpad)}\n\nThe previous attempt returned no tool call — you MUST issue the tool call now.`
-          : this.buildStepContext(step, state.scratchpad),
+        content:
+          (this.extraContext ? `${this.extraContext}\n\n` : '') +
+          (forceTool
+            ? `${this.buildStepContext(step, state.scratchpad)}\n\nThe previous attempt returned no tool call — you MUST issue the tool call now.`
+            : this.buildStepContext(step, state.scratchpad)),
       },
     ];
 

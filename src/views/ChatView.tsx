@@ -69,6 +69,7 @@ import {
   resolveIntent,
   buildContextBlock,
   buildMultiPageContextBlock,
+  buildCollectionsBlock,
   hasProfile,
   userItem,
   agentItem,
@@ -759,6 +760,9 @@ export function ChatView({
             thinkHarder,
             signal: aborter.signal,
             defaults: { githubRepo: githubDefaultRepo },
+            // Tell the agent which library collections exist + their ids so it
+            // knows when to call search_library(query, collection).
+            extraContext: buildCollectionsBlock(collections) || undefined,
           });
           if (result.outcome === 'no-key') setNoKey(true);
           else if (result.outcome === 'cancelled') {
