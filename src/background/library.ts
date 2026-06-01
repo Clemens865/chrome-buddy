@@ -61,9 +61,13 @@ export async function executeSearchLibrary(
   if (!query) return err('invalid-args', 'search_library requires a `query` string.');
   const k = typeof args.k === 'number' && args.k > 0 ? Math.min(20, Math.floor(args.k)) : 5;
   const threshold = typeof args.threshold === 'number' ? args.threshold : 0;
-  // Optional collection scoping — accept a collection id (or a name we can
-  // slugify to one) so the model can target a specific knowledge collection.
-  const collectionIds = await resolveCollectionArg(args.collection);
+  // Optional collection scoping — accept an explicit collectionIds array (used
+  // by always-on auto-context) or a single `collection` arg the model passes
+  // (resolved by id or name).
+  const explicitIds = Array.isArray(args.collectionIds)
+    ? (args.collectionIds.filter((x) => typeof x === 'string') as string[])
+    : undefined;
+  const collectionIds = explicitIds && explicitIds.length ? explicitIds : await resolveCollectionArg(args.collection);
   try {
     const hits: SearchHit[] = await searchLibrary(query, geminiKey(getKey), { k, threshold, collectionIds });
     return ok({

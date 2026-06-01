@@ -77,6 +77,7 @@ import {
   type TranscriptItem,
   type Profiles,
   type ProfileKind,
+  type CollectionSummary,
 } from '../agent';
 
 import type { AgentEvent, ApprovalDecision, PlanStep, PlanDecision } from '../agent';
@@ -185,6 +186,19 @@ export function ChatView({
   const [askBeforePlan] = usePersistedState<boolean>('askBeforePlan', true);
   const [preferNano] = usePersistedState<boolean>('preferNano', false);
   const [libraryAutoContext] = usePersistedState<boolean>('libraryAutoContext', false);
+  // Library collections — fetched once so the chat can (a) always-inject
+  // 'always' collections (e.g. Personal Profile) regardless of the global
+  // toggle, and (b) tell the agent which collections exist.
+  const [collections, setCollections] = useState<CollectionSummary[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = (await chrome.runtime.sendMessage({ type: 'LIBRARY_COLLECTIONS' })) as
+          | { ok: boolean; collections: CollectionSummary[] } | undefined;
+        if (r?.ok) setCollections(r.collections);
+      } catch { /* collections optional */ }
+    })();
+  }, []);
   // Default repo configured in Settings → GitHub. Passed into the agent's
   // RunOptions.defaults so the planner knows which repo to fill on
   // github_write / github_read / github_list when the user doesn't name one.
@@ -649,26 +663,27 @@ export function ChatView({
             const textBlock = formatTextAttachments(attachments);
             if (textBlock) context = context ? `${textBlock}\n\n${context}` : textBlock;
           }
-          // Library auto-context (opt-in via Settings). Embed the user message,
-          // retrieve top-3 snippets above cosine 0.65, prepend to context so
-          // the chat model can use them. Failures are silent — the chat still
-          // sends without library context if embedding hiccups.
-          if (libraryAutoContext) {
+          // Library auto-context. We retrieve when EITHER the global toggle is
+          // on (search the whole library) OR the user has 'always' collections
+          // like Personal Profile (search just those, every message — so Buddy
+          // always knows the user). Failures are silent.
+          const alwaysCols = collections.filter((c) => c.autoContext === 'always').map((c) => c.id);
+          if (libraryAutoContext || alwaysCols.length > 0) {
             try {
+              const searchArgs: Record<string, unknown> = { query: prompt, k: 3, threshold: 0.6 };
+              // Toggle off → scope to the always-on collections; on → whole library.
+              if (!libraryAutoContext && alwaysCols.length) searchArgs.collectionIds = alwaysCols;
               const r = (await chrome.runtime.sendMessage({
                 type: 'TOOL_EXEC',
                 tool: 'search_library',
-                args: { query: prompt, k: 3, threshold: 0.65 },
-              })) as { ok: boolean; result: { ok: boolean; data?: { hits: { title: string; source: string; snippet: string }[] } } } | undefined;
+                args: searchArgs,
+              })) as { ok: boolean; result: { ok: boolean; data?: { hits: { title: string; source: string; snippet: string; note?: string }[] } } } | undefined;
               if (r?.ok && r.result.ok && r.result.data?.hits?.length) {
                 const hits = r.result.data.hits;
                 const block = ['## From your Library:', ...hits.map(
-                  (h) => `- **${h.title}** (${h.source}): ${h.snippet.slice(0, 280)}`,
+                  (h) => `- **${h.title}**${h.note ? ` [${h.note}]` : ''} (${h.source}): ${h.snippet.slice(0, 280)}`,
                 )].join('\n');
                 context = context ? `${block}\n\n${context}` : block;
-                // Stash the snippets keyed by the user-message id so the
-                // transcript can render the collapsible audit card right
-                // beneath the prompt that pulled them in.
                 setLibraryHits((prev) => ({ ...prev, [uid]: hits }));
               }
             } catch {
