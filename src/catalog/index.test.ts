@@ -3,6 +3,7 @@ import {
   parseCatalogIndex,
   compareVersions,
   isUpdateAvailable,
+  filterCatalog,
   fetchCatalogIndex,
   fetchEntryData,
   type CatalogEntry,
@@ -43,6 +44,21 @@ describe('parseCatalogIndex', () => {
   it('returns an empty catalog for junk / non-JSON (never throws)', () => {
     expect(parseCatalogIndex('not json').entries).toEqual([]);
     expect(parseCatalogIndex('{"nope":1}').entries).toEqual([]);
+  });
+});
+
+describe('filterCatalog', () => {
+  const entries = parseCatalogIndex(validIndex).entries;
+  it('returns all entries for an empty query', () => {
+    expect(filterCatalog(entries, '')).toHaveLength(2);
+  });
+  it('matches name + description, case-insensitively', () => {
+    expect(filterCatalog(entries, 'email').map((e) => e.id)).toEqual(['email-polisher']);
+    expect(filterCatalog(entries, 'REWRITE').map((e) => e.id)).toEqual(['email-polisher']);
+  });
+  it('requires ALL terms to match', () => {
+    expect(filterCatalog(entries, 'email rewrite').map((e) => e.id)).toEqual(['email-polisher']);
+    expect(filterCatalog(entries, 'email nonsense')).toHaveLength(0);
   });
 });
 

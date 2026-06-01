@@ -177,6 +177,19 @@ export const readTabTool: ToolDefinition = {
   handler: notWired('read_tab'),
 };
 
+// --- search_catalog (Marketplace) ------------------------------------------
+export const searchCatalogTool: ToolDefinition = {
+  name: 'search_catalog',
+  description:
+    "Search the Chrome Buddy app marketplace for installable apps/skills/workflows matching a query. Use when the user wants to FIND or DISCOVER an app to install (not to run one). Returns entries the user can install with one tap. Read-only.",
+  paramsSchema: objectSchema(
+    { query: { type: 'string', description: 'What kind of app/skill the user is looking for (keywords).' } },
+    [],
+  ),
+  consequential: false,
+  handler: notWired('search_catalog'),
+};
+
 // --- screenshot (FR-TOOLS-5) -----------------------------------------------
 export const screenshotTool: ToolDefinition = {
   name: 'screenshot',
@@ -739,6 +752,7 @@ export const stubToolDefs: ToolDefinition[] = [
   readDomTool,
   listTabsTool,
   readTabTool,
+  searchCatalogTool,
   screenshotTool,
   extractTool,
   summarizeTool,

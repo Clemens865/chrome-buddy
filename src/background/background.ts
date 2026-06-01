@@ -48,6 +48,7 @@ import {
   executeAnalyzeSeo,
 } from './inspector';
 import { executeSearchLibrary, executeIndexDoc, executeLibraryBackfill } from './library';
+import { executeSearchCatalog } from './catalog';
 import { registerVoiceStreamPort, type LiveFunctionDeclaration } from './live';
 import { stubToolDefs } from '../tools/defs';
 import { saveRun, listRuns, clearRuns } from '../memory/store';
@@ -269,6 +270,8 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
   analyze_seo: () => executeAnalyzeSeo(),
   // Library RAG (local IDB index, Gemini embeddings).
   search_library: (a, k) => executeSearchLibrary(a, k),
+  // Marketplace discovery (public catalog fetch + filter).
+  search_catalog: (a) => executeSearchCatalog(a),
   // Webhook address book — paired with send_webhook (consequential, already
   // in the map above as a 'consequential / HITL-gated upstream' entry).
   list_webhooks: () => executeListWebhooks(),

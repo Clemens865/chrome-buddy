@@ -379,6 +379,8 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .catalog-tier { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--panel-muted); background: var(--panel-bg); border: 1px solid var(--panel-border-soft); border-radius: 5px; padding: 1px 5px; }
 .catalog-card-desc { font-size: 11.5px; color: var(--panel-muted); margin-top: 2px; }
 .catalog-perms { font-size: 10.5px; color: var(--panel-muted-soft); margin-top: 4px; font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; }
+/* Install cards rendered inline under a search_catalog result in chat. */
+.catalog-cards { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px 34px; }
 .tc-mini-name { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-weight: 500; color: var(--panel-fg); }
 .tc-mini-arg { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; color: var(--panel-muted); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

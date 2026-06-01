@@ -66,6 +66,18 @@ export function parseCatalogIndex(json: string): CatalogIndex {
   };
 }
 
+/** Keyword filter over name + description + kind (all terms must match).
+ *  Empty query → all entries. Pure, so search ranking stays LLM-free + testable. */
+export function filterCatalog(entries: CatalogEntry[], query: string): CatalogEntry[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return entries;
+  const terms = q.split(/\s+/).filter(Boolean);
+  return entries.filter((e) => {
+    const hay = `${e.name} ${e.description} ${e.kind}`.toLowerCase();
+    return terms.every((t) => hay.includes(t));
+  });
+}
+
 /** Compare two dotted version strings numerically: <0, 0, or >0. Missing/odd
  *  segments count as 0, so "1.2" vs "1.2.0" is equal and "1.2.1" is greater. */
 export function compareVersions(a: string, b: string): number {

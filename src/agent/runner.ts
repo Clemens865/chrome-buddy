@@ -66,6 +66,7 @@ const AGENT_TOOLS = new Set([
   ...PAGE_TOOLS,
   'search_web',
   'fetch_url',
+  'search_catalog',
   'file_search',
   'github_write',
   'github_read',

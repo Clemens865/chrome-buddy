@@ -25,6 +25,9 @@ import {
 import { usePersistedState } from '../sidepanel/usePersistedState';
 import { requestPageContext, requestPageContextFor } from '../page/request';
 import { hostOf } from '../tabs/manager';
+import { fetchEntryData, type CatalogEntry } from '../catalog';
+import { parseAppBundle } from '../apps/appBundle';
+import { persistApp } from '../apps/request';
 import { persistRun, fetchRuns } from '../memory/request';
 import { buildRunRecord } from '../memory/buildRecord';
 import { findSimilarRun } from '../memory/recall';
@@ -207,6 +210,14 @@ export function ChatView({
     void addSpend(amount).then(setSpentToday);
   }, []);
   const pendingRef = useRef<PendingConfirm | null>(null);
+  // Marketplace install-from-chat: ids installed this session (flips the card button).
+  const [installedCatalog, setInstalledCatalog] = useState<Set<string>>(new Set());
+  const onInstallCatalog = useCallback(async (entry: CatalogEntry) => {
+    const review = parseAppBundle(await fetchEntryData(entry));
+    if (review.apps.length === 0) throw new Error(`"${entry.name}" could not be validated.`);
+    for (const a of review.apps) await persistApp(a);
+    setInstalledCatalog((prev) => new Set(prev).add(entry.id));
+  }, []);
   /** Active AbortController for the in-flight run. Cleared back to null when
    *  the run resolves so the Stop button only shows during real work. */
   const abortRef = useRef<AbortController | null>(null);
@@ -978,7 +989,7 @@ export function ChatView({
         ) : (
           <>
             {items.flatMap((it) => {
-              const out = [<TranscriptRow key={it.id} item={it} onDecide={decide} onOpenArtifact={setArtifact} />];
+              const out = [<TranscriptRow key={it.id} item={it} onDecide={decide} onOpenArtifact={setArtifact} onInstallCatalog={onInstallCatalog} installedCatalog={installedCatalog} />];
               if (it.kind === 'user' && libraryHits[it.id]?.length) {
                 out.push(<LibraryHitsCard key={`${it.id}-lib`} hits={libraryHits[it.id]} />);
               }
@@ -1406,10 +1417,14 @@ function TranscriptRow({
   item,
   onDecide,
   onOpenArtifact,
+  onInstallCatalog,
+  installedCatalog,
 }: {
   item: TranscriptItem;
   onDecide: (runId: string, step: number, callId: string, approved: boolean) => void;
   onOpenArtifact: (a: Artifact) => void;
+  onInstallCatalog: (entry: CatalogEntry) => Promise<void>;
+  installedCatalog: Set<string>;
 }) {
   switch (item.kind) {
     case 'user':
@@ -1468,7 +1483,7 @@ function TranscriptRow({
       );
 
     case 'tool':
-      return <ToolTrace item={item} />;
+      return <ToolTrace item={item} onInstallCatalog={onInstallCatalog} installedCatalog={installedCatalog} />;
 
     case 'confirm':
       return <ConfirmCard item={item} onDecide={onDecide} />;
@@ -1481,10 +1496,24 @@ function TranscriptRow({
   }
 }
 
-function ToolTrace({ item }: { item: Extract<TranscriptItem, { kind: 'tool' }> }) {
+function ToolTrace({
+  item,
+  onInstallCatalog,
+  installedCatalog,
+}: {
+  item: Extract<TranscriptItem, { kind: 'tool' }>;
+  onInstallCatalog: (entry: CatalogEntry) => Promise<void>;
+  installedCatalog: Set<string>;
+}) {
   const statusClass =
     item.status === 'running' ? 'tc-status-running' : 'tc-status-done';
   const argText = summarizeArgs(item.call.arguments);
+  // search_catalog results render as installable cards (the conversational
+  // marketplace flow) rather than a raw tool trace.
+  const catalogEntries =
+    item.call.name === 'search_catalog' && item.status === 'done' && item.result?.ok
+      ? (((item.result.data as { entries?: CatalogEntry[] })?.entries) ?? [])
+      : null;
   return (
     <div className="trace">
       <div className="tc-mini">
@@ -1496,6 +1525,58 @@ function ToolTrace({ item }: { item: Extract<TranscriptItem, { kind: 'tool' }> }
         {item.status === 'denied' && <span className="tc-meta">denied</span>}
         {item.status === 'done' && item.verdict && <span className="tc-meta">{item.verdict}</span>}
       </div>
+      {catalogEntries && catalogEntries.length > 0 && (
+        <div className="catalog-cards" data-testid="catalog-install-cards">
+          {catalogEntries.filter((e) => e.kind === 'app').map((e) => (
+            <CatalogInstallCard key={e.id} entry={e} onInstall={onInstallCatalog} installed={installedCatalog.has(e.id)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CatalogInstallCard({
+  entry,
+  onInstall,
+  installed,
+}: {
+  entry: CatalogEntry;
+  onInstall: (entry: CatalogEntry) => Promise<void>;
+  installed: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(installed);
+  const [err, setErr] = useState<string | null>(null);
+  const click = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await onInstall(entry);
+      setDone(true);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="catalog-card" data-testid={`chat-catalog-${entry.id}`}>
+      <div className="catalog-card-body">
+        <div className="catalog-card-name">{entry.name} <span className="catalog-tier">Tier {entry.tier ?? 1}</span></div>
+        <div className="catalog-card-desc">{entry.description}</div>
+        {!!entry.permissions?.length && <div className="catalog-perms">needs: {entry.permissions.join(' · ')}</div>}
+        {err && <div className="catalog-perms" style={{ color: '#B91C1C' }}>{err}</div>}
+      </div>
+      <button
+        type="button"
+        className={'btn btn-sm ' + (done ? 'btn-ghost' : 'btn-primary')}
+        disabled={busy || done}
+        onClick={() => void click()}
+        data-testid={`chat-catalog-install-${entry.id}`}
+      >
+        {busy ? 'Installing…' : done ? 'Installed' : 'Install'}
+      </button>
     </div>
   );
 }
