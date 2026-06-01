@@ -22,11 +22,11 @@ Chrome Buddy is a Manifest V3 side-panel extension that combines four coexisting
 - Apps: **9 openable built-ins** + a natural-language **app builder** — Tier-1 (declarative form + prompt), Tier-2 (sandboxed JS, review gate before first run), and Tier-3 (sandbox-UI micro-apps that render their own DOM); guided build with clarifying questions, live preview, edit / iterate, and export / import to share
 - Tab Manager: list / search / dedupe / pin / suspend (free memory) / move-to-new-window / copy-URLs (Markdown · Plain · JSON), AI group-by-topic, and **Spaces** (named local workspaces you switch between)
 - Skills + Workflows: create / edit / delete / import / export, import a Claude `SKILL.md`, agent-callable via `call_skill`, scheduled triggers via `chrome.alarms`, event triggers on URL patterns
-- Library: local RAG (Gemini embeddings + IndexedDB), auto-mirror of chats + notes, folder import via the File System Access API
+- Library: local RAG (Gemini embeddings + IndexedDB) organized into **collections** (a Personal Profile, a work bucket, one per project…) with an optional per-doc note ("is a competitor") surfaced at retrieval; ingest by **file (incl. PDF), one-click page capture** (panel button + right-click "Add page to Library ▸ collection"), folder import, and auto-mirror of chats + notes; **collection-aware retrieval** — task-typed 768-dim embeddings with a self-healing re-embed migration, collection-scoped `search_library`, and three auto-context modes (always-on profile / active-this-session / manual) the agent understands
 - Integrations: GitHub Contents API (read / write / list with HITL gate), webhook address book, MCP server registry (Streamable HTTP transport, per-tool include + trust controls)
 - Voice: STT in the composer, full Gemini Live bidirectional voice mode with function calling
 
-See [`docs/night-test-audit.md`](docs/night-test-audit.md) for the current coverage map and an honest list of known gaps.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full system architecture, and [`docs/night-test-audit.md`](docs/night-test-audit.md) for the current coverage map and an honest list of known gaps.
 
 ## Install
 
@@ -131,7 +131,7 @@ src/
   background/      Service worker: key custody, LLM dispatch, page tools, webhook + GitHub + MCP tools
   chat/            Composer helpers (attachments, classification)
   content/         Content script (page-side overlay + extraction)
-  library/         Local RAG — chunking, embedding, store, folder walk
+  library/         Local RAG — chunking, embedding (task-typed 768-dim), store, collections, multi-format + PDF parse, folder walk, consolidation
   llm/             Multi-provider client + registry (Gemini native, OpenAI-compat, Anthropic Messages API) + per-call model-intent resolver
   mcp/             MCP client: Streamable-HTTP transport, JSON-RPC, server registry, agent-side merger
   notes/           Notes store (quick-capture sink + agent tool)
