@@ -102,6 +102,13 @@ export class VoiceSession {
     //    hot path; modern Chrome respects the constructor hint reliably.
     const InCtx = (window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext) as typeof AudioContext;
     this.inCtx = new InCtx({ sampleRate: INPUT_SAMPLE_RATE });
+    // An AudioContext can start 'suspended' (autoplay policy); if so,
+    // onaudioprocess never fires and NO audio is captured/sent — the session
+    // looks live but transcribes nothing. Resume it (the Record click is the
+    // user gesture that permits this).
+    if (this.inCtx.state === 'suspended') {
+      try { await this.inCtx.resume(); } catch { /* best effort */ }
+    }
     this.source = this.inCtx.createMediaStreamSource(this.stream);
     // ScriptProcessor is deprecated but functional; AudioWorklet would need
     // a separate bundled worklet file, which is overkill for v1.

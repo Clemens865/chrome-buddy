@@ -36,6 +36,9 @@ export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
   const [partial, setPartial] = useState<string>('');
   const [saved, setSaved] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
+  /** Live audio flow counters — confirms mic chunks are going OUT and whether
+   *  the server is sending anything back. Diagnoses "green but no transcript". */
+  const [flow, setFlow] = useState<{ sent: number; recv: number }>({ sent: 0, recv: 0 });
 
   // Auto-scroll the transcript area as new lines come in.
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -65,6 +68,9 @@ export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
           setPartial(e.text);
         }
         break;
+      case 'flow':
+        setFlow({ sent: e.sentChunks, recv: e.recvChunks });
+        break;
       case 'error':
         setError(e.message);
         setState('error');
@@ -92,6 +98,7 @@ export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
   const start = useCallback(async () => {
     if (sessionRef.current) return;
     setError(undefined);
+    setFlow({ sent: 0, recv: 0 });
     setState('connecting');
     if (lines.length === 0) startedAtRef.current = Date.now();
     const session = new VoiceSession({
@@ -194,7 +201,7 @@ export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
             : state === 'connecting'
               ? 'Connecting…'
               : state === 'live'
-                ? '● Listening'
+                ? `● Listening · ↑${flow.sent} ↓${flow.recv}`
                 : state === 'error'
                   ? error ?? 'Error'
                   : isEmpty ? 'Press Record to start.' : 'Idle.'}
