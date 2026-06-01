@@ -59,6 +59,36 @@ export function hasProfile(profile: UserProfile | null | undefined): boolean {
   return !!profile && !!(profile.name?.trim() || profile.role?.trim() || profile.about?.trim());
 }
 
+export interface CollectionSummary {
+  id: string;
+  name: string;
+  description: string;
+  autoContext: 'always' | 'active' | 'manual';
+}
+
+/**
+ * Build the "Knowledge collections" block that tells the model which library
+ * collections exist + their ids, so it knows to call
+ * `search_library(query, collection)` against the right one. Always-on
+ * collections are flagged so the model doesn't redundantly search what's
+ * already injected. Pure; '' when there's nothing worth listing.
+ */
+export function buildCollectionsBlock(collections: readonly CollectionSummary[]): string {
+  const usable = collections.filter((c) => c?.id && c?.name);
+  if (usable.length === 0) return '';
+  const lines = usable.map((c) => {
+    const desc = c.description?.trim() ? ` — ${c.description.trim()}` : '';
+    const flag = c.autoContext === 'always' ? ' (already in context)' : '';
+    return `- \`${c.id}\`: ${c.name}${desc}${flag}`;
+  });
+  return [
+    '# Knowledge collections',
+    "The user's private library is organized into these collections. When a question " +
+      'relates to one, call `search_library(query, collection)` with the matching id:',
+    ...lines,
+  ].join('\n');
+}
+
 /**
  * Build a context block from several explicitly-picked tabs (multi-tab chat).
  * Each tab is fenced under its own heading so the model can attribute facts to

@@ -61,8 +61,11 @@ export async function executeSearchLibrary(
   if (!query) return err('invalid-args', 'search_library requires a `query` string.');
   const k = typeof args.k === 'number' && args.k > 0 ? Math.min(20, Math.floor(args.k)) : 5;
   const threshold = typeof args.threshold === 'number' ? args.threshold : 0;
+  // Optional collection scoping — accept a collection id (or a name we can
+  // slugify to one) so the model can target a specific knowledge collection.
+  const collectionIds = await resolveCollectionArg(args.collection);
   try {
-    const hits: SearchHit[] = await searchLibrary(query, geminiKey(getKey), { k, threshold });
+    const hits: SearchHit[] = await searchLibrary(query, geminiKey(getKey), { k, threshold, collectionIds });
     return ok({
       query,
       count: hits.length,
@@ -71,6 +74,8 @@ export async function executeSearchLibrary(
         title: h.docTitle,
         source: h.docSource,
         sourceRef: h.docSourceRef,
+        collection: h.docCollectionId,
+        note: h.docNote,
         chunkIdx: h.chunkIdx,
         score: Number(h.score.toFixed(4)),
         snippet: h.text,
@@ -79,6 +84,20 @@ export async function executeSearchLibrary(
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
   }
+}
+
+/** Resolve a model-supplied `collection` arg (id or display name) to a concrete
+ *  collectionId list, or undefined to search everything. Lenient: matches by id
+ *  first, then by slugified name, so the model can pass either. */
+async function resolveCollectionArg(arg: unknown): Promise<string[] | undefined> {
+  const raw = typeof arg === 'string' ? arg.trim() : '';
+  if (!raw) return undefined;
+  const cols = await listCollections();
+  const byId = cols.find((c) => c.id === raw);
+  if (byId) return [byId.id];
+  const slug = makeCollectionId(raw, 'x');
+  const byName = cols.find((c) => c.id === slug || c.name.toLowerCase() === raw.toLowerCase());
+  return byName ? [byName.id] : [raw]; // fall back to the raw value as an id
 }
 
 /**

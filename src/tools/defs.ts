@@ -712,6 +712,13 @@ export const searchLibraryTool: ToolDefinition = {
         description:
           'Minimum cosine-similarity score to include (default 0). Pass 0.65+ for stricter quality.',
       },
+      collection: {
+        type: 'string',
+        description:
+          "Optional collection id to restrict the search to one of the user's knowledge " +
+          'collections (the available ids are listed in the system context under "Knowledge ' +
+          'collections"). Omit to search the whole library.',
+      },
     },
     ['query'],
   ),
