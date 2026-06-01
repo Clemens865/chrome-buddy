@@ -1,16 +1,18 @@
 // Hand-authored Tier-3 marketplace app: BrandSnap AI — a branded-scene composer
-// modeled on the MicroLabs original. A numbered, all-visible workspace:
-//   1 Canvas (crop ratio) · 2 Style · 3 Palette (rolled + editable INPUT that
-//   feeds the prompt) · 4 Scene brief · 5 Brand mark (always-visible upload) →
-//   Generate Asset (bridge.image) → composite the mark (drag + size) → Export
-//   the cropped composite (api.download).
+// modeled on the MicroLabs original. The key behavior: you UPLOAD a mark, PLACE
+// it on the canvas, then the image model GENERATES a scene with the mark
+// INTEGRATED into it (printed/embossed/rendered in) — not flatly overlaid. The
+// placed mark (composited on a base at your position) is passed as inputImage to
+// bridge.image, so the result weaves it into the generated image.
+//   1 Canvas (crop ratio) · 2 Style · 3 Palette (editable INPUT) · 4 Scene brief
+//   · 5 Mark (upload → place on canvas) → Generate (integrate) → Export.
 // cb-* design system only. Permissions: image + download.
 import type { AppConfig } from '../types';
 
 const html = `
 <div class="cb-app">
   <h1>BrandSnap AI</h1>
-  <p class="cb-muted hint">Compose a branded product scene — set canvas, style, palette + your mark, then generate &amp; export.</p>
+  <p class="cb-muted hint">Upload your logo, place it on the canvas, then generate a scene with your mark integrated into the image.</p>
 
   <div class="step"><span class="num">1</span> Canvas</div>
   <div class="seg" id="ratioSeg" role="group" aria-label="Crop ratio">
@@ -30,7 +32,7 @@ const html = `
   <div class="step"><span class="num">4</span> Scene brief</div>
   <textarea id="brief" class="cb-input" rows="2" placeholder="e.g. a matte black coffee mug on a stone ledge"></textarea>
 
-  <div class="step"><span class="num">5</span> Brand mark <span class="small cb-muted">(optional)</span></div>
+  <div class="step"><span class="num">5</span> Mark — upload &amp; place on the canvas</div>
   <div class="markrow">
     <button id="addLogo" type="button" class="cb-btn cb-ghost">Upload mark</button>
     <span id="markName" class="small cb-muted"></span>
@@ -38,18 +40,23 @@ const html = `
   </div>
   <input id="logoFile" type="file" accept="image/*" hidden />
 
-  <button id="go" type="button" class="cb-btn primary">Generate Asset</button>
-  <div id="status" class="status cb-muted"></div>
-
   <div id="stage" class="stage" style="display:none">
-    <img id="genImg" class="genimg" alt="generated" />
-    <img id="logoImg" class="logoimg" alt="mark" style="display:none" />
+    <div id="placeLayer" class="placelayer">
+      <img id="markImg" class="markimg" alt="mark" />
+      <div class="placehint">Drag to place · size below · then Generate</div>
+    </div>
+    <img id="genImg" class="genimg" alt="result" style="display:none" />
   </div>
   <div id="logoCtl" class="logoctl" style="display:none">
     <label class="lbl" style="margin:0">Mark size</label>
-    <input id="logoSize" type="range" min="8" max="50" value="22" />
+    <input id="logoSize" type="range" min="6" max="60" value="24" />
   </div>
+
+  <button id="go" type="button" class="cb-btn primary">Generate Asset</button>
+  <div id="status" class="status cb-muted"></div>
+
   <div id="actions" class="actions" style="display:none">
+    <button id="reposition" type="button" class="cb-btn cb-ghost">Reposition</button>
     <button id="regen" type="button" class="cb-btn cb-ghost">Regenerate</button>
     <button id="dl" type="button" class="cb-btn primary">Export</button>
   </div>
@@ -78,8 +85,10 @@ h1 { font-size: 17px; margin: 0 0 4px; }
 .sw input { width: 140%; height: 140%; margin: -8px; border: 0; padding: 0; background: none; cursor: pointer; }
 .markrow { display: flex; align-items: center; gap: 8px; }
 .stage { position: relative; margin-top: 12px; border-radius: 12px; overflow: hidden; border: 1px solid var(--cb-border); background: var(--cb-elev); touch-action: none; }
+.placelayer { position: absolute; inset: 0; background: repeating-conic-gradient(#e9e9ee 0% 25%, #f6f6f8 0% 50%) 50% / 22px 22px; }
+.markimg { position: absolute; transform: translate(-50%, -50%); cursor: move; user-select: none; max-width: none; filter: drop-shadow(0 2px 6px rgba(0,0,0,.25)); }
+.placehint { position: absolute; left: 0; right: 0; bottom: 0; padding: 5px 8px; font-size: 10.5px; color: #444; background: rgba(255,255,255,.7); text-align: center; }
 .genimg { display: block; width: 100%; height: 100%; object-fit: cover; }
-.logoimg { position: absolute; transform: translate(-50%, -50%); cursor: move; user-select: none; filter: drop-shadow(0 2px 6px rgba(0,0,0,.35)); }
 .logoctl { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .logoctl input[type=range] { flex: 1; }
 .actions { display: flex; gap: 6px; margin-top: 12px; }
@@ -140,65 +149,78 @@ function renderPalette() {
 }
 $('roll').addEventListener('click', roll);
 
-// --- Brand mark (always-visible upload) ---
-const logoImg = $('logoImg');
+// --- Mark: upload + place on the canvas (becomes the inputImage to integrate) ---
+const markImg = $('markImg'); const placeLayer = $('placeLayer'); const genImg = $('genImg'); const stage = $('stage'); const status = $('status');
+let markPos = { x: 0.5, y: 0.5, w: 0.28 };
+function applyMark() {
+  if (!markImg.getAttribute('src')) return;
+  markImg.style.left = (markPos.x * 100) + '%'; markImg.style.top = (markPos.y * 100) + '%'; markImg.style.width = (markPos.w * 100) + '%';
+}
+function showPlace() {
+  stage.style.display = 'block'; placeLayer.style.display = 'block'; genImg.style.display = 'none';
+  $('logoCtl').style.display = markImg.getAttribute('src') ? 'flex' : 'none';
+  applyStageRatio(); applyMark();
+}
 $('addLogo').addEventListener('click', function () { $('logoFile').click(); });
 $('logoFile').addEventListener('change', function () {
   const f = $('logoFile').files[0]; if (!f) return;
   const r = new FileReader();
-  r.onload = function () { logoImg.src = r.result; logoPos = { x: 0.5, y: 0.82, w: 0.22 }; $('markName').textContent = f.name; $('logoRemove').style.display = 'inline-block'; applyLogo(); };
+  r.onload = function () { markImg.src = r.result; markPos = { x: 0.5, y: 0.5, w: 0.28 }; $('markName').textContent = f.name; $('logoRemove').style.display = 'inline-block'; $('logoSize').value = '24'; showPlace(); };
   r.readAsDataURL(f);
 });
-$('logoRemove').addEventListener('click', function () { logoImg.removeAttribute('src'); logoImg.style.display = 'none'; $('markName').textContent = ''; $('logoRemove').style.display = 'none'; $('logoCtl').style.display = 'none'; });
+$('logoRemove').addEventListener('click', function () {
+  markImg.removeAttribute('src'); $('markName').textContent = ''; $('logoRemove').style.display = 'none'; $('logoCtl').style.display = 'none';
+  if (genImg.style.display === 'none') stage.style.display = 'none';
+});
+$('logoSize').addEventListener('input', function () { markPos.w = Number($('logoSize').value) / 100; applyMark(); });
 
-let logoPos = { x: 0.5, y: 0.82, w: 0.22 };
-function applyLogo() {
-  if (!logoImg.getAttribute('src')) { logoImg.style.display = 'none'; return; }
-  logoImg.style.display = 'block';
-  logoImg.style.left = (logoPos.x * 100) + '%'; logoImg.style.top = (logoPos.y * 100) + '%'; logoImg.style.width = (logoPos.w * 100) + '%';
-  if ($('stage').style.display !== 'none') $('logoCtl').style.display = 'flex';
-}
-$('logoSize').addEventListener('input', function () { logoPos.w = Number($('logoSize').value) / 100; applyLogo(); });
-
-const stage = $('stage');
+// drag the mark within the placement canvas
 let dragging = false;
 function frac(e) { const r = stage.getBoundingClientRect(); return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }; }
-logoImg.addEventListener('pointerdown', function (e) { if (!logoImg.getAttribute('src')) return; dragging = true; if (logoImg.setPointerCapture) logoImg.setPointerCapture(e.pointerId); e.preventDefault(); });
-logoImg.addEventListener('pointermove', function (e) { if (!dragging) return; const p = frac(e); logoPos.x = p.x; logoPos.y = p.y; applyLogo(); });
-logoImg.addEventListener('pointerup', function () { dragging = false; });
+markImg.addEventListener('pointerdown', function (e) { if (!markImg.getAttribute('src')) return; dragging = true; if (markImg.setPointerCapture) markImg.setPointerCapture(e.pointerId); e.preventDefault(); });
+markImg.addEventListener('pointermove', function (e) { if (!dragging) return; const p = frac(e); markPos.x = p.x; markPos.y = p.y; applyMark(); });
+markImg.addEventListener('pointerup', function () { dragging = false; });
 
-// --- Generate ---
-const genImg = $('genImg'); const status = $('status');
+// Composite the PLACED mark onto a base canvas → the inputImage the model integrates.
+function buildInput() {
+  const r = ratioWH(); const W = 1024, H = Math.round(W * r.h / r.w);
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+  x.fillStyle = '#efefef'; x.fillRect(0, 0, W, H);
+  if (markImg.getAttribute('src')) {
+    const lw = markPos.w * W; const lh = lw * (markImg.naturalHeight / markImg.naturalWidth);
+    x.drawImage(markImg, markPos.x * W - lw / 2, markPos.y * H - lh / 2, lw, lh);
+  }
+  return c.toDataURL('image/png');
+}
+
+// --- Generate: the mark is INTEGRATED by the image model, not overlaid ---
 async function generate() {
   const brief = $('brief').value.trim();
-  const go = $('go'); go.disabled = true; status.textContent = 'Generating…';
+  const pal = palette.length ? ' Use this color palette prominently: ' + palette.join(', ') + '.' : '';
+  const hasMark = !!markImg.getAttribute('src');
+  const go = $('go'); go.disabled = true; status.textContent = hasMark ? 'Generating — integrating your mark…' : 'Generating…';
   try {
-    const pal = palette.length ? ' Use this color palette prominently: ' + palette.join(', ') + '.' : '';
-    const prompt = 'Create a professional branded product image. Subject/scene: ' + (brief || 'an elegant product on a clean surface') + '. Style: ' + STYLES[styleSel.value] + '.' + pal + ' ' + ratio + ' composition, high quality, sharp, well-lit, no text, no watermark.';
-    const out = await bridge.image({ prompt: prompt, aspect: ratio });
-    genImg.onload = function () { applyLogo(); };
-    genImg.src = out; applyStageRatio(); stage.style.display = 'block'; $('actions').style.display = 'flex'; status.textContent = '';
+    let opts;
+    if (hasMark) {
+      const prompt = 'You are given an image with a logo/brand mark on a plain background. Generate a professional ' + STYLES[styleSel.value] + ' product/brand scene that INTEGRATES that mark naturally into the image — render it as if it is physically printed, embossed, engraved, or displayed on a real surface or product, keeping it legible and roughly in the same position. Build a cohesive scene around it. Scene: ' + (brief || 'a premium product presentation') + '.' + pal + ' ' + ratio + ' composition, photorealistic, high quality, no extra text, no watermark.';
+      opts = { prompt: prompt, inputImage: buildInput(), aspect: ratio };
+    } else {
+      const prompt = 'Create a professional ' + STYLES[styleSel.value] + ' product/brand scene. Scene: ' + (brief || 'an elegant product on a clean surface') + '.' + pal + ' ' + ratio + ' composition, high quality, sharp, no text, no watermark.';
+      opts = { prompt: prompt, aspect: ratio };
+    }
+    const out = await bridge.image(opts);
+    genImg.src = out; applyStageRatio();
+    stage.style.display = 'block'; placeLayer.style.display = 'none'; genImg.style.display = 'block';
+    $('logoCtl').style.display = 'none'; $('actions').style.display = 'flex';
+    $('reposition').style.display = hasMark ? 'block' : 'none';
+    status.textContent = '';
   } catch (e) { status.textContent = 'Error: ' + ((e && e.message) || 'generation failed'); }
   go.disabled = false;
 }
 $('go').addEventListener('click', generate);
 $('regen').addEventListener('click', generate);
-
-// --- Export (cover-crop to ratio + composite mark) ---
-$('dl').addEventListener('click', function () {
-  if (!genImg.getAttribute('src')) return;
-  const r = ratioWH(); const W = 1024, H = Math.round(W * r.h / r.w);
-  const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
-  const iw = genImg.naturalWidth || W, ih = genImg.naturalHeight || H, ir = iw / ih, tr = W / H;
-  let sw, sh, sx, sy;
-  if (ir > tr) { sh = ih; sw = sh * tr; sx = (iw - sw) / 2; sy = 0; } else { sw = iw; sh = sw / tr; sx = 0; sy = (ih - sh) / 2; }
-  x.drawImage(genImg, sx, sy, sw, sh, 0, 0, W, H);
-  if (logoImg.getAttribute('src')) {
-    const lw = logoPos.w * W; const lh = lw * (logoImg.naturalHeight / logoImg.naturalWidth);
-    x.drawImage(logoImg, logoPos.x * W - lw / 2, logoPos.y * H - lh / 2, lw, lh);
-  }
-  try { api.download('brand-asset.png', c.toDataURL('image/png')); } catch (e) { api.download('brand-asset.png', genImg.src); }
-});
+$('reposition').addEventListener('click', showPlace);
+$('dl').addEventListener('click', function () { if (genImg.getAttribute('src')) api.download('brand-asset.png', genImg.src); });
 
 // init
 roll(); applyStageRatio();`;
@@ -206,7 +228,7 @@ roll(); applyStageRatio();`;
 export const BRANDSNAP_APP: AppConfig = {
   id: 'brandsnap-ai',
   name: 'BrandSnap AI',
-  description: 'Compose a branded product scene — canvas, style, an editable color palette, and your logo mark — then generate and export.',
+  description: 'Upload your logo, place it on the canvas, and the AI generates a styled product scene with your mark integrated into the image — then export.',
   inputs: [],
   tier: 3,
   html,

@@ -34,10 +34,16 @@ test('BrandSnap AI mounts its cb-* UI in the sandbox and the ui runs', async ({ 
   // The sandboxed app frame loads and renders BrandSnap's own UI.
   const frame = panel.frameLocator('.sandbox-app-frame');
   await expect(frame.getByRole('button', { name: 'Generate Asset' })).toBeVisible({ timeout: 15_000 });
-  // The brand-mark upload is a first-class, always-visible step (the prior bug).
   await expect(frame.getByRole('button', { name: 'Upload mark' })).toBeVisible();
-  // The `ui` ran: Style select populated + a palette was rolled (5 swatches).
   await expect(frame.locator('#style option', { hasText: 'Product Shot' })).toHaveCount(1);
   await expect(frame.locator('#palette .sw')).toHaveCount(5);
+
+  // Upload a mark → it appears ON the placement canvas (drag-to-place), which is
+  // what gets fed to the image model as inputImage (integrated, not overlaid).
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  await frame.locator('#logoFile').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: png });
+  await expect(frame.locator('#placeLayer')).toBeVisible();
+  await expect(frame.locator('#markImg')).toHaveAttribute('src', /^data:image/);
+  await expect(frame.locator('#logoSize')).toBeVisible(); // size control appears for placement
   await panel.screenshot({ path: join(process.cwd(), 'screenshots', 'brandsnap-app.png') });
 });

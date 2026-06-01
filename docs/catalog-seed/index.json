@@ -4,10 +4,10 @@
     {
       "id": "brandsnap-ai",
       "name": "BrandSnap AI",
-      "description": "Generate a styled brand/product image, auto-extract its color palette, overlay your logo, and export.",
+      "description": "Upload your logo, place it on the canvas, and the AI generates a styled product scene with your mark integrated into the image — then export.",
       "kind": "app",
       "tier": 3,
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "Chrome Buddy",
       "permissions": ["image", "download"],
       "dataPath": "apps/brandsnap-ai.json"
