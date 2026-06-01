@@ -706,6 +706,9 @@ body.is-overlay-iframe .rail-floating .rail-foot {
 .transform-tab.is-active { color: var(--panel-fg); border-bottom-color: var(--accent); }
 .transform-body { font-size: 13.5px; line-height: 1.6; color: var(--panel-fg); white-space: pre-wrap; word-break: break-word; }
 .session-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--panel-border-soft); }
+.live-caption { font-size: 15px; line-height: 1.7; color: var(--panel-fg); word-break: break-word; }
+.live-caption-interim { color: var(--panel-muted); }
+.live-note { font-size: 12px; color: var(--panel-muted); margin-bottom: 10px; padding: 6px 10px; border-radius: 8px; background: var(--panel-elev); }
 .btn-danger { color: #EF4444; border-color: var(--panel-border-soft); }
 .btn-danger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.1); border-color: #EF4444; }
 .theme-graphite .composer-send { color: #0F1115; }

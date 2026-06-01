@@ -60,7 +60,8 @@ test('Voice Transcriber: Record → transcribe → session → Summarize', async
   }, { transcript: TRANSCRIPT, summary: SUMMARY });
 
   // Stub the mic with a running oscillator so onaudioprocess fires + samples are
-  // captured (sampleCount > 0).
+  // captured (sampleCount > 0). Also stub SpeechRecognition so the live caption
+  // preview emits an interim result while recording.
   await panel.evaluate(() => {
     // @ts-expect-error stub
     navigator.mediaDevices.getUserMedia = async () => {
@@ -72,6 +73,26 @@ test('Voice Transcriber: Record → transcribe → session → Summarize', async
       osc.start();
       return dst.stream;
     };
+    class FakeRecognition {
+      continuous = false; interimResults = false; lang = '';
+      onresult: ((ev: unknown) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onend: (() => void) | null = null;
+      start() {
+        setTimeout(() => {
+          this.onresult?.({
+            resultIndex: 0,
+            results: { length: 1, 0: { isFinal: false, 0: { transcript: 'live caption preview' }, length: 1 } },
+          });
+        }, 50);
+      }
+      stop() { this.onend?.(); }
+      abort() {}
+    }
+    // Force-override both names (a native webkitSpeechRecognition can shadow a
+    // plain assignment) so our fake is the one the app picks up.
+    Object.defineProperty(window, 'SpeechRecognition', { value: FakeRecognition, configurable: true, writable: true });
+    Object.defineProperty(window, 'webkitSpeechRecognition', { value: FakeRecognition, configurable: true, writable: true });
   });
 
   // Apps grid → Voice Transcriber → empty state.
@@ -80,10 +101,12 @@ test('Voice Transcriber: Record → transcribe → session → Summarize', async
   await expect(panel.getByTestId('rec-start')).toBeVisible({ timeout: 5_000 });
   await expect(panel.getByTestId('voice-sessions')).toContainText('Press Record');
 
-  // Record → recording state → let it capture for a moment → Stop.
+  // Record → recording state → live caption preview appears → Stop.
   await panel.getByTestId('rec-start').click();
   await expect(panel.getByText(/● Recording/)).toBeVisible({ timeout: 5_000 });
-  await panel.waitForTimeout(700);
+  await expect(panel.getByTestId('voice-live')).toContainText('live caption preview', { timeout: 5_000 });
+  await panel.screenshot({ path: path.join(SHOTS, '96-voice-live.png') });
+  await panel.waitForTimeout(400);
   await panel.getByTestId('rec-stop').click();
 
   // After transcription the session detail opens with the transcript text.

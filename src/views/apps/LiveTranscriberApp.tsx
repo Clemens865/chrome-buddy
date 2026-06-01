@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppHeader, appById } from '../AppsView';
 import { Ic } from '../../ui/icons';
 import { MicRecorder } from '../../transcribe/recorder';
+import { LiveCaption, isLiveCaptionSupported } from '../../transcribe/liveCaption';
 import { fileToBase64, transcribeAudio } from '../../audio/request';
 import { generateViaBackground } from '../../llm/instance';
 import {
@@ -40,10 +41,16 @@ function formatWhen(epochMs: number): string {
 export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
   const app = appById('livescribe');
   const recorderRef = useRef<MicRecorder | null>(null);
+  const captionRef = useRef<LiveCaption | null>(null);
   const timerRef = useRef<number | null>(null);
+  const liveSupported = useMemo(() => isLiveCaptionSupported(), []);
 
   const [recState, setRecState] = useState<RecState>('idle');
   const [elapsed, setElapsed] = useState<number>(0);
+  /** Live (approximate) captions shown WHILE recording — SpeechRecognition. The
+   *  saved transcript is the accurate Gemini one produced on stop. */
+  const [liveFinal, setLiveFinal] = useState('');
+  const [liveInterim, setLiveInterim] = useState('');
   const [error, setError] = useState<string | undefined>();
   const [sessions, setSessions] = useState<TranscriptSession[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -75,16 +82,26 @@ export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
     return () => { if (timerRef.current) window.clearInterval(timerRef.current); };
   }, [recState]);
 
-  // Stop the mic if the view unmounts mid-recording.
-  useEffect(() => () => { void recorderRef.current?.cancel(); }, []);
+  // Stop the mic + captions if the view unmounts mid-recording.
+  useEffect(() => () => {
+    void recorderRef.current?.cancel();
+    captionRef.current?.stop();
+  }, []);
 
   const startRec = useCallback(async () => {
     setError(undefined);
+    setLiveFinal('');
+    setLiveInterim('');
     const rec = new MicRecorder();
     recorderRef.current = rec;
     try {
       await rec.start();
       setRecState('recording');
+      // Best-effort live captions alongside the recording. Failure here never
+      // affects the recording or the accurate Gemini transcript on stop.
+      const caption = new LiveCaption((full, interim) => { setLiveFinal(full); setLiveInterim(interim); });
+      captionRef.current = caption;
+      caption.start();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not access the microphone.');
       recorderRef.current = null;
@@ -96,6 +113,8 @@ export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
     const rec = recorderRef.current;
     if (!rec) return;
     recorderRef.current = null;
+    captionRef.current?.stop();
+    captionRef.current = null;
     setRecState('transcribing');
     try {
       const out = await rec.stop();
@@ -222,7 +241,14 @@ export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
         </span>
       </div>
 
-      {selected ? (
+      {isBusy ? (
+        <LivePreview
+          finalText={liveFinal}
+          interim={liveInterim}
+          transcribing={recState === 'transcribing'}
+          supported={liveSupported}
+        />
+      ) : selected ? (
         <SessionDetail
           session={selected}
           tab={tab}
@@ -236,7 +262,7 @@ export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
           onSaveToLibrary={onSaveToLibrary}
           saved={saved}
           onDelete={() => void removeSession(selected.id)}
-          disabled={isBusy}
+          disabled={false}
         />
       ) : (
         <SessionList
@@ -244,6 +270,39 @@ export function LiveTranscriberApp({ onBack }: { onBack: () => void }) {
           onOpen={(id) => { setSelectedId(id); setTab('transcript'); setCopied(false); setSaved(false); }}
           onDelete={(id) => void removeSession(id)}
         />
+      )}
+    </div>
+  );
+}
+
+/** Live caption preview shown while recording — approximate, on-device. The
+ *  accurate transcript is produced by Gemini on stop. */
+function LivePreview({ finalText, interim, transcribing, supported }: {
+  finalText: string;
+  interim: string;
+  transcribing: boolean;
+  supported: boolean;
+}) {
+  const hasText = finalText.length > 0 || interim.length > 0;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [finalText, interim]);
+  return (
+    <div className="live-scroll" ref={scrollRef} data-testid="voice-live">
+      {transcribing && (
+        <div className="live-note">Transcribing the recording for the accurate transcript…</div>
+      )}
+      {!supported && !hasText ? (
+        <div className="live-note">
+          Live captions aren't available here — the full transcript appears when you stop.
+        </div>
+      ) : (
+        <div className="live-caption">
+          <span>{finalText}</span>
+          {interim && <span className="live-caption-interim">{finalText ? ' ' : ''}{interim}</span>}
+          {!hasText && !transcribing && <span className="live-caption-interim">Listening…</span>}
+        </div>
       )}
     </div>
   );
