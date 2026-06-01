@@ -26,7 +26,7 @@ export type {
 export { classifyIntent, resolveIntent } from './route';
 export type { ChatMode, Intent } from './route';
 
-export { buildContextBlock, buildMultiPageContextBlock, hasProfile, buildCollectionsBlock, EMPTY_PROFILES } from './context';
+export { buildContextBlock, buildMultiPageContextBlock, hasProfile, buildCollectionsBlock, autoContextCollectionIds, EMPTY_PROFILES } from './context';
 export type { CollectionSummary } from './context';
 export type { UserProfile, PageSummaryLite, ProfileKind, Profiles } from './context';
 

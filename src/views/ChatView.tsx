@@ -70,6 +70,7 @@ import {
   buildContextBlock,
   buildMultiPageContextBlock,
   buildCollectionsBlock,
+  autoContextCollectionIds,
   hasProfile,
   userItem,
   agentItem,
@@ -191,6 +192,9 @@ export function ChatView({
   // 'always' collections (e.g. Personal Profile) regardless of the global
   // toggle, and (b) tell the agent which collections exist.
   const [collections, setCollections] = useState<CollectionSummary[]>([]);
+  // 'active'-mode collections the user turned on for THIS session (not persisted
+  // — resets on reload, matching "active this session").
+  const [activeCols, setActiveCols] = useState<string[]>([]);
   useEffect(() => {
     void (async () => {
       try {
@@ -665,15 +669,15 @@ export function ChatView({
             if (textBlock) context = context ? `${textBlock}\n\n${context}` : textBlock;
           }
           // Library auto-context. We retrieve when EITHER the global toggle is
-          // on (search the whole library) OR the user has 'always' collections
-          // like Personal Profile (search just those, every message — so Buddy
-          // always knows the user). Failures are silent.
-          const alwaysCols = collections.filter((c) => c.autoContext === 'always').map((c) => c.id);
-          if (libraryAutoContext || alwaysCols.length > 0) {
+          // on (search the whole library) OR there are collections to auto-pull:
+          // every 'always' collection (e.g. Personal Profile) plus any 'active'
+          // collection the user toggled on for this session. Failures are silent.
+          const autoIds = autoContextCollectionIds(collections, new Set(activeCols));
+          if (libraryAutoContext || autoIds.length > 0) {
             try {
               const searchArgs: Record<string, unknown> = { query: prompt, k: 3, threshold: 0.6 };
-              // Toggle off → scope to the always-on collections; on → whole library.
-              if (!libraryAutoContext && alwaysCols.length) searchArgs.collectionIds = alwaysCols;
+              // Toggle off → scope to the auto-on collections; on → whole library.
+              if (!libraryAutoContext && autoIds.length) searchArgs.collectionIds = autoIds;
               const r = (await chrome.runtime.sendMessage({
                 type: 'TOOL_EXEC',
                 tool: 'search_library',
@@ -798,7 +802,7 @@ export function ChatView({
         setThinkHarder(false);
       }
     },
-    [busy, mode, attachPage, contextTabIds, attachProfile, profiles, activeProfile, activeModel, chatModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments, githubDefaultRepo, libraryAutoContext, thinkHarder, visionConfirmAll, decomposeTasks],
+    [busy, mode, attachPage, contextTabIds, attachProfile, profiles, activeProfile, activeModel, chatModel, recordCost, spentToday, perDayCap, perRunCap, stepBudget, askBeforePlan, onPlanReview, onAskUser, onHumanGate, preferNano, attachments, githubDefaultRepo, libraryAutoContext, collections, activeCols, thinkHarder, visionConfirmAll, decomposeTasks],
   );
 
   const decide = useCallback((runId: string, step: number, callId: string, approved: boolean) => {
@@ -1136,6 +1140,9 @@ export function ChatView({
         onAttachPage={() => setAttachPage(!attachPage)}
         contextTabIds={contextTabIds}
         onContextTabIds={setContextTabIds}
+        collections={collections}
+        activeCols={activeCols}
+        onActiveCols={setActiveCols}
         thinkHarder={thinkHarder}
         onThinkHarder={() => setThinkHarder((v) => !v)}
         intent={modelIntent}
@@ -1815,6 +1822,9 @@ function ChatComposer({
   onAttachPage,
   contextTabIds,
   onContextTabIds,
+  collections,
+  activeCols,
+  onActiveCols,
   thinkHarder,
   onThinkHarder,
   intent,
@@ -1836,6 +1846,9 @@ function ChatComposer({
   onAttachPage: () => void;
   contextTabIds: number[];
   onContextTabIds: (ids: number[]) => void;
+  collections: CollectionSummary[];
+  activeCols: string[];
+  onActiveCols: (ids: string[]) => void;
   thinkHarder: boolean;
   onThinkHarder: () => void;
   intent: ModelIntent;
@@ -2025,6 +2038,7 @@ function ChatComposer({
             Think harder
           </button>
           <TabContextPicker selected={contextTabIds} onChange={onContextTabIds} />
+          <LibraryContextPicker collections={collections} active={activeCols} onChange={onActiveCols} />
           <button
             type="button"
             className={'ctx-chip' + (attachPage ? ' is-on' : '')}
@@ -2103,6 +2117,67 @@ function TabContextPicker({ selected, onChange }: { selected: number[]; onChange
               </label>
             ))
           )}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** Composer chip + popover to turn 'active'-mode library collections on for this
+ *  session (so chat auto-pulls from them). 'always' collections are shown as
+ *  locked-on; 'manual' + 'general' are hidden (model-only / not auto). */
+function LibraryContextPicker({ collections, active, onChange }: {
+  collections: CollectionSummary[];
+  active: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const activeMode = collections.filter((c) => c.autoContext === 'active');
+  const alwaysMode = collections.filter((c) => c.autoContext === 'always');
+  // Nothing to toggle (no 'active' collections) → don't render the chip at all.
+  if (activeMode.length === 0) return null;
+  const onCount = active.filter((id) => activeMode.some((c) => c.id === id)).length;
+  const toggle = (id: string) =>
+    onChange(active.includes(id) ? active.filter((x) => x !== id) : [...active, id]);
+  return (
+    <span className="tabctx">
+      <button
+        type="button"
+        className={'ctx-chip' + (onCount ? ' is-on' : '')}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title="Use library collections as context for this session"
+        data-testid="libctx-toggle"
+      >
+        <span className="ctx-chip-ic">{Ic.library}</span>
+        {onCount ? `Library · ${onCount}` : 'Library'}
+      </button>
+      {open && (
+        <div className="tabctx-pop" role="menu" data-testid="libctx-pop">
+          <div className="tabctx-pop-h">
+            <span>Collections for this session</span>
+            {onCount > 0 && (
+              <button type="button" className="tabctx-clear" onClick={() => onChange([])}>Clear</button>
+            )}
+          </div>
+          {alwaysMode.map((c) => (
+            <label key={c.id} className="tabctx-item" title="Always in context">
+              <input type="checkbox" checked readOnly disabled />
+              <span className="tabctx-item-text">
+                <span className="tabctx-item-title">{c.name}</span>
+                <span className="tabctx-item-host">always on</span>
+              </span>
+            </label>
+          ))}
+          {activeMode.map((c) => (
+            <label key={c.id} className="tabctx-item" data-testid={`libctx-item-${c.id}`}>
+              <input type="checkbox" checked={active.includes(c.id)} onChange={() => toggle(c.id)} />
+              <span className="tabctx-item-text">
+                <span className="tabctx-item-title">{c.name}</span>
+                <span className="tabctx-item-host">{c.description || 'active when on'}</span>
+              </span>
+            </label>
+          ))}
         </div>
       )}
     </span>

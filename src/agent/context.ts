@@ -90,6 +90,20 @@ export function buildCollectionsBlock(collections: readonly CollectionSummary[])
 }
 
 /**
+ * The collection ids that should be auto-retrieved for a chat message: every
+ * 'always' collection, plus the 'active' collections the user has toggled on
+ * for this session. Pure. Returns [] when nothing is auto-on.
+ */
+export function autoContextCollectionIds(
+  collections: readonly CollectionSummary[],
+  activeOn: ReadonlySet<string>,
+): string[] {
+  return collections
+    .filter((c) => c?.id && (c.autoContext === 'always' || (c.autoContext === 'active' && activeOn.has(c.id))))
+    .map((c) => c.id);
+}
+
+/**
  * Build a context block from several explicitly-picked tabs (multi-tab chat).
  * Each tab is fenced under its own heading so the model can attribute facts to
  * the right source. Tabs with no usable content are skipped; '' when none.

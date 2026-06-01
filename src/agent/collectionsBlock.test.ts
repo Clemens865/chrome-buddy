@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCollectionsBlock, type CollectionSummary } from './context';
+import { buildCollectionsBlock, autoContextCollectionIds, type CollectionSummary } from './context';
 
 const cols: CollectionSummary[] = [
   { id: 'personal-profile', name: 'Personal Profile', description: 'Facts about the user', autoContext: 'always' },
@@ -21,5 +21,18 @@ describe('buildCollectionsBlock', () => {
   it('returns empty when there are no usable collections', () => {
     expect(buildCollectionsBlock([])).toBe('');
     expect(buildCollectionsBlock([{ id: '', name: '', description: '', autoContext: 'manual' }])).toBe('');
+  });
+});
+
+describe('autoContextCollectionIds', () => {
+  it('always includes always-on collections, never manual ones', () => {
+    expect(autoContextCollectionIds(cols, new Set())).toEqual(['personal-profile']);
+  });
+  it('adds active collections only when toggled on this session', () => {
+    expect(autoContextCollectionIds(cols, new Set(['acme'])).sort()).toEqual(['acme', 'personal-profile']);
+  });
+  it('ignores a toggled id that is not an active-mode collection', () => {
+    // 'general' is manual → toggling it on does nothing.
+    expect(autoContextCollectionIds(cols, new Set(['general']))).toEqual(['personal-profile']);
   });
 });
