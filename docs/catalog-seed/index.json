@@ -2,6 +2,17 @@
   "schemaVersion": 1,
   "entries": [
     {
+      "id": "brandsnap-ai",
+      "name": "BrandSnap AI",
+      "description": "Generate a styled brand/product image, auto-extract its color palette, overlay your logo, and export.",
+      "kind": "app",
+      "tier": 3,
+      "version": "1.0.0",
+      "author": "Chrome Buddy",
+      "permissions": ["image", "download"],
+      "dataPath": "apps/brandsnap-ai.json"
+    },
+    {
       "id": "email-polisher",
       "name": "Email Polisher",
       "description": "Rewrite a rough email draft in the tone you choose — clear, concise, ready to send.",
