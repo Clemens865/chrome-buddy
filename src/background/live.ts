@@ -234,11 +234,14 @@ async function onPortConnected(
         send({ type: 'ERROR', message: 'Live WebSocket error.' });
       };
       ws.onclose = (ev) => {
-        // Code 1007 = invalid payload. We surface server-side rejection
-        // reasons (model name issues, schema validation failures) to the
-        // panel so the user sees a real error instead of a silent close.
-        if (ev.code === 1007 && ev.reason) {
-          send({ type: 'ERROR', message: `Gemini Live rejected the request: ${ev.reason}` });
+        // Surface ANY abnormal close (not just 1007-with-reason) so a setup
+        // rejection is never silent — the code alone (1007 invalid payload,
+        // 1011 server error, 1008 policy/auth, 404-as-reason) tells us the
+        // cause. Normal closes (1000) + no-status (1005, e.g. our own STOP)
+        // stay quiet.
+        if (ev.code !== 1000 && ev.code !== 1005) {
+          const why = ev.reason ? `: ${ev.reason}` : ' (no reason given)';
+          send({ type: 'ERROR', message: `Gemini Live closed — code ${ev.code}${why}` });
         }
         closeWith('ws-close');
       };
