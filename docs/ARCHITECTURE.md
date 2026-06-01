@@ -325,7 +325,8 @@ SW-owned (key + IDB); the math is pure and unit-tested.
 - `chunk.ts` — markdown-aware chunker: split on headings → char-window long sections
   (target 500, overlap 50, hardMax 800), preferring paragraph/sentence breaks; stable
   `charStart/charEnd`.
-- `embed.ts` — Gemini embeddings (`gemini-embedding-001`) batched at concurrency 8;
+- `embed.ts` — Gemini embeddings (`gemini-embedding-001`, **768-dim**, asymmetric
+  `taskType`, L2-normalized) batched at concurrency 8; `EMBED_VERSION` gates re-embed;
   pure `cosineSim` / `cosineSimAll` (brute-force linear scan, **not** an ANN index).
 - `collections.ts` — `Collection {kind: profile|project|general, autoContext:
   always|active|manual}`; seeds **General** (manual) + **Personal Profile** (always);
@@ -535,11 +536,11 @@ keeps the channel open with `return true` and resolves via `sendResponse`.
   collections-awareness block injected into the agent planner/executor via the
   `extraContext` runtime hook). *Remaining:* a per-collection "active for this
   session" toggle in the chat UI; a real-PDF manual smoke.
-- **Embeddings** — `embed.ts` sends no `taskType` (asymmetric
-  `RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT` would improve accuracy) and no
-  `outputDimensionality` (the store comment says 768-dim but `gemini-embedding-001`
-  defaults higher — verify + consider 768 for 4× smaller/faster vectors). Changing
-  either needs a one-time re-embed migration.
+- **Embeddings** — *done:* `embed.ts` now sends asymmetric `taskType`
+  (`RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT`/`SEMANTIC_SIMILARITY`) + `outputDimensionality`
+  768 (L2-normalized; `EMBED_VERSION` gates staleness). The dim/taskType change
+  self-heals via a guarded background re-embed (`reembedStaleDocs`) fired on the
+  first search-with-key — no manual migration step.
 - **Search is brute-force** — `cosineSimAll` is a linear scan over loaded chunks; fine
   at thousands, an ANN index (HNSW) would be needed at tens of thousands. Collection
   scoping mitigates this today.
