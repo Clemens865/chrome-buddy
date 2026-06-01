@@ -4,7 +4,7 @@
 
 Chrome Buddy is a Manifest V3 side-panel extension that combines four coexisting layers over **one shared tool registry**:
 
-1. **Focused micro-apps** for fast, single-purpose jobs — Console Inspector, Image Generator, Audio + Live Transcribers, Webhook Flows, Scrape to Table, Data Visualizer, Tab Manager, SVG Icon Generator.
+1. **Focused micro-apps** for fast, single-purpose jobs — Console Inspector, Image Generator, Audio Transcriber, **Voice Transcriber** (record → transcript → summarize / clean up / meeting notes, with live captions while you speak), Webhook Flows, Scrape to Table, Data Visualizer, Tab Manager, SVG Icon Generator.
 2. **An agentic chat** with multi-step execution (plan → act → observe → reflect), a human-in-the-loop (HITL) confirmation gate before any consequential action, multi-tab context, and an opt-in **sub-agent** mode that splits a multi-phase task into a bounded, sequential sub-task queue.
 3. **A natural-language app builder** that generates *real* applications with their own UI — Tier-1 declarative apps, Tier-2 sandboxed-JS apps, and **Tier-3 sandbox-UI micro-apps** that render their own DOM inside an opaque-origin iframe behind a permission-gated capability bridge. Apps live as data (export / import / edit), never as committed code.
 4. **User-extensible skills + workflows** — add new capabilities as data, not code (incl. importing Claude `SKILL.md` files). Plus an MCP-server connector so the model can call into any Streamable-HTTP MCP service you trust.
@@ -143,7 +143,7 @@ src/
   tools/           Shared tool registry + definitions + HITL gate
   ui/              Theme tokens, icon set, primitives, BuddyMark SVG
   views/           Chat, Apps grid + app builder, Library, Settings, Onboarding, History, Skills, Workflows
-    apps/          Built-in apps: Console Inspector, Image Generator, Audio + Live Transcribers, Webhook Flows, Scrape to Table, Data Visualizer, Tab Manager, SVG Icon Generator
+    apps/          Built-in apps: Console Inspector, Image Generator, Audio + Voice Transcribers, Webhook Flows, Scrape to Table, Data Visualizer, Tab Manager, SVG Icon Generator
   voice/           STT, Gemini Live session, PCM codec
   webhookFlows/    Webhook flow store + payload composer
   webhooks/        Webhook address book (URL + headers, masked display)
