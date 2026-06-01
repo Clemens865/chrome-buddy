@@ -1176,6 +1176,14 @@ button.ctx-chip.is-on { color: var(--accent); background: var(--accent-soft); }
 .library-doc-meta { font-size: 10.5px; color: var(--panel-muted); font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; }
 .library-doc-del { font: inherit; font-size: 16px; background: transparent; border: 0; color: var(--panel-muted); cursor: pointer; padding: 0 6px; border-radius: 4px; }
 .library-doc-del:hover { color: #B91C1C; background: color-mix(in srgb, #EF4444 8%, transparent); }
+/* Clickable doc title → open the view/edit panel. */
+button.library-doc-open { text-align: left; background: transparent; border: 0; cursor: pointer; font: inherit; }
+button.library-doc-open:hover { color: var(--accent); text-decoration: underline; }
+/* Doc view/edit panel. */
+.library-editor { margin: 6px 14px 10px; padding: 10px; border-radius: 10px; background: var(--panel-elev); border: 1px solid var(--panel-border-soft); }
+.library-editor-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.library-editor-area { width: 100%; resize: vertical; font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.5; }
+.library-editor-actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .library-source { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 4px; }
 .library-source-chat   { background: rgba(99,102,241,.16); color: #4338CA; }
 .theme-graphite .library-source-chat   { color: #A5B4FC; }

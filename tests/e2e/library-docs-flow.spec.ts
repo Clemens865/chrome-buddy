@@ -130,3 +130,46 @@ test('Library: empty state when no docs are indexed', async ({ context, extensio
   // The Import folder button is the way out of the empty state.
   await expect(panel.getByTestId('library-import-folder')).toBeVisible();
 });
+
+test('Library: clicking a doc opens the view/edit panel with its content', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 980 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+
+  await panel.evaluate(async () => {
+    const open = indexedDB.open('chrome-buddy');
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      open.onsuccess = () => res(open.result);
+      open.onerror = () => rej(open.error);
+    });
+    await new Promise<void>((res, rej) => {
+      const tx = db.transaction('libraryDocs', 'readwrite');
+      const now = Date.now();
+      tx.objectStore('libraryDocs').put({
+        id: 'note:edit_me',
+        title: 'Editable note',
+        source: 'note',
+        sourceRef: 'edit_me',
+        content: 'The unmistakable body text of this note.',
+        chunkCount: 1,
+        contentHash: 'sha_e',
+        createdAt: now,
+        updatedAt: now,
+        status: 'indexed',
+      });
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  });
+  await panel.reload();
+
+  await panel.getByRole('button', { name: 'Library', exact: true }).click();
+  await panel.getByTestId('library-open-note:edit_me').click();
+
+  const editor = panel.getByTestId('library-editor');
+  await expect(editor).toBeVisible();
+  await expect(editor.getByLabel('Document content')).toHaveValue(/unmistakable body text/);
+  // Cancel closes the panel without changing anything.
+  await editor.getByRole('button', { name: 'Cancel' }).click();
+  await expect(panel.getByTestId('library-editor')).toHaveCount(0);
+});

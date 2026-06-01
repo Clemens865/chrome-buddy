@@ -34,6 +34,10 @@ export function LibraryView() {
   const [searching, setSearching] = useState(false);
   const [importStatus, setImportStatus] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
+  // View/edit a doc's full content (the dashboard's read+edit surface).
+  const [editing, setEditing] = useState<LibraryDoc | null>(null);
+  const [draft, setDraft] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const refresh = useCallback(async () => {
     setDocs(await listDocs());
@@ -71,9 +75,43 @@ export function LibraryView() {
   const onDelete = useCallback(async (id: string) => {
     await deleteDoc(id);
     await refresh();
+    setEditing((cur) => (cur?.id === id ? null : cur));
     // Clear search results that referenced the deleted doc.
     setHits((prev) => prev?.filter((h) => h.docId !== id));
   }, [refresh]);
+
+  const onOpenDoc = useCallback((d: LibraryDoc) => {
+    setEditing(d);
+    setDraft(d.content);
+    setError(undefined);
+  }, []);
+
+  // Re-index the doc with the edited content (same source/sourceRef → updates
+  // in place, no consolidation). Embedding happens SW-side.
+  const onSaveEdit = useCallback(async () => {
+    if (!editing || !draft.trim()) return;
+    setSavingEdit(true);
+    setError(undefined);
+    try {
+      const r = (await chrome.runtime.sendMessage({
+        type: 'LIBRARY_INDEX',
+        source: editing.source,
+        sourceRef: editing.sourceRef,
+        title: editing.title,
+        content: draft,
+      })) as { ok?: boolean; result?: { ok?: boolean; error?: { message?: string } } } | undefined;
+      if (r?.result && r.result.ok === false) {
+        setError(r.result.error?.message ?? 'Re-index failed (check the API key).');
+      } else {
+        await refresh();
+        setEditing(null);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingEdit(false);
+    }
+  }, [editing, draft, refresh]);
 
   const onImportFolder = useCallback(async () => {
     const w = window as unknown as { showDirectoryPicker?: () => Promise<FsdHandle> };
@@ -184,6 +222,30 @@ export function LibraryView() {
           )}
         </div>
       )}
+      {editing && (
+        <div className="library-editor" data-testid="library-editor">
+          <div className="library-editor-h">
+            <span className={'library-source library-source-' + editing.source}>{editing.source}</span>
+            <span className="library-doc-title">{editing.title}</span>
+            <button type="button" className="library-doc-del" aria-label="Close editor" onClick={() => setEditing(null)}>×</button>
+          </div>
+          <textarea
+            className="settings-input library-editor-area"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            aria-label="Document content"
+            rows={12}
+          />
+          <div className="library-editor-actions">
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => onDelete(editing.id)}>Delete</button>
+            <span style={{ flex: 1 }} />
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+            <button type="button" className="btn btn-sm btn-primary" disabled={savingEdit || !draft.trim()} onClick={() => void onSaveEdit()}>
+              {savingEdit ? 'Saving…' : 'Save + re-index'}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="library-docs" data-testid="library-docs">
         <div className="library-section-h">{docs?.length ?? 0} doc(s) indexed</div>
         {!docs || docs.length === 0 ? (
@@ -198,7 +260,15 @@ export function LibraryView() {
           docs.map((d) => (
             <div key={d.id} className="library-doc-row">
               <span className={'library-source library-source-' + d.source}>{d.source}</span>
-              <span className="library-doc-title" title={d.sourceRef}>{d.title}</span>
+              <button
+                type="button"
+                className="library-doc-title library-doc-open"
+                title={`View / edit — ${d.sourceRef ?? d.title}`}
+                onClick={() => onOpenDoc(d)}
+                data-testid={`library-open-${d.id}`}
+              >
+                {d.title}
+              </button>
               <span className="library-doc-meta">{d.chunkCount} chunk(s)</span>
               <button
                 type="button"
