@@ -14,7 +14,8 @@ import { walkFolder, type FsdHandle, type WalkedFile } from '../library/walk';
 import type { LibrarySource } from '../library';
 import { listDocs, deleteDoc } from '../library/store';
 import type { LibraryDoc } from '../library/store';
-import { parseFile, isSupportedTextFile } from '../library/parseFile';
+import { parseFile, isSupportedTextFile, baseName } from '../library/parseFile';
+import { extractPdfText, isPdfFile } from '../library/pdf';
 import type { LibraryCollectionRecord } from '../key/messages';
 
 interface SearchHit {
@@ -147,10 +148,20 @@ export function LibraryView() {
     let indexed = 0, skipped = 0, failed = 0;
     for (const file of files) {
       setImportStatus(`Adding ${file.name}…`);
-      if (!isSupportedTextFile(file.name)) { skipped += 1; continue; }
       try {
-        const raw = await file.text();
-        const { title, text } = parseFile(file.name, raw);
+        let title: string;
+        let text: string;
+        if (isPdfFile(file.name)) {
+          // PDFs are parsed panel-side (pdfjs worker) → plain text.
+          const ex = await extractPdfText(await file.arrayBuffer());
+          title = baseName(file.name);
+          text = ex.text;
+        } else if (isSupportedTextFile(file.name)) {
+          ({ title, text } = parseFile(file.name, await file.text()));
+        } else {
+          skipped += 1;
+          continue;
+        }
         if (!text.trim()) { skipped += 1; continue; }
         const r = (await chrome.runtime.sendMessage({
           type: 'LIBRARY_INDEX',
@@ -319,7 +330,7 @@ export function LibraryView() {
       <div className="library-ingest">
         <input className="settings-input library-note" placeholder={`Note for adds → ${targetColName} (e.g. "is a competitor")`} value={note}
           onChange={(e) => setNote(e.target.value)} aria-label="Note for the next add" data-testid="library-note" />
-        <button type="button" className="btn btn-sm" onClick={() => fileInputRef.current?.click()} data-testid="library-add-files" title="Add files (.md, .txt, .csv, .json, .html, code…)">
+        <button type="button" className="btn btn-sm" onClick={() => fileInputRef.current?.click()} data-testid="library-add-files" title="Add files (PDF, .md, .txt, .csv, .json, .html, code…)">
           + Files
         </button>
         <button type="button" className="btn btn-sm" onClick={() => void onAddPage()} data-testid="library-add-page" title="Distill the current tab and add it to this collection">
@@ -334,7 +345,7 @@ export function LibraryView() {
           </button>
         )}
         <input ref={fileInputRef} type="file" multiple hidden
-          accept=".md,.markdown,.mdx,.txt,.text,.rst,.csv,.tsv,.json,.yaml,.yml,.toml,.html,.htm,.xml,.js,.ts,.jsx,.tsx,.py,.go,.rs,.java,.rb,.c,.h,.cpp,.cs,.php,.sh,.sql,.css"
+          accept=".pdf,.md,.markdown,.mdx,.txt,.text,.rst,.csv,.tsv,.json,.yaml,.yml,.toml,.html,.htm,.xml,.js,.ts,.jsx,.tsx,.py,.go,.rs,.java,.rb,.c,.h,.cpp,.cs,.php,.sh,.sql,.css"
           onChange={(e) => { void onFilesPicked(e.target.files); e.target.value = ''; }} data-testid="library-file-input" />
       </div>
 
