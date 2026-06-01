@@ -529,12 +529,12 @@ keeps the channel open with `return true` and resolves via `sendResponse`.
 
 ## 17. Known gaps & roadmap
 
-- **RAG retrieval intelligence (in progress)**:
-  - *Slice 3* — **PDF ingest** (`pdfjs` bundled, parsed panel-side; may need a
-    `wasm-unsafe-eval` `extension_pages` CSP line).
-  - *Slice 4* — **collection-aware retrieval**: list collections in the agent system
-    prompt so the model knows what to search + a collection-scoped `search_library`;
-    per-collection auto-context (profile always-on, projects when active).
+- **RAG retrieval intelligence** — *done:* Slice 3 **PDF ingest** (`pdfjs` bundled,
+  panel-side) and Slice 4 **collection-aware retrieval** (collection-scoped
+  `search_library`; always-on auto-context for profile collections; the
+  collections-awareness block injected into the agent planner/executor via the
+  `extraContext` runtime hook). *Remaining:* a per-collection "active for this
+  session" toggle in the chat UI; a real-PDF manual smoke.
 - **Embeddings** — `embed.ts` sends no `taskType` (asymmetric
   `RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT` would improve accuracy) and no
   `outputDimensionality` (the store comment says 768-dim but `gemini-embedding-001`
