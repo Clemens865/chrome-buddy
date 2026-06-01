@@ -64,9 +64,17 @@ describe('embedText', () => {
     globalThis.fetch = origFetch;
   });
 
-  it('returns the vector on a successful response', async () => {
-    const v = await embedText('hello', 'fake-key');
-    expect(v).toEqual([0.1, 0.2, 0.3]);
+  it('L2-normalizes the vector and sends taskType + outputDimensionality', async () => {
+    const v = await embedText('hello', 'fake-key', 'RETRIEVAL_QUERY');
+    // Unit length (normalized) but same direction as [0.1, 0.2, 0.3].
+    const mag = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
+    expect(mag).toBeCloseTo(1, 5);
+    expect(v[1] / v[0]).toBeCloseTo(2, 5);
+    const body = JSON.parse(
+      (globalThis.fetch as unknown as { mock: { calls: [unknown, { body: string }][] } }).mock.calls[0][1].body,
+    );
+    expect(body.taskType).toBe('RETRIEVAL_QUERY');
+    expect(body.outputDimensionality).toBe(768);
   });
 
   it('rejects when text is empty', async () => {

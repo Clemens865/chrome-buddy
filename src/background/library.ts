@@ -18,6 +18,8 @@ import {
   ensureDefaultCollections,
   makeCollectionId,
   validateCollectionName,
+  reembedStaleDocs,
+  hasStaleEmbeddings,
   DEFAULT_COLLECTION_ID,
   type SearchHit,
   type LibrarySource,
@@ -27,6 +29,7 @@ import {
   type AutoContextMode,
 } from '../library';
 import { capturePageContext } from './pageTools';
+import { EMBED_VERSION } from '../library/embed';
 import {
   consolidateAndIndex,
   type ConsolidateDeps,
@@ -59,6 +62,9 @@ export async function executeSearchLibrary(
 ): Promise<ToolResult> {
   const query = typeof args.query === 'string' ? args.query.trim() : '';
   if (!query) return err('invalid-args', 'search_library requires a `query` string.');
+  // Self-heal: kick a background re-embed if any docs are on an older embedding
+  // scheme. Fire-and-forget + guarded — never blocks the search.
+  void maybeMigrateEmbeddings(getKey);
   const k = typeof args.k === 'number' && args.k > 0 ? Math.min(20, Math.floor(args.k)) : 5;
   const threshold = typeof args.threshold === 'number' ? args.threshold : 0;
   // Optional collection scoping — accept an explicit collectionIds array (used
@@ -87,6 +93,40 @@ export async function executeSearchLibrary(
     });
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
+// --- Embedding scheme migration (auto-heal) --------------------------------
+let embedMigrationInFlight = false;
+const EMBED_MIGRATED_KEY = 'embedMigratedVersion';
+
+/**
+ * Once per EMBED_VERSION, re-embed any docs left on an older embedding scheme so
+ * a dimensionality/taskType upgrade self-heals. Guarded (in-memory + a
+ * storage.local flag) so it runs at most once and only when a key is available;
+ * fire-and-forget — never blocks the caller. Retries on the next search if there
+ * was no key yet.
+ */
+async function maybeMigrateEmbeddings(getKey: GetKey): Promise<void> {
+  if (embedMigrationInFlight) return;
+  const local = chrome.storage?.local;
+  if (!local) return;
+  try {
+    const flag = (await local.get(EMBED_MIGRATED_KEY)) as Record<string, number>;
+    if (flag[EMBED_MIGRATED_KEY] === EMBED_VERSION) return;
+    if (!(await hasStaleEmbeddings())) {
+      await local.set({ [EMBED_MIGRATED_KEY]: EMBED_VERSION });
+      return;
+    }
+    const keyFn = geminiKey(getKey);
+    if (!(await keyFn())) return; // no key yet — try again next search
+    embedMigrationInFlight = true;
+    await reembedStaleDocs(keyFn);
+    await local.set({ [EMBED_MIGRATED_KEY]: EMBED_VERSION });
+  } catch {
+    /* best-effort — will retry on the next search */
+  } finally {
+    embedMigrationInFlight = false;
   }
 }
 

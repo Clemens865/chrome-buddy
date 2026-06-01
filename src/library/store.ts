@@ -31,6 +31,9 @@ export interface LibraryDoc {
   updatedAt: number;
   chunkCount: number;
   status: 'indexed' | 'indexing' | 'failed';
+  /** Embedding scheme version the chunks were built with (see embed.ts
+   *  EMBED_VERSION). A mismatch marks the doc stale for re-embedding. */
+  embedVersion?: number;
 }
 
 export interface LibraryChunk {
@@ -44,6 +47,8 @@ export interface LibraryChunk {
   text: string;
   /** Gemini embedding vector. Stored as number[] for IDB portability. */
   embedding: number[];
+  /** Embedding scheme version (see embed.ts EMBED_VERSION). */
+  embedVersion?: number;
   charStart: number;
   charEnd: number;
 }

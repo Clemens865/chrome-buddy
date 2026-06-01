@@ -10,10 +10,11 @@
 // the chunker / embedder / store stay pure / single-purpose for testability.
 
 import { chunkMarkdown, type ChunkOptions } from './chunk';
-import { embedBatch, embedText, cosineSim, cosineSimAll } from './embed';
+import { embedBatch, embedText, cosineSim, cosineSimAll, EMBED_VERSION } from './embed';
 import {
   saveDoc,
   getDoc,
+  listDocs,
   replaceChunks,
   getAllChunks,
   evictOldestDocs,
@@ -91,7 +92,14 @@ export async function indexDoc(
   const id = makeDocId(input.source, input.sourceRef);
   const contentHash = hashContent(input.content);
   const existing = await getDoc(id);
-  if (existing && existing.contentHash === contentHash && existing.status === 'indexed') {
+  // Skip only when content is unchanged AND the embeddings are the current
+  // scheme — a stale embedVersion forces a re-embed even on identical content.
+  if (
+    existing &&
+    existing.contentHash === contentHash &&
+    existing.status === 'indexed' &&
+    existing.embedVersion === EMBED_VERSION
+  ) {
     return { docId: id, reindexed: false, chunkCount: existing.chunkCount };
   }
 
@@ -115,6 +123,7 @@ export async function indexDoc(
     updatedAt: now,
     chunkCount: 0,
     status: 'indexing',
+    embedVersion: EMBED_VERSION,
   };
   await saveDoc(placeholder);
 
@@ -138,6 +147,7 @@ export async function indexDoc(
       chunkIdx: p.chunkIdx,
       text: p.text,
       embedding: vectors[i],
+      embedVersion: EMBED_VERSION,
       charStart: p.charStart,
       charEnd: p.charEnd,
     }));
@@ -167,7 +177,9 @@ export async function searchLibrary(
   if (!query?.trim()) return [];
   const apiKey = await getKey();
   if (!apiKey) throw new Error('searchLibrary: no API key available');
-  const queryVec = await embedText(query, apiKey);
+  // RETRIEVAL_QUERY: the query is embedded asymmetrically to the documents
+  // (RETRIEVAL_DOCUMENT) — Gemini's recommended pairing for search quality.
+  const queryVec = await embedText(query, apiKey, 'RETRIEVAL_QUERY');
   const chunks = await getAllChunks(opts.collectionIds);
   if (chunks.length === 0) return [];
   const ranked = cosineSimAll(queryVec, chunks, {
@@ -224,7 +236,8 @@ export async function findSimilarDocs(
   if (!content?.trim()) return [];
   const apiKey = await getKey();
   if (!apiKey) return [];
-  const vec = await embedText(content.slice(0, 8000), apiKey);
+  // Doc-vs-doc comparison → SEMANTIC_SIMILARITY (symmetric).
+  const vec = await embedText(content.slice(0, 8000), apiKey, 'SEMANTIC_SIMILARITY');
   // Consolidation only makes sense within the same collection — a competitor
   // doc shouldn't merge into a profile doc just because they're similar.
   const chunks = await getAllChunks(opts.collectionIds);
@@ -243,6 +256,57 @@ export async function findSimilarDocs(
     if (d) out.push({ doc: d, score });
   }
   return out;
+}
+
+export interface ReembedProgress {
+  total: number;
+  done: number;
+  reembedded: number;
+  failed: number;
+}
+
+/**
+ * Re-embed every doc whose chunks were built with an older embedding scheme
+ * (stale `embedVersion`). Re-indexes from each doc's STORED content — no source
+ * re-fetch — so it heals a dim/taskType migration. Idempotent: docs already on
+ * EMBED_VERSION aren't touched; per-doc errors are counted, not thrown.
+ */
+export async function reembedStaleDocs(
+  getKey: () => Promise<string | undefined>,
+  onProgress?: (p: ReembedProgress) => void,
+): Promise<ReembedProgress> {
+  const docs = await listDocs();
+  const stale = docs.filter((d) => d.embedVersion !== EMBED_VERSION);
+  const progress: ReembedProgress = { total: stale.length, done: 0, reembedded: 0, failed: 0 };
+  for (const d of stale) {
+    try {
+      if (d.content?.trim()) {
+        await indexDoc(
+          {
+            source: d.source,
+            sourceRef: d.sourceRef,
+            title: d.title,
+            content: d.content,
+            collectionId: d.collectionId,
+            note: d.note,
+          },
+          getKey,
+        );
+        progress.reembedded += 1;
+      }
+    } catch {
+      progress.failed += 1;
+    }
+    progress.done += 1;
+    onProgress?.({ ...progress });
+  }
+  return progress;
+}
+
+/** True when the library has any docs on an older embedding scheme. */
+export async function hasStaleEmbeddings(): Promise<boolean> {
+  const docs = await listDocs();
+  return docs.some((d) => d.embedVersion !== EMBED_VERSION);
 }
 
 // Re-export the public types so the SW handler + UI don't need to import

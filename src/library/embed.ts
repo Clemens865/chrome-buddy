@@ -16,19 +16,50 @@ import { BUDDY_UA } from '../llm/ua';
 const EMBED_MODEL = 'gemini-embedding-001';
 const EMBED_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:embedContent`;
 
+/** Output vector size. 768 (vs the 3072 default) is 4× smaller storage + faster
+ *  cosine at negligible quality loss (Matryoshka truncation). */
+export const EMBED_DIM = 768;
+
 /**
- * Embed a single text using Gemini text-embedding-004. Returns a 768-dim
- * vector. Caller supplies the API key (read from chrome.storage.session in
- * the SW). Throws on auth / network / parse errors so the caller can decide
- * whether to retry or fall through.
+ * Embedding scheme version. Bump whenever the model, dimensionality, or taskType
+ * usage changes so vectors from an older scheme count as stale and re-embed —
+ * dim/space mismatches otherwise silently break cosine search.
  */
-export async function embedText(text: string, apiKey: string): Promise<number[]> {
+export const EMBED_VERSION = 2;
+
+/** Gemini retrieval task types — the query/document asymmetry materially
+ *  improves retrieval quality vs untyped embeddings. */
+export type EmbedTaskType = 'RETRIEVAL_QUERY' | 'RETRIEVAL_DOCUMENT' | 'SEMANTIC_SIMILARITY';
+
+/** L2-normalize a vector. gemini-embedding-001 does NOT auto-normalize truncated
+ *  dimensions, so we do (canonical vectors; cosine is scale-invariant anyway,
+ *  but this future-proofs any dot-product use). */
+export function l2normalize(v: readonly number[]): number[] {
+  let sum = 0;
+  for (const x of v) sum += x * x;
+  const norm = Math.sqrt(sum);
+  return norm > 0 ? v.map((x) => x / norm) : [...v];
+}
+
+/**
+ * Embed a single text with gemini-embedding-001. `taskType` tunes the embedding
+ * for its role (RETRIEVAL_DOCUMENT for indexed chunks, RETRIEVAL_QUERY for search
+ * queries, SEMANTIC_SIMILARITY for doc-vs-doc). Returns an L2-normalized
+ * EMBED_DIM vector. Caller supplies the API key. Throws on auth/network/parse.
+ */
+export async function embedText(
+  text: string,
+  apiKey: string,
+  taskType: EmbedTaskType = 'RETRIEVAL_DOCUMENT',
+): Promise<number[]> {
   if (!text?.trim()) throw new Error('embedText: empty text');
   if (!apiKey) throw new Error('embedText: missing API key');
   const url = `${EMBED_ENDPOINT}?key=${encodeURIComponent(apiKey)}`;
   const body = JSON.stringify({
     model: `models/${EMBED_MODEL}`,
     content: { parts: [{ text }] },
+    taskType,
+    outputDimensionality: EMBED_DIM,
   });
   const res = await retryFetch(url, {
     method: 'POST',
@@ -42,7 +73,7 @@ export async function embedText(text: string, apiKey: string): Promise<number[]>
   const json = (await res.json()) as { embedding?: { values?: number[] } };
   const v = json.embedding?.values;
   if (!Array.isArray(v) || v.length === 0) throw new Error('embedText: no embedding in response');
-  return v;
+  return l2normalize(v);
 }
 
 /**
@@ -54,6 +85,7 @@ export async function embedBatch(
   texts: readonly string[],
   apiKey: string,
   concurrency = 8,
+  taskType: EmbedTaskType = 'RETRIEVAL_DOCUMENT',
 ): Promise<number[][]> {
   const out = new Array<number[]>(texts.length);
   let next = 0;
@@ -61,7 +93,7 @@ export async function embedBatch(
     for (;;) {
       const i = next++;
       if (i >= texts.length) return;
-      out[i] = await embedText(texts[i], apiKey);
+      out[i] = await embedText(texts[i], apiKey, taskType);
     }
   }
   const workers: Promise<void>[] = [];
