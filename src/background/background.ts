@@ -48,6 +48,7 @@ import {
   executeAnalyzeSeo,
 } from './inspector';
 import { executeSearchLibrary, executeIndexDoc, executeLibraryBackfill } from './library';
+import { ensureDefaultCollections } from '../library';
 import { executeSearchCatalog } from './catalog';
 import { registerVoiceStreamPort, type LiveFunctionDeclaration } from './live';
 import { stubToolDefs } from '../tools/defs';
@@ -639,6 +640,14 @@ if (chrome.tabs?.onUpdated) {
 // Keep alarms in sync with stored workflows on SW start/install.
 chrome.runtime.onStartup?.addListener(() => void reconcileWorkflowAlarms());
 chrome.runtime.onInstalled.addListener(() => void reconcileWorkflowAlarms());
+
+// Seed the default Library collections (General + Personal Profile) on every SW
+// boot. Idempotent — only creates the ones that are missing. Guard indexedDB
+// (absent in the unit-test node context) and swallow errors so a storage
+// hiccup never blocks SW startup.
+if (typeof indexedDB !== 'undefined') {
+  void ensureDefaultCollections(Date.now()).catch(() => {});
+}
 
 // H4 — Streaming chat replies. The panel opens a Port named 'chat-stream',
 // posts {type:'START', request} once, and receives a sequence of

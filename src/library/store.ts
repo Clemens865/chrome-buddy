@@ -9,7 +9,7 @@
 
 import { getDB } from '../db';
 
-export type LibrarySource = 'chat' | 'note' | 'folder' | 'manual';
+export type LibrarySource = 'chat' | 'note' | 'folder' | 'manual' | 'file' | 'page';
 
 export interface LibraryDoc {
   /** Stable id — hash(source + sourceRef) keeps the row idempotent on re-save. */
@@ -17,6 +17,12 @@ export interface LibraryDoc {
   title: string;
   source: LibrarySource;
   sourceRef?: string;
+  /** Which collection this doc belongs to (e.g. 'general', 'personal-profile').
+   *  Defaults to 'general' for legacy docs (backfilled in db v14). */
+  collectionId: string;
+  /** Optional user-supplied framing ("is a competitor", "about our product")
+   *  surfaced with retrieved snippets so the model has context the text lacks. */
+  note?: string;
   /** Full text — kept so we can re-chunk later if the chunker changes. */
   content: string;
   /** Content fingerprint — used to skip re-indexing when unchanged. */
@@ -31,9 +37,12 @@ export interface LibraryChunk {
   /** `${docId}#${chunkIdx}` — stable across re-indexes for the same doc. */
   id: string;
   docId: string;
+  /** Denormalized from the parent doc so search can scope to a collection
+   *  without a doc join. */
+  collectionId: string;
   chunkIdx: number;
   text: string;
-  /** Gemini text-embedding-004 → 768-dim vector. Stored as number[]. */
+  /** Gemini embedding vector. Stored as number[] for IDB portability. */
   embedding: number[];
   charStart: number;
   charEnd: number;
@@ -99,8 +108,22 @@ export async function getChunks(docId: string): Promise<LibraryChunk[]> {
  * against the full corpus. The chunk count is bounded by user content size;
  * for typical libraries (1-2K docs × ~10 chunks each) this is ~10-20K rows,
  * well within IDB's getAll() comfort zone. */
-export async function getAllChunks(): Promise<LibraryChunk[]> {
+export async function getAllChunks(collectionIds?: readonly string[]): Promise<LibraryChunk[]> {
   const db = await getDB();
+  // Scoped search: union the chunks of just the requested collections via the
+  // collectionId index — avoids loading the whole corpus into memory when the
+  // user only wants one collection. No ids → the full corpus (legacy behavior).
+  if (collectionIds && collectionIds.length > 0) {
+    const seen = new Set<string>();
+    const out: LibraryChunk[] = [];
+    for (const cid of collectionIds) {
+      const rows = (await db.getAllFromIndex(CHUNKS, 'collectionId', cid)) as LibraryChunk[];
+      for (const r of rows) {
+        if (!seen.has(r.id)) { seen.add(r.id); out.push(r); }
+      }
+    }
+    return out;
+  }
   return (await db.getAll(CHUNKS)) as LibraryChunk[];
 }
 

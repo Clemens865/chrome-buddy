@@ -24,6 +24,7 @@ import {
   type LibraryChunk,
   type LibrarySource,
 } from './store';
+import { DEFAULT_COLLECTION_ID } from './collections';
 
 export interface IndexInput {
   /** Stable identifier within the source (chat.id, note.key, file path). */
@@ -31,6 +32,12 @@ export interface IndexInput {
   source: LibrarySource;
   title: string;
   content: string;
+  /** Target collection. Defaults to 'general' when omitted. */
+  collectionId?: string;
+  /** Optional user-supplied framing surfaced with every retrieved snippet
+   *  ("is a competitor", "about our new product") so the model has context the
+   *  raw text doesn't carry. */
+  note?: string;
 }
 
 export interface IndexResult {
@@ -45,6 +52,10 @@ export interface SearchHit {
   docTitle: string;
   docSource: LibrarySource;
   docSourceRef?: string;
+  /** The doc's collection, so callers can show/group provenance. */
+  docCollectionId: string;
+  /** User-supplied framing for this doc, if any (surfaced with the snippet). */
+  docNote?: string;
   chunkIdx: number;
   /** Cosine similarity, in [-1, 1]. */
   score: number;
@@ -58,6 +69,8 @@ export interface SearchOptions {
   k?: number;
   /** Minimum cosine score to include. Default 0 (no negatives). */
   threshold?: number;
+  /** Restrict the search to these collections. Omit to search everything. */
+  collectionIds?: readonly string[];
 }
 
 /**
@@ -85,6 +98,8 @@ export async function indexDoc(
   const apiKey = await getKey();
   if (!apiKey) throw new Error('indexDoc: no API key available — set one in Settings');
 
+  // Preserve an existing doc's collection on re-save unless the caller moves it.
+  const collectionId = input.collectionId ?? existing?.collectionId ?? DEFAULT_COLLECTION_ID;
   // Mark as indexing so the UI can show a spinner if we crash mid-embed.
   const now = Date.now();
   const placeholder: LibraryDoc = {
@@ -92,6 +107,8 @@ export async function indexDoc(
     title: input.title,
     source: input.source,
     sourceRef: input.sourceRef,
+    collectionId,
+    note: input.note ?? existing?.note,
     content: input.content,
     contentHash,
     createdAt: existing?.createdAt ?? now,
@@ -117,6 +134,7 @@ export async function indexDoc(
     const chunks: LibraryChunk[] = pieces.map((p, i) => ({
       id: `${id}#${p.chunkIdx}`,
       docId: id,
+      collectionId,
       chunkIdx: p.chunkIdx,
       text: p.text,
       embedding: vectors[i],
@@ -150,7 +168,7 @@ export async function searchLibrary(
   const apiKey = await getKey();
   if (!apiKey) throw new Error('searchLibrary: no API key available');
   const queryVec = await embedText(query, apiKey);
-  const chunks = await getAllChunks();
+  const chunks = await getAllChunks(opts.collectionIds);
   if (chunks.length === 0) return [];
   const ranked = cosineSimAll(queryVec, chunks, {
     k: opts.k ?? 5,
@@ -175,6 +193,8 @@ export async function searchLibrary(
       docTitle: d?.title ?? '(deleted)',
       docSource: d?.source ?? 'manual',
       docSourceRef: d?.sourceRef,
+      docCollectionId: d?.collectionId ?? c.collectionId,
+      docNote: d?.note,
       chunkIdx: c.chunkIdx,
       score,
       text: c.text,
@@ -199,13 +219,15 @@ export interface SimilarDocHit {
 export async function findSimilarDocs(
   content: string,
   getKey: () => Promise<string | undefined>,
-  opts: { k?: number; excludeId?: string } = {},
+  opts: { k?: number; excludeId?: string; collectionIds?: readonly string[] } = {},
 ): Promise<SimilarDocHit[]> {
   if (!content?.trim()) return [];
   const apiKey = await getKey();
   if (!apiKey) return [];
   const vec = await embedText(content.slice(0, 8000), apiKey);
-  const chunks = await getAllChunks();
+  // Consolidation only makes sense within the same collection — a competitor
+  // doc shouldn't merge into a profile doc just because they're similar.
+  const chunks = await getAllChunks(opts.collectionIds);
   if (chunks.length === 0) return [];
   const best = new Map<string, number>();
   for (const c of chunks) {
@@ -227,3 +249,19 @@ export async function findSimilarDocs(
 // from store.ts directly.
 export type { LibraryDoc, LibraryChunk, LibrarySource } from './store';
 export { listDocs, deleteDoc, clearLibrary, getDoc, makeDocId } from './store';
+export {
+  DEFAULT_COLLECTION_ID,
+  PROFILE_COLLECTION_ID,
+  listCollections,
+  getCollection,
+  saveCollection,
+  deleteCollection,
+  ensureDefaultCollections,
+  isProtectedCollection,
+  slugify,
+  makeCollectionId,
+  validateCollectionName,
+  type Collection,
+  type CollectionKind,
+  type AutoContextMode,
+} from './collections';
