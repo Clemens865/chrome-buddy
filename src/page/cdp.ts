@@ -182,6 +182,18 @@ export async function cdpViewport(tabId: number): Promise<{ width: number; heigh
   return { width: v?.w ?? 1280, height: v?.h ?? 800 };
 }
 
+/**
+ * Screenshot the tab via CDP (Page.captureScreenshot). Unlike
+ * chrome.tabs.captureVisibleTab — which Chrome gates behind `<all_urls>` or an
+ * active `activeTab` grant — this uses only the `debugger` permission we already
+ * hold for Vision Mode's actions. Returns base64 PNG (no `data:` prefix).
+ */
+export async function cdpCaptureScreenshot(tabId: number): Promise<string> {
+  await ensureAttached(tabId);
+  const r = await send<{ data?: string }>(tabId, 'Page.captureScreenshot', { format: 'png' });
+  return r?.data ?? '';
+}
+
 /** Detach the CDP session (drops the banner). Safe to call when not attached. */
 export async function cdpDetach(): Promise<void> {
   const c = api();

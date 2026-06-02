@@ -19,6 +19,7 @@ import {
   cdpDragAndDrop,
   cdpScrollDocument,
   cdpViewport,
+  cdpCaptureScreenshot,
 } from '../page/cdp';
 import { parseKeys } from './visionKeys';
 import type { UsageStats } from '../llm/types';
@@ -260,9 +261,20 @@ export async function executeVisionAction(
  */
 async function captureTab(tabId: number): Promise<{ data: string; url: string; title: string }> {
   const tab = await chrome.tabs.get(tabId);
+  // Prefer CDP (Page.captureScreenshot): it needs only the `debugger` permission
+  // — which Vision Mode attaches for its actions anyway — whereas
+  // chrome.tabs.captureVisibleTab requires <all_urls> / an active activeTab
+  // grant and otherwise fails with "Either the '<all_urls>' or 'activeTab'
+  // permission is required". CDP also captures the right tab without having to
+  // activate it. Fall back to the tabs API if CDP can't attach.
+  try {
+    const data = await cdpCaptureScreenshot(tabId);
+    if (data) return { data, url: tab.url ?? '', title: tab.title ?? '' };
+  } catch {
+    /* fall through to captureVisibleTab */
+  }
   if (!tab.active) {
     await chrome.tabs.update(tabId, { active: true });
-    // Give Chrome a frame to switch the visible tab before we capture.
     await new Promise((r) => setTimeout(r, 120));
   }
   const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
