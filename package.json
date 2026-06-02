@@ -1,6 +1,6 @@
 {
   "name": "chrome-buddy",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Universal agentic + LLM Chrome extension — model-transparent, BYO-key, privacy-respecting.",
   "license": "MIT",
   "type": "module",
