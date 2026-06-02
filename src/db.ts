@@ -11,7 +11,12 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 export function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, VERSION, {
-      async upgrade(d, oldVersion, _newVersion, tx) {
+      // MUST stay synchronous. An IndexedDB versionchange transaction
+      // auto-commits across `await` boundaries on real Chrome, so doing async
+      // cursor work here throws TransactionInactiveError on upgrade-with-data
+      // installs (which then poisons the cached dbPromise → all IDB dies). Do
+      // schema changes ONLY here; defer any row backfill to backfillAfterOpen().
+      upgrade(d, oldVersion, _newVersion, tx) {
         if (!d.objectStoreNames.contains('runs')) {
           d.createObjectStore('runs', { keyPath: 'id' }).createIndex('startedAt', 'startedAt');
         }
@@ -85,8 +90,9 @@ export function getDB(): Promise<IDBPDatabase> {
           d.createObjectStore('transcriptSessions', { keyPath: 'id' }).createIndex('createdAt', 'createdAt');
         }
         // v14: Library collections — named RAG buckets. Add a 'collections'
-        // store, index libraryDocs/libraryChunks by collectionId for scoped
-        // search, and backfill legacy rows into the 'general' collection.
+        // store + index libraryDocs/libraryChunks by collectionId for scoped
+        // search. The DATA backfill (stamping legacy rows with 'general') runs
+        // post-open in backfillAfterOpen() — NOT here (see the sync note above).
         if (oldVersion < 14) {
           if (!d.objectStoreNames.contains('collections')) {
             d.createObjectStore('collections', { keyPath: 'id' }).createIndex('kind', 'kind');
@@ -97,19 +103,44 @@ export function getDB(): Promise<IDBPDatabase> {
             if (!store.indexNames.contains('collectionId')) {
               store.createIndex('collectionId', 'collectionId');
             }
-            // Backfill existing rows so they join the index + default collection.
-            let cursor = await store.openCursor();
-            while (cursor) {
-              const v = cursor.value as { collectionId?: string };
-              if (v && v.collectionId === undefined) {
-                await cursor.update({ ...v, collectionId: 'general' });
-              }
-              cursor = await cursor.continue();
-            }
           }
         }
       },
-    });
+    })
+      .then(async (db) => {
+        await backfillAfterOpen(db);
+        return db;
+      })
+      .catch((e) => {
+        // Never cache a rejected open — a transient failure would otherwise
+        // poison every subsequent IDB call for the SW's lifetime.
+        dbPromise = null;
+        throw e;
+      });
   }
   return dbPromise;
+}
+
+/**
+ * One-time data migrations that can't run inside the versionchange transaction
+ * (which auto-commits across awaits on Chrome). Stamps any libraryDocs /
+ * libraryChunks rows missing a collectionId with 'general'. Uses a single
+ * bulk-put transaction (all puts issued synchronously, then await tx.done) —
+ * the safe idb pattern that keeps the transaction alive. Idempotent + cheap
+ * (no-op when nothing is stale).
+ */
+async function backfillAfterOpen(db: IDBPDatabase): Promise<void> {
+  for (const name of ['libraryDocs', 'libraryChunks']) {
+    if (!db.objectStoreNames.contains(name)) continue;
+    try {
+      const all = (await db.getAll(name)) as Array<{ collectionId?: string }>;
+      const stale = all.filter((r) => r && r.collectionId === undefined);
+      if (stale.length === 0) continue;
+      const tx = db.transaction(name, 'readwrite');
+      for (const r of stale) tx.store.put({ ...r, collectionId: 'general' });
+      await tx.done;
+    } catch {
+      // Best-effort — a backfill hiccup must never block opening the DB.
+    }
+  }
 }
