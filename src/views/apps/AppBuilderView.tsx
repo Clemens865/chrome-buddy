@@ -12,6 +12,7 @@ import type { ChatMessage } from '../../llm/types';
 import { generateViaBackground } from '../../llm/instance';
 import { persistApp } from '../../apps/request';
 import { useResolvedModelId, modelLabel } from '../../llm/modelPref';
+import { ModelPicker } from '../ModelPicker';
 import {
   parseBuilderReply,
   toAppConfig,
@@ -166,7 +167,7 @@ export function AppBuilderView({ onBack, onSaved, initial }: { onBack: () => voi
               <button type="button" className="btn btn-primary btn-sm" disabled={busy || !desc.trim()} onClick={() => void build()}>
                 {busy ? 'Building…' : 'Build'}
               </button>
-              <span className="builder-model-note">Building with {modelLabel(model)} · change in Settings → Model</span>
+              <ModelPicker title="Model used to build this app" />
             </div>
             {busy && phase && <div className="builder-phase" data-testid="builder-phase">{phase}</div>}
             {clarify && (

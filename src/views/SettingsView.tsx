@@ -3,8 +3,8 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Pill } from '../ui/primitives';
 import { THEMES, type ThemeName } from '../ui/theme';
-import { selectableModels, useActiveModel, useModelIntent, useResolvedModelId, modelLabel } from '../llm/modelPref';
-import { OPUS_MODEL_ID } from '../llm/resolveModel';
+import { selectableModels, useResolvedModelId, modelLabel } from '../llm/modelPref';
+import { ModelPicker } from './ModelPicker';
 import { DEFAULT_REGISTRY } from '../llm/registry.default';
 import { generateViaBackground } from '../llm/instance';
 import { loadUserRegistry, mergeRegistry, saveUserModel } from '../llm/userRegistry';
@@ -32,12 +32,10 @@ const THEME_NAMES: ThemeName[] = ['slate', 'cream', 'graphite'];
 
 export function SettingsView({ themeName, accent, onThemeChange, onAccentChange }: SettingsProps) {
   const theme = THEMES[themeName] ?? THEMES.slate;
-  const [activeModel, setActiveModel] = useActiveModel();
-  const [modelIntent, setModelIntent] = useModelIntent();
   const resolvedModel = useResolvedModelId();
   const { keyStatus: anthropicKey } = useApiKey('anthropic');
   // Effective model list = bundled floor + user overlay (FR-MR-8).
-  const [models, setModels] = useState<ModelConfig[]>(selectableModels());
+  const [, setModels] = useState<ModelConfig[]>(selectableModels());
   const reloadModels = () => {
     void loadUserRegistry().then((u) => {
       const merged = mergeRegistry(DEFAULT_REGISTRY, u);
@@ -167,54 +165,14 @@ export function SettingsView({ themeName, accent, onThemeChange, onAccentChange 
 
       <div className="settings-section">
         <div className="settings-section-h">Model</div>
-        <SettingsRow t="Quality vs. cost" s="Applies to chat, agent runs, skills + workflows">
-          <div className="seg" role="group" aria-label="Model intent">
-            {(['cheapest', 'balanced', 'best'] as const).map((it) => (
-              <button
-                key={it}
-                type="button"
-                className={'seg-btn' + (modelIntent === it ? ' is-on' : '')}
-                aria-pressed={modelIntent === it}
-                onClick={() => setModelIntent(it)}
-              >
-                {it === 'cheapest' ? 'Cheapest' : it === 'balanced' ? 'Balanced' : 'Best'}
-              </button>
-            ))}
-          </div>
+        <SettingsRow t="Model" s="Applies to chat, agent runs, skills, workflows + the app builder">
+          <ModelPicker title="Default model — pick a specific one, or Auto for a smart default" />
         </SettingsRow>
         <div className="settings-row-sub" style={{ fontSize: 11.5, color: 'var(--panel-muted)', margin: '-2px 0 6px' }}>
-          {modelIntent === 'custom' ? (
-            <>Using a specific model: <strong>{modelLabel(activeModel)}</strong>.</>
-          ) : (
-            <>Resolves to <strong>{modelLabel(resolvedModel)}</strong>.</>
-          )}
-          {modelIntent === 'best' && anthropicKey !== 'set' && (
-            <> Add an Anthropic key above to use Opus 4.8 for “Best”; otherwise it uses the top Gemini.</>
-          )}
-          {modelIntent === 'best' && anthropicKey === 'set' && resolvedModel === OPUS_MODEL_ID && (
-            <> Opus is premium. Agent runs + the app builder use Opus; basic chat uses Claude Sonnet to stay fast.</>
-          )}
+          Currently <strong>{modelLabel(resolvedModel)}</strong>. Pick a specific model (incl. Claude
+          Haiku / Sonnet / Opus) or “Auto (Balanced)”.
+          {anthropicKey !== 'set' && <> Add an Anthropic key above to enable Claude.</>}
         </div>
-        <SettingsRow t="Pick an exact model" s="Advanced — overrides the choice above">
-          <select
-            className="settings-input"
-            style={{ maxWidth: 150 }}
-            aria-label="Exact model"
-            value={modelIntent === 'custom' ? activeModel : ''}
-            onChange={(e) => {
-              if (!e.target.value) { setModelIntent('cheapest'); return; }
-              setActiveModel(e.target.value);
-              setModelIntent('custom');
-            }}
-          >
-            <option value="">Auto (use the choice above)</option>
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.displayName}
-              </option>
-            ))}
-          </select>
-        </SettingsRow>
         <SettingsRow t="Test the active model" s="A tiny live call: latency + status">
           <ModelTestButton model={resolvedModel} />
         </SettingsRow>

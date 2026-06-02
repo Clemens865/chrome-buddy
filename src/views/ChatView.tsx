@@ -51,7 +51,8 @@ import {
   addSpend,
   isOverDailyCap,
 } from '../cost/budget';
-import { useResolvedModelId, useResolvedChatModelId, useModelIntent, type ModelIntent } from '../llm/modelPref';
+import { useResolvedModelId, useResolvedChatModelId } from '../llm/modelPref';
+import { ModelPicker } from './ModelPicker';
 import {
   isSTTSupported,
   isTTSSupported,
@@ -179,7 +180,6 @@ export function ChatView({
   const [attachError, setAttachError] = useState<string | null>(null);
   const activeModel = useResolvedModelId(); // heavy/task tier (agent, builder)
   const chatModel = useResolvedChatModelId(); // basic chat tier (Best→Sonnet, never Opus)
-  const [modelIntent, setModelIntent] = useModelIntent(); // overridable from the composer
   const [sessionCost, setSessionCost] = useState(0);
   const [perRunCap] = usePersistedState<number>(BUDGET_KEYS.perRun, BUDGET_DEFAULTS.perRun);
   const [perDayCap] = usePersistedState<number>(BUDGET_KEYS.perDay, BUDGET_DEFAULTS.perDay);
@@ -1145,8 +1145,6 @@ export function ChatView({
         onActiveCols={setActiveCols}
         thinkHarder={thinkHarder}
         onThinkHarder={() => setThinkHarder((v) => !v)}
-        intent={modelIntent}
-        onIntent={setModelIntent}
         sessionCost={sessionCost}
         attachments={attachments}
         attachError={attachError}
@@ -1827,8 +1825,6 @@ function ChatComposer({
   onActiveCols,
   thinkHarder,
   onThinkHarder,
-  intent,
-  onIntent,
   sessionCost,
   attachments,
   attachError,
@@ -1851,8 +1847,6 @@ function ChatComposer({
   onActiveCols: (ids: string[]) => void;
   thinkHarder: boolean;
   onThinkHarder: () => void;
-  intent: ModelIntent;
-  onIntent: (i: ModelIntent) => void;
   sessionCost: number;
   attachments: ChatAttachment[];
   attachError: string | null;
@@ -2007,6 +2001,7 @@ function ChatComposer({
             </button>
           ))}
         </div>
+        <ModeHelp />
         <div className="composer-foot-r">
           {sessionCost > 0 && (
             <span className="cost-chip" title="Estimated spend this session (BYO key)">
@@ -2015,14 +2010,7 @@ function ChatComposer({
                 : `≈ $${sessionCost < 0.01 ? sessionCost.toFixed(4) : sessionCost.toFixed(2)}`}
             </span>
           )}
-          <label className={'ctx-chip ctx-chip-select' + (intent !== 'cheapest' ? ' is-on' : '')} title="Model for this chat — overrides the Settings default">
-            <span className="ctx-chip-ic">{Ic.chart}</span>
-            <select aria-label="Model quality vs cost" value={intent === 'custom' ? 'balanced' : intent} onChange={(e) => onIntent(e.target.value as ModelIntent)}>
-              <option value="cheapest">Cheapest</option>
-              <option value="balanced">Balanced</option>
-              <option value="best">Best</option>
-            </select>
-          </label>
+          <ModelPicker />
           <button
             type="button"
             className={'ctx-chip' + (thinkHarder ? ' is-on' : '')}
@@ -2117,6 +2105,39 @@ function TabContextPicker({ selected, onChange }: { selected: number[]; onChange
               </label>
             ))
           )}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** A '?' chip whose popover explains what runs in each mode + that the model
+ *  choice is independent — addresses "it's not clear when what function works". */
+function ModeHelp() {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="tabctx">
+      <button
+        type="button"
+        className={'ctx-chip mode-help-chip' + (open ? ' is-on' : '')}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        title="What each mode does"
+        data-testid="mode-help"
+      >
+        ?
+      </button>
+      {open && (
+        <div className="tabctx-pop modehelp-pop" role="menu" data-testid="mode-help-pop">
+          <div className="tabctx-pop-h"><span>What runs in each mode</span></div>
+          <div className="modehelp">
+            <p><b>Ask</b> — plain chat, no tools. Your Library's <i>always-on</i> collections (e.g. Personal Profile) + any you toggle in the <b>Library</b> chip are auto-added every message.</p>
+            <p><b>Agent</b> — plans &amp; uses tools (web, page control, GitHub, and your Library via <code>search_library</code>); confirms risky steps.</p>
+            <p><b>Auto</b> — picks Ask or Agent based on your message.</p>
+            <p><b>Vision</b> — Buddy sees and drives the active tab (Computer Use). Slower &amp; costlier.</p>
+            <p><b>Voice</b> — real-time bidirectional voice chat.</p>
+            <p className="modehelp-sep"><b>Model</b> (the chip on the right) is <i>independent</i> of mode — pick a specific model, or <b>Auto</b> for a smart default. Claude needs an Anthropic key.</p>
+          </div>
         </div>
       )}
     </span>

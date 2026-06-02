@@ -21,7 +21,7 @@ test('all composer-foot controls stay in-viewport at a narrow width', async ({ c
     panel.getByRole('button', { name: 'Agent', exact: true }),
     panel.getByRole('button', { name: 'Vision', exact: true }),
     panel.getByRole('button', { name: 'Voice', exact: true }),
-    panel.getByLabel('Model quality vs cost'),
+    panel.getByTestId('model-picker'),
     panel.getByRole('button', { name: /Think harder/ }),
     panel.locator('button.ctx-chip', { hasText: 'This page' }),
     panel.getByTestId('tabctx-toggle'),
