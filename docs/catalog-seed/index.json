@@ -13,6 +13,17 @@
       "dataPath": "apps/brandsnap-ai.json"
     },
     {
+      "id": "portrait-maker",
+      "name": "Portrait Maker",
+      "description": "Upload a photo and restyle it as a portrait — oil painting, watercolor, anime, cyberpunk and more — keeping the person's likeness, then download.",
+      "kind": "app",
+      "tier": 3,
+      "version": "1.0.0",
+      "author": "Chrome Buddy",
+      "permissions": ["image", "download"],
+      "dataPath": "apps/portrait-maker.json"
+    },
+    {
       "id": "email-polisher",
       "name": "Email Polisher",
       "description": "Rewrite a rough email draft in the tone you choose — clear, concise, ready to send.",
