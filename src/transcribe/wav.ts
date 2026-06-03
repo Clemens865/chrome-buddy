@@ -51,3 +51,33 @@ export function concatFloat32(chunks: Float32Array[]): Float32Array {
   }
   return out;
 }
+
+/**
+ * Wrap raw 16-bit PCM bytes (already little-endian) in a WAV container by
+ * prepending the 44-byte header. Used to make Gemini TTS output — base64 PCM,
+ * 24 kHz mono — playable as `audio/wav`. Pure.
+ */
+export function pcm16ToWav(pcm: Uint8Array, sampleRate: number, channels = 1): Uint8Array {
+  const bytesPerSample = 2;
+  const dataLen = pcm.length;
+  const out = new Uint8Array(44 + dataLen);
+  const view = new DataView(out.buffer);
+  const writeStr = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+  };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataLen, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channels * bytesPerSample, true);
+  view.setUint16(32, channels * bytesPerSample, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataLen, true);
+  out.set(pcm, 44);
+  return out;
+}

@@ -112,6 +112,20 @@ export interface AudioTranscribeMessage {
   prompt?: string;
 }
 
+/**
+ * Generate speech (text-to-speech) via the native Gemini TTS model. The model
+ * emits 24 kHz mono 16-bit PCM; the SW wraps it as WAV and returns a data URL.
+ * Runs SW-side (key custody). Backs the `tts` sandbox-app capability.
+ */
+export interface TtsGenerateMessage {
+  type: 'TTS_GENERATE';
+  text: string;
+  /** Prebuilt voice name (e.g. 'Kore', 'Puck'); omit for the default. */
+  voice?: string;
+  /** TTS model id; omit for the default. */
+  model?: string;
+}
+
 /** Capture a compact summary of a page (for attaching to chat). Defaults to the
  *  active tab; pass tabId to capture a specific open tab (multi-tab context). */
 export interface PageContextMessage {
@@ -264,6 +278,7 @@ export type BuddyMessage =
   | VisionCaptureMessage
   | ImageGenerateMessage
   | AudioTranscribeMessage
+  | TtsGenerateMessage
   | PageContextMessage
   | MemorySaveRunMessage
   | MemoryListRunsMessage
@@ -334,6 +349,13 @@ export interface AudioTranscribeResponse {
   ok: true;
   /** The transcript text. */
   text: string;
+}
+
+export interface TtsGenerateResponse {
+  type: 'TTS_GENERATE';
+  ok: true;
+  /** Synthesized speech as a data URL (data:audio/wav;base64,...). */
+  audioDataUrl: string;
 }
 
 export interface PageContextResponse {
@@ -532,6 +554,7 @@ export type BuddyResponse =
   | ToolExecResponse
   | ImageGenerateResponse
   | AudioTranscribeResponse
+  | TtsGenerateResponse
   | PageContextResponse
   | VisionTurnResponse
   | VisionActionResponse
@@ -569,6 +592,7 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'TOOL_EXEC' ||
     t === 'IMAGE_GENERATE' ||
     t === 'AUDIO_TRANSCRIBE' ||
+    t === 'TTS_GENERATE' ||
     t === 'PAGE_CONTEXT' ||
     t === 'MEMORY_SAVE_RUN' ||
     t === 'MEMORY_LIST_RUNS' ||

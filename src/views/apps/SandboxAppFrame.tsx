@@ -29,6 +29,7 @@ export function grantedCaps(app: AppConfig): string[] {
 const CAP_LABELS: Record<string, string> = {
   gemini: 'AI text',
   image: 'AI images',
+  tts: 'AI text-to-speech',
   download: 'file downloads',
   storage: 'saved data',
   page: 'reads this page',
@@ -91,6 +92,20 @@ export function SandboxAppFrame({
           })) as { type?: string; ok?: boolean; dataUrl?: string; error?: string } | undefined;
           if (r?.type === 'IMAGE_GENERATE' && r.ok && r.dataUrl) return { ok: true, result: r.dataUrl };
           return { ok: false, error: r?.error ?? 'Image generation failed.' };
+        }
+        if (op === 'tts') {
+          // Text-to-speech via the native Gemini TTS model. Returns a
+          // data:audio/wav URL the app can play with an <audio> element.
+          const a = (args ?? {}) as { text?: string; voice?: string };
+          const text = String(a.text ?? '').trim();
+          if (!text) return { ok: false, error: 'tts requires text.' };
+          const r = (await chrome.runtime.sendMessage({
+            type: 'TTS_GENERATE',
+            text,
+            ...(a.voice ? { voice: String(a.voice) } : {}),
+          })) as { type?: string; ok?: boolean; audioDataUrl?: string; error?: string } | undefined;
+          if (r?.type === 'TTS_GENERATE' && r.ok && r.audioDataUrl) return { ok: true, result: r.audioDataUrl };
+          return { ok: false, error: r?.error ?? 'Speech generation failed.' };
         }
         if (op === 'download') {
           const a = (args ?? {}) as { filename?: string; content?: string; mime?: string };

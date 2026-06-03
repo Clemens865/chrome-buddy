@@ -28,6 +28,7 @@ THE RUNTIME CONTRACT (follow EXACTLY — most bugs come from breaking these):
     • bridge.gemini(promptString) -> Promise<string>   // an LLM text completion (declare "gemini")
     • bridge.image({prompt, inputImage?}) -> Promise<dataUrl>  // generate an image; pass inputImage (a data URL, e.g. an uploaded photo) to RESTYLE/EDIT it instead (declare "image")
         For an upload→transform app (e.g. restyle a portrait): add <input type="file" accept="image/*">, read it with FileReader as a data URL, then call bridge.image({prompt: "...style...", inputImage: thatDataUrl}). The returned data URL is the result — show it in an <img> and offer api.download.
+    • bridge.tts({text, voice?}) -> Promise<dataUrl>     // Gemini text-to-speech → a data:audio/wav URL; play it with <audio> (new Audio(dataUrl).play()) and/or offer api.download (declare "tts"). 30 prebuilt voices: Zephyr, Puck, Charon, Kore, Fenrir, Leda, Orus, Aoede, Callirrhoe, Autonoe, Enceladus, Iapetus, Umbriel, Algieba, Despina, Erinome, Algenib, Rasalgethi, Laomedeia, Achernar, Alnilam, Schedar, Gacrux, Pulcherrima, Achird, Zubenelgenubi, Vindemiatrix, Sadachbia, Sadaltager, Sulafat. (Prefer bridge.tts over speechSynthesis when you want high-quality neural voices.)
     • api.download(filename, content, mime?)            // trigger a file download (declare "download")
     • bridge.storage({action,key,value}) -> Promise     // persist app state across sessions (declare "storage")
         actions: 'get'|'set'|'remove'|'keys'|'clear'; get returns the value (or null)

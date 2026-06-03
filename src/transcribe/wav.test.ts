@@ -45,3 +45,22 @@ describe('concatFloat32', () => {
     expect(concatFloat32([]).length).toBe(0);
   });
 });
+
+import { pcm16ToWav } from './wav';
+describe('pcm16ToWav', () => {
+  it('prepends a valid 44-byte WAV header to raw PCM at the given rate', () => {
+    const pcm = new Uint8Array([1, 2, 3, 4, 5, 6]); // 6 PCM bytes
+    const wav = pcm16ToWav(pcm, 24000);
+    const v = new DataView(wav.buffer);
+    const s = (o: number, n: number) => { let r=''; for (let i=0;i<n;i++) r+=String.fromCharCode(v.getUint8(o+i)); return r; };
+    expect(s(0, 4)).toBe('RIFF');
+    expect(s(8, 4)).toBe('WAVE');
+    expect(s(36, 4)).toBe('data');
+    expect(v.getUint32(24, true)).toBe(24000);   // sample rate
+    expect(v.getUint16(34, true)).toBe(16);       // bits/sample
+    expect(v.getUint32(40, true)).toBe(6);        // data length
+    expect(wav.length).toBe(44 + 6);
+    // The original PCM bytes are preserved after the header.
+    expect(Array.from(wav.subarray(44))).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+});

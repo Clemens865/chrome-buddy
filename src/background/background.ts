@@ -28,6 +28,7 @@ import { safetySettingsForNative } from '../llm/safety';
 import { BUDDY_UA } from '../llm/ua';
 import { retryFetch } from '../llm/retry';
 import { executePageTool, capturePageContext, resolveActiveTabId } from './pageTools';
+import { pcm16ToWav } from '../transcribe/wav';
 import { executeWebhook, executeListWebhooks } from './webhook';
 import { executeMcpTest, executeMcpToolCall, type McpTestRequestMessage } from './mcp';
 import { executeWebSearch } from './search';
@@ -174,6 +175,80 @@ async function generateImageNative(
     }
   }
   return { type: 'ERROR', ok: false, error: 'The model did not return an image.' };
+}
+
+// --- Text-to-speech (native Gemini TTS) ------------------------------------
+const TTS_MODEL = 'gemini-3.1-flash-tts-preview';
+const TTS_DEFAULT_VOICE = 'Kore';
+// TTS has a 32k-token window + quality drifts past a few minutes (docs); cap to
+// a safe single-call length. The app guides users to split longer text.
+const TTS_MAX_CHARS = 16000;
+
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function bytesToB64(bytes: Uint8Array): string {
+  let bin = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+  }
+  return btoa(bin);
+}
+
+/**
+ * Synthesize speech via the native Gemini TTS model. Sends the text with a
+ * prebuilt voice, gets back base64 PCM (24 kHz mono s16le), wraps it as WAV, and
+ * returns a data:audio/wav URL. Retries on a 500 or a missing audio part — the
+ * model occasionally returns text tokens instead of audio (docs Limitations).
+ */
+async function generateTtsNative(
+  providerId: string,
+  model: string,
+  text: string,
+  voice: string | undefined,
+): Promise<BuddyResponse> {
+  const key = await getStoredKey(providerId);
+  if (!key) return { type: 'ERROR', ok: false, error: `No API key set for provider '${providerId}'.` };
+  const provider = DEFAULT_REGISTRY.providers[providerId];
+  const base =
+    (provider?.baseUrl ?? '').replace(/\/openai\/?$/, '') || 'https://generativelanguage.googleapis.com/v1beta';
+  const url = `${base}/models/${model}:generateContent`;
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: text.slice(0, TTS_MAX_CHARS) }] }],
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice || TTS_DEFAULT_VOICE } } },
+    },
+  });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let resp: Response;
+    try {
+      resp = await retryFetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': key, 'x-goog-api-client': BUDDY_UA },
+        body,
+      });
+    } catch (err) {
+      return { type: 'ERROR', ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    if (resp.status === 500) continue; // flaky text-tokens-instead-of-audio → retry
+    if (!resp.ok) {
+      const b = await resp.text().catch(() => '');
+      return { type: 'ERROR', ok: false, error: `TTS API ${resp.status}: ${b.slice(0, 300)}` };
+    }
+    const data = (await resp.json()) as {
+      candidates?: { content?: { parts?: { inlineData?: { data?: string } }[] } }[];
+    };
+    const b64pcm = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData?.data;
+    if (!b64pcm) continue; // got text instead of audio → retry
+    const wav = pcm16ToWav(b64ToBytes(b64pcm), 24_000);
+    return { type: 'TTS_GENERATE', ok: true, audioDataUrl: `data:audio/wav;base64,${bytesToB64(wav)}` };
+  }
+  return { type: 'ERROR', ok: false, error: 'TTS returned no audio after retries — please try again.' };
 }
 
 /**
@@ -600,6 +675,13 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
           message.mimeType,
           message.prompt ?? TRANSCRIBE_PROMPT,
         );
+      }
+
+      case 'TTS_GENERATE': {
+        const model = message.model ?? TTS_MODEL;
+        const providerId = resolveProviderId(model) ?? resolveProviderId(TRANSCRIBE_MODEL);
+        if (!providerId) return { type: 'ERROR', ok: false, error: 'Unknown or disabled model.' };
+        return generateTtsNative(providerId, model, message.text, message.voice);
       }
 
       default: {
