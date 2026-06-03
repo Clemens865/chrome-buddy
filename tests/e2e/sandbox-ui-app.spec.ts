@@ -6,9 +6,12 @@
 // Run with: npm run test:e2e:sandboxui
 import { test, expect } from './fixtures';
 import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 
 const SHOTS = path.join(process.cwd(), 'screenshots');
 const FAKE_SVG = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/></svg>';
+// 1x1 transparent PNG.
+const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 test('SVG generator renders its own UI in the sandbox and runs via the bridge', async ({ context, extensionId }) => {
   const panel = await context.newPage();
@@ -80,4 +83,36 @@ test('a capability the app did not declare is denied by the bridge broker', asyn
     });
   });
   expect(denied).toMatch(/DENIED/);
+});
+
+test('image data-URL download decodes to real PNG bytes (not the data-URL text)', async ({ context, extensionId }) => {
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 440, height: 980 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await panel.getByRole('button', { name: 'Apps', exact: true }).click();
+  await panel.getByText('SVG Icon Generator', { exact: true }).first().click();
+  const frame = panel.frameLocator('iframe.sandbox-app-frame');
+  await expect(frame.locator('#desc')).toBeVisible({ timeout: 5_000 });
+
+  // The SVG app declares the `download` capability, so a download op is allowed.
+  // Drive it with an IMAGE data URL (what bridge.image returns) and capture the
+  // file the host writes.
+  const dataUrl = `data:image/png;base64,${PNG_B64}`;
+  const [dl] = await Promise.all([
+    panel.waitForEvent('download'),
+    frame.locator('body').evaluate((_el, du) => {
+      window.parent.postMessage(
+        { type: 'SANDBOX_BRIDGE', id: 'dlimg', runId: 'ui_builtin_svggen', op: 'download', args: { filename: 'portrait.png', content: du } },
+        '*',
+      );
+    }, dataUrl),
+  ]);
+
+  expect(dl.suggestedFilename()).toBe('portrait.png');
+  const bytes = await readFile(await dl.path());
+  // The saved file is the DECODED PNG — magic header + the decoded size — NOT
+  // the literal (much longer) data-URL string the old bug wrote.
+  expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+  expect(bytes.length).toBe(Buffer.from(PNG_B64, 'base64').length);
+  expect(bytes.length).toBeLessThan(dataUrl.length);
 });

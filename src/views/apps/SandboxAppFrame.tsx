@@ -11,6 +11,7 @@ import { type AppConfig, KNOWN_APP_CAPS } from '../../apps/types';
 import { generateViaBackground } from '../../llm/instance';
 import { useResolvedModelId } from '../../llm/modelPref';
 import { appDataKey, applyStorageOp, type StorageArgs } from '../../apps/appStorage';
+import { buildDownloadBlob, safeDownloadName } from '../../apps/download';
 import { appBaseCss, readThemeTokens } from '../../apps/appTheme';
 
 type BridgeOutcome = { ok: boolean; result?: unknown; error?: string };
@@ -93,11 +94,13 @@ export function SandboxAppFrame({
         }
         if (op === 'download') {
           const a = (args ?? {}) as { filename?: string; content?: string; mime?: string };
-          const blob = new Blob([a.content ?? ''], { type: a.mime || 'text/plain' });
+          // Decode data: URLs (e.g. bridge.image output) to real bytes — writing
+          // the data-URL string as text yields an unopenable file.
+          const blob = buildDownloadBlob(a.content ?? '', a.mime);
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = (a.filename || 'download.txt').replace(/[^a-z0-9._-]+/gi, '_');
+          link.download = safeDownloadName(a.filename);
           link.click();
           URL.revokeObjectURL(url);
           return { ok: true, result: true };
