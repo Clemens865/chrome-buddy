@@ -18,7 +18,7 @@ THE RUNTIME CONTRACT (follow EXACTLY — most bugs come from breaking these):
     ✅ Wire EVERY interaction here: root.querySelector('#id').addEventListener('click', () => { ... }).
     ⛔ Do NOT wait for DOMContentLoaded or window.onload — those already fired; your listeners would never run. Wire immediately.
     • Your variables/functions are LOCAL to this function (not global). async handlers are fine.
-    • Available: the DOM (document, root), Blob, JSON, Math, fetch is NOT available — use bridge.* for anything external.
+    • Available: the FULL set of standard browser Web APIs in the iframe window — the DOM (document, root), Blob, FileReader, JSON, Math, Date, Canvas/2D context, Web Audio (AudioContext), and **speechSynthesis + SpeechSynthesisUtterance for real text-to-speech** (use speechSynthesis.getVoices() — they load async, so also listen for the 'voiceschanged' event; speak on a user gesture like a click). These need NO capability/permission. Only NETWORK (fetch/XHR/WebSocket), chrome.* APIs, and the user's keys are unavailable — use bridge.* for those (LLM text, images, downloads, storage, page).
     Example "ui": "const out = root.querySelector('#out'); root.querySelector('#go').addEventListener('click', async () => { out.textContent = await bridge.gemini(root.querySelector('#q').value); });"
 - "css": styles for the app. The app INHERITS Chrome Buddy's theme — prefer these so it looks native:
     • CSS vars: --cb-bg, --cb-fg, --cb-muted, --cb-border, --cb-elev, --cb-accent (the body already uses bg/fg/font).
@@ -32,7 +32,7 @@ THE RUNTIME CONTRACT (follow EXACTLY — most bugs come from breaking these):
     • bridge.storage({action,key,value}) -> Promise     // persist app state across sessions (declare "storage")
         actions: 'get'|'set'|'remove'|'keys'|'clear'; get returns the value (or null)
     • bridge.page() -> Promise<{url,title,text}>        // READ the current browser tab's text (declare "page")
-  There is NO network, NO chrome.* API, NO access to the user's keys. Anything else is unavailable.
+  There is NO network, NO chrome.* API, NO access to the user's keys — but standard browser Web APIs (speechSynthesis/TTS, Canvas, Web Audio, FileReader…) ARE available and need no permission.
 - Declare only what you use (prefer the fewest). Default to [] if the app is pure-client.
 - Keep the whole app focused and small. Prefer plain DOM over frameworks (no imports).
 
