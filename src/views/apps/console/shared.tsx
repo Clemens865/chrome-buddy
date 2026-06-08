@@ -12,7 +12,7 @@
 // Each panel imports only what it needs from here, keeping individual panel
 // files focused on rendering their analyser's structured output.
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import type { ToolResult } from '../../../types';
 import type { TechMatch } from '../../../console/techStack';
 import {
@@ -95,6 +95,75 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       return false;
     }
   }
+}
+
+// --- Universal levers: artifact export · verify loop · artifact card -------
+// Shared so every best-in-class panel (AEO, Security, Health, …) gets the same
+// downloadable-asset + score-delta + artifact-chrome behavior without copy-paste.
+
+/** Trigger a client-side text download — the "real artifact" lever. */
+export function downloadText(filename: string, text: string, mime = 'text/plain;charset=utf-8'): void {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Verify loop: record `score` for (namespace,url) and return the delta vs the
+ *  previous scan, or undefined on the first scan. sessionStorage-backed so it
+ *  survives panel remounts within the session but resets on a new session. */
+export function recordScoreDelta(namespace: string, url: string, score: number): number | undefined {
+  const key = `ci:score:${namespace}:${url}`;
+  try {
+    const prev = sessionStorage.getItem(key);
+    sessionStorage.setItem(key, String(score));
+    return prev !== null ? score - Number(prev) : undefined;
+  } catch {
+    return undefined; // sessionStorage may be unavailable
+  }
+}
+
+/** Render a score delta as a compact, signed label ("▲ +8" / "▼ -3" / "no change"). */
+export function formatDelta(delta: number): string {
+  if (delta === 0) return 'no change';
+  return delta > 0 ? `▲ +${delta}` : `▼ ${delta}`;
+}
+
+/** Reusable artifact-card chrome: header (title + optional actions + Hide) over
+ *  a body. Used by the AEO simulation, the CSP generator, the error analysis. */
+export function ArtifactCard({
+  title,
+  testid,
+  actions,
+  onDismiss,
+  dismissTestid,
+  children,
+}: {
+  title: ReactNode;
+  testid: string;
+  actions?: ReactNode;
+  onDismiss?: () => void;
+  /** Override the Hide button's testid (defaults to `${testid}-hide`). */
+  dismissTestid?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="ci-aia" data-testid={testid}>
+      <div className="ci-aia-hd">
+        <span className="ci-aia-title">{title}</span>
+        {actions}
+        {onDismiss && (
+          <button type="button" className="ci-card-copy" onClick={onDismiss} data-testid={dismissTestid ?? `${testid}-hide`}>
+            Hide
+          </button>
+        )}
+      </div>
+      <div className="ci-aia-body">{children}</div>
+    </div>
+  );
 }
 
 // --- CopyHandoffButtons ----------------------------------------------------

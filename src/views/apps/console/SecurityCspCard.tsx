@@ -4,17 +4,7 @@
 // origins the page actually loaded from, so it's a working starting point.
 
 import { useState } from 'react';
-import { copyToClipboard } from './shared';
-
-function downloadText(filename: string, text: string): void {
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+import { copyToClipboard, downloadText, ArtifactCard } from './shared';
 
 function snippetFile(host: string, policy: string): string {
   return [
@@ -51,13 +41,8 @@ export function SecurityCspCard({
   };
 
   return (
-    <div className="ci-aia" data-testid="ci-sec-csp">
-      <div className="ci-aia-hd">
-        <span className="ci-aia-title">🛡️ Generated Content-Security-Policy</span>
-        <button type="button" className="ci-card-copy" onClick={onDismiss} data-testid="ci-sec-csp-hide">Hide</button>
-      </div>
-      <div className="ci-aia-body">
-        <p className="ci-aia-hint">
+    <ArtifactCard testid="ci-sec-csp" title="🛡️ Generated Content-Security-Policy" onDismiss={onDismiss}>
+      <p className="ci-aia-hint">
           Built from the origins this page actually loaded. A starting point — review every directive (especially
           {' '}<code>script-src</code>) before deploying.
         </p>
@@ -73,7 +58,6 @@ export function SecurityCspCard({
             Download
           </button>
         </div>
-      </div>
-    </div>
+    </ArtifactCard>
   );
 }

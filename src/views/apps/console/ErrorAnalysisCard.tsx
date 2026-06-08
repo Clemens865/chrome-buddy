@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import type { ErrorAnalysis } from '../../../console/errorAnalysis';
-import { copyToClipboard } from './shared';
+import { copyToClipboard, ArtifactCard } from './shared';
 
 export function ErrorAnalysisCard({
   analysis,
@@ -24,15 +24,7 @@ export function ErrorAnalysisCard({
   };
 
   return (
-    <div className="ci-aia" data-testid="ci-errors-ai-analysis">
-      <div className="ci-aia-hd">
-        <span className="ci-aia-title">✨ AI Error Analysis</span>
-        <button type="button" className="ci-card-copy" onClick={onDismiss} data-testid="ci-errors-ai-hide">
-          Hide
-        </button>
-      </div>
-
-      <div className="ci-aia-body">
+    <ArtifactCard testid="ci-errors-ai-analysis" dismissTestid="ci-errors-ai-hide" title="✨ AI Error Analysis" onDismiss={onDismiss}>
         {analysis.summary && (
           <section>
             <h4 className="ci-aia-h">Summary</h4>
@@ -116,7 +108,6 @@ export function ErrorAnalysisCard({
             )}
           </div>
         )}
-      </div>
-    </div>
+    </ArtifactCard>
   );
 }

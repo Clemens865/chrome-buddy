@@ -12,7 +12,16 @@ import { buildLlmsTxt } from '../../../console/aeo';
 import { runSimulation, type AeoSimulation } from '../../../console/aeoSimulation';
 import type { Finding } from '../../../console/fixPrompt';
 import { useResolvedModelId } from '../../../llm/modelPref';
-import { runTool, errNoticeStyle, CopyHandoffButtons, useTechContext, type OnHandoff } from './shared';
+import {
+  runTool,
+  errNoticeStyle,
+  CopyHandoffButtons,
+  useTechContext,
+  downloadText,
+  recordScoreDelta,
+  formatDelta,
+  type OnHandoff,
+} from './shared';
 import { AeoSimulationCard } from './AeoSimulationCard';
 
 interface AeoPanelData extends AeoReport {
@@ -21,19 +30,6 @@ interface AeoPanelData extends AeoReport {
   metaDescription?: string;
   headings: string[];
 }
-
-/** Trigger a client-side text download (the llms.txt artifact). */
-function downloadText(filename: string, text: string): void {
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-const lastScoreKey = (url: string) => `aeo:lastScore:${url}`;
 
 export function AeoPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
   const [data, setData] = useState<AeoPanelData | undefined>();
@@ -56,14 +52,8 @@ export function AeoPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
       setError(r.error.message);
       return;
     }
-    // Verify loop: compare to the last score for this URL (this session).
-    try {
-      const prev = sessionStorage.getItem(lastScoreKey(r.data.url));
-      if (prev !== null) setDelta(r.data.score - Number(prev));
-      sessionStorage.setItem(lastScoreKey(r.data.url), String(r.data.score));
-    } catch {
-      /* sessionStorage may be unavailable; delta is best-effort */
-    }
+    // Verify loop: delta vs the last score for this URL (this session).
+    setDelta(recordScoreDelta('aeo', r.data.url, r.data.score));
     setData(r.data);
   }, []);
   useEffect(() => { void run(); }, [run]);
@@ -147,7 +137,7 @@ export function AeoPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
             <div className="ci-seo-score-facts">
               {typeof delta === 'number' && (
                 <div className="ci-seo-fact" data-testid="ci-aeo-delta">
-                  <span>Since last scan</span> {delta === 0 ? 'no change' : (delta > 0 ? '▲ +' : '▼ ') + delta}
+                  <span>Since last scan</span> {formatDelta(delta)}
                 </div>
               )}
               <div className="ci-seo-fact"><span>Schema types</span> {data.facts.schemaTypes.length || '—'}</div>
