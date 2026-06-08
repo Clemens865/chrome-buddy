@@ -1160,6 +1160,22 @@ button.ctx-chip.is-on { color: var(--accent); background: var(--accent-soft); }
 .ci-net-bar-slow { background: #D97706; }
 .ci-net-bar-bad { background: #DC2626; }
 .ci-net-failed .ci-net-path { color: #B91C1C; }
+/* Console search + chat-with-console */
+.console-search { padding: 6px 12px; }
+.console-search .cb-input { width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 12px; border: 1px solid var(--panel-border); border-radius: 7px; background: var(--panel-bg); color: var(--panel-fg); }
+.ci-cchat { border-top: 1px solid var(--panel-border-soft); margin-top: 8px; padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.ci-cchat-quick { display: flex; flex-wrap: wrap; gap: 4px; }
+.ci-cchat-msgs { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
+.ci-cchat-msg { position: relative; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.5; }
+.ci-cchat-user { background: var(--accent-soft); color: var(--panel-fg); }
+.ci-cchat-assistant { background: var(--panel-elev); border: 1px solid var(--panel-border-soft); }
+.ci-cchat-who { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--panel-muted); margin-bottom: 3px; }
+.ci-cchat-body { white-space: pre-wrap; word-break: break-word; }
+.ci-cchat-thinking { color: var(--panel-muted); }
+.ci-cchat-msg .ci-card-copy { position: absolute; top: 6px; right: 6px; }
+.ci-cchat-err { font-size: 11.5px; color: #B91C1C; padding: 0 2px; }
+.ci-cchat-input { display: flex; gap: 6px; }
+.ci-cchat-input .cb-input { flex: 1; min-width: 0; padding: 7px 10px; font-size: 12.5px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--panel-bg); color: var(--panel-fg); }
 .ci-vitals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; overflow-y: auto; }
 .ci-vital { border: 1px solid var(--panel-border-soft); border-radius: 8px; padding: 10px 12px; background: var(--panel-elev); display: flex; flex-direction: column; gap: 2px; }
 .ci-vital-key { font-size: 10.5px; letter-spacing: 0.08em; color: var(--panel-muted); }

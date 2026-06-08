@@ -23,6 +23,8 @@ import {
   HealthPanel,
   type OnHandoff,
 } from './consolePanels';
+import { ConsoleChat } from './console/ConsoleChat';
+import { downloadText } from './console/shared';
 
 type Filter = 'all' | LogLevel;
 type Mode =
@@ -71,6 +73,8 @@ export function ConsoleApp({
   const [error, setError] = useState<string | undefined>();
   const [analysis, setAnalysis] = useState<AnalysisResult | undefined>();
   const [analyzing, setAnalyzing] = useState(false);
+  const [search, setSearch] = useState('');
+  const [showChat, setShowChat] = useState(false);
 
   // While capturing, poll the controller snapshot so the live list updates.
   useEffect(() => {
@@ -129,10 +133,19 @@ export function ConsoleApp({
   }, []);
 
   const counts = useMemo(() => countByLevel(logs), [logs]);
-  const shown = useMemo(
-    () => (filter === 'all' ? logs : logs.filter((l) => l.level === filter)),
-    [logs, filter],
-  );
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return logs.filter(
+      (l) => (filter === 'all' || l.level === filter) && (!q || l.text.toLowerCase().includes(q) || (l.source ?? '').toLowerCase().includes(q)),
+    );
+  }, [logs, filter, search]);
+
+  const exportLogs = useCallback(() => {
+    const text = logs
+      .map((l) => `[${l.level.toUpperCase()}]${l.count > 1 ? ` x${l.count}` : ''} ${l.text}${l.source ? `  @ ${l.source}` : ''}`)
+      .join('\n');
+    downloadText('console-log.txt', text || '(no console activity)');
+  }, [logs]);
 
   const countFor = (k: Filter): number =>
     k === 'all' ? logs.reduce((n, l) => n + l.count, 0) : counts[k];
@@ -194,9 +207,23 @@ export function ConsoleApp({
         >
           {capturing ? 'Stop' : 'Start'}
         </button>
+        <button type="button" className="console-clear" onClick={exportLogs} disabled={!hasLogs} data-testid="ci-console-export">
+          Export
+        </button>
         <button type="button" className="console-clear" onClick={clear} disabled={!hasLogs}>
           Clear
         </button>
+      </div>
+
+      <div className="console-search">
+        <input
+          type="text"
+          className="cb-input"
+          placeholder="Filter logs by text or source…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          data-testid="ci-console-search"
+        />
       </div>
 
       {capturing && (
@@ -268,7 +295,17 @@ export function ConsoleApp({
             >
               {analyzing ? 'Analyzing…' : 'Analyze with Buddy'}
             </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setShowChat((s) => !s)}
+              disabled={!hasLogs}
+              data-testid="ci-console-chat-toggle"
+            >
+              {showChat ? 'Hide chat' : 'Chat with console'}
+            </button>
           </div>
+          {showChat && hasLogs && <ConsoleChat logs={logs} />}
         </div>
       )}
         </>
