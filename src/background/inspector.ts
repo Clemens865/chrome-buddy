@@ -427,6 +427,92 @@ export async function executeReadStorage(args: Record<string, unknown>): Promise
   }
 }
 
+// ---- probe_storage_extra (IndexedDB · Cache Storage · quota) ---------------
+//
+// The deep storage surfaces the basic read_storage tool doesn't cover. All are
+// async page APIs, so the probe func is async (executeScript awaits it). Counts
+// are best-effort + capped so a huge DB can't hang the scan.
+
+async function probeStorageExtra(tabId: number) {
+  const res = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    func: async () => {
+      const out: {
+        quota?: { usage: number; quota: number };
+        idb: Array<{ name: string; version?: number; stores: Array<{ name: string; count: number }> }>;
+        caches: Array<{ name: string; entries: number }>;
+      } = { idb: [], caches: [] };
+
+      try {
+        if (navigator.storage?.estimate) {
+          const e = await navigator.storage.estimate();
+          out.quota = { usage: e.usage ?? 0, quota: e.quota ?? 0 };
+        }
+      } catch { /* estimate unavailable */ }
+
+      try {
+        const idb = indexedDB as IDBFactory & { databases?: () => Promise<Array<{ name?: string; version?: number }>> };
+        if (idb.databases) {
+          const dbs = await idb.databases();
+          for (const d of dbs.slice(0, 20)) {
+            if (!d.name) continue;
+            const info: { name: string; version?: number; stores: Array<{ name: string; count: number }> } = { name: d.name, version: d.version, stores: [] };
+            try {
+              const db = await new Promise<IDBDatabase>((resolve, reject) => {
+                const r = indexedDB.open(d.name as string);
+                r.onsuccess = () => resolve(r.result);
+                r.onerror = () => reject(r.error);
+                r.onblocked = () => reject(new Error('blocked'));
+              });
+              for (const s of Array.from(db.objectStoreNames).slice(0, 25)) {
+                const count = await new Promise<number>((resolve) => {
+                  try {
+                    const cr = db.transaction(s, 'readonly').objectStore(s).count();
+                    cr.onsuccess = () => resolve(cr.result);
+                    cr.onerror = () => resolve(-1);
+                  } catch { resolve(-1); }
+                });
+                info.stores.push({ name: s, count });
+              }
+              db.close();
+            } catch { /* couldn't open this db */ }
+            out.idb.push(info);
+          }
+        }
+      } catch { /* IndexedDB unavailable */ }
+
+      try {
+        const cs = (window as Window & typeof globalThis).caches;
+        if (cs?.keys) {
+          for (const n of (await cs.keys()).slice(0, 20)) {
+            let entries = -1;
+            try { entries = (await (await cs.open(n)).keys()).length; } catch { /* keep -1 */ }
+            out.caches.push({ name: n, entries });
+          }
+        }
+      } catch { /* Cache Storage unavailable */ }
+
+      return out;
+    },
+  });
+  return res?.[0]?.result as
+    | { quota?: { usage: number; quota: number }; idb: Array<{ name: string; version?: number; stores: Array<{ name: string; count: number }> }>; caches: Array<{ name: string; entries: number }> }
+    | undefined;
+}
+
+export async function executeProbeStorageExtra(): Promise<ToolResult> {
+  const tabId = await resolveActiveTabId();
+  if (typeof tabId !== 'number') return err('undriveable', 'No active web tab to inspect.');
+  try {
+    const extra = await probeStorageExtra(tabId);
+    if (!extra) return err('runtime-error', 'Could not read deep storage on the active page.');
+    return ok(extra);
+  } catch (e) {
+    return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
 // ---- scan_sensitive_data --------------------------------------------------
 
 export async function executeScanSensitive(): Promise<ToolResult> {

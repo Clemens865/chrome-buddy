@@ -1187,6 +1187,16 @@ button.ctx-chip.is-on { color: var(--accent); background: var(--accent-soft); }
 .ci-vital-target { font-size: 10px; color: var(--panel-muted-soft); font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; }
 .ci-vital-attrib { font-size: 10px; color: var(--panel-muted); margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; }
 .ci-card-muted { opacity: 0.55; }
+/* Storage: quota bar + deep (IndexedDB / Cache) rows */
+.ci-storage-quota { padding: 4px 0 8px; }
+.ci-storage-quota-hd { display: flex; justify-content: space-between; font-size: 11px; color: var(--panel-muted); margin-bottom: 4px; }
+.ci-storage-quota-track { height: 6px; background: var(--panel-elev); border-radius: 4px; overflow: hidden; }
+.ci-storage-quota-bar { height: 6px; background: #6366F1; border-radius: 4px; }
+.ci-storage-quota-bar.ci-storage-quota-hot { background: #D97706; }
+.ci-storage-deep { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.ci-storage-db { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: 11.5px; }
+.ci-storage-db-name { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; color: var(--panel-fg); flex: 0 0 auto; }
+.ci-storage-db-stores { color: var(--panel-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ci-verdict-good       { border-color: rgba(16,185,129,.45); }
 .ci-verdict-good .ci-vital-verdict       { color: #047857; }
 .theme-graphite .ci-verdict-good .ci-vital-verdict { color: #6EE7B7; }
