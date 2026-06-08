@@ -13,6 +13,7 @@ import { detectTech } from '../console/techStack';
 import { analyzeA11y } from '../console/a11y';
 import { mapAxeViolations } from '../console/axeMap';
 import { analyzeSeo } from '../console/seo';
+import { validateStructuredData, detectedTypes } from '../console/seoStructured';
 import { analyzeAeo, parseBlockedAiCrawlers } from '../console/aeo';
 import type { SecurityHeaders } from '../console/securityHeaders';
 import { summarizeStorage } from '../console/storageSummary';
@@ -735,10 +736,22 @@ async function probeSeo(tabId: number) {
       // Structured data: try to parse each ld+json block.
       let structuredDataBlocks = 0;
       let structuredDataValid = true;
+      const jsonLd: Array<{ type: string; keys: string[] }> = [];
+      const collectLd = (o: unknown): void => {
+        if (!o || typeof o !== 'object') return;
+        const obj = o as Record<string, unknown>;
+        const t = obj['@type'];
+        const type = Array.isArray(t) ? t.filter((x) => typeof x === 'string').join(',') : typeof t === 'string' ? t : '';
+        if (type || obj['@context']) jsonLd.push({ type, keys: Object.keys(obj) });
+        const graph = obj['@graph'];
+        if (Array.isArray(graph)) graph.forEach(collectLd);
+      };
       Array.from(document.querySelectorAll('script[type="application/ld+json" i]')).forEach((s) => {
         structuredDataBlocks += 1;
         try {
-          JSON.parse((s as HTMLScriptElement).textContent ?? '');
+          const parsed = JSON.parse((s as HTMLScriptElement).textContent ?? '');
+          if (Array.isArray(parsed)) parsed.forEach(collectLd);
+          else collectLd(parsed);
         } catch {
           structuredDataValid = false;
         }
@@ -755,12 +768,14 @@ async function probeSeo(tabId: number) {
         metaRobots,
         canonical,
         openGraph,
+        ogImage: openGraph['og:image'],
         twitterCard,
         h1Count,
         h1Text,
         imgsMissingAlt,
         structuredDataBlocks,
         structuredDataValid,
+        jsonLd,
         htmlLang,
         isHttps,
       };
@@ -776,7 +791,15 @@ export async function executeAnalyzeSeo(): Promise<ToolResult> {
     const probe = await probeSeo(tabId);
     if (!probe) return err('runtime-error', 'Could not inspect the active page.');
     const report = analyzeSeo(probe);
-    return ok({ url: probe.url, h1Text: probe.h1Text, ...report });
+    const blocks = (probe.jsonLd ?? []) as Array<{ type: string; keys: string[] }>;
+    return ok({
+      url: probe.url,
+      h1Text: probe.h1Text,
+      ...report,
+      // Rich-result preview + structured-data validation surface.
+      preview: { title: probe.title, description: probe.metaDescription, canonical: probe.canonical, ogImage: probe.ogImage },
+      schema: { types: detectedTypes(blocks), findings: validateStructuredData(blocks) },
+    });
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
   }

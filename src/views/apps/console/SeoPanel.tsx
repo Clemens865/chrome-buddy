@@ -1,16 +1,29 @@
-// SeoPanel — 11-rule SEO audit (title/description lengths, viewport, canonical,
-// Open Graph, Twitter, h1, structured data, robots, lang, alt). Renders a 0-100
-// score ring + facts grid + severity-sorted issue cards.
+// SeoPanel — SEO audit (title/description/viewport/canonical/OG/Twitter/h1/
+// structured-data/robots/lang/alt) with a 0-100 score, PLUS a Google-style
+// rich-result (SERP) preview and JSON-LD structured-data validation.
 
 import { useCallback, useEffect, useState } from 'react';
 import { Ic } from '../../../ui/icons';
 import type { SeoReport, SeoIssue } from '../../../console/seo';
+import type { StructuredFinding } from '../../../console/seoStructured';
 import type { Finding } from '../../../console/fixPrompt';
 import { runTool, errNoticeStyle, CopyHandoffButtons, useTechContext, type OnHandoff } from './shared';
 
 interface SeoPanelData extends SeoReport {
   url: string;
   h1Text?: string;
+  preview?: { title?: string; description?: string; canonical?: string; ogImage?: string };
+  schema?: { types: string[]; findings: StructuredFinding[] };
+}
+
+function breadcrumb(url: string): string {
+  try {
+    const u = new URL(url);
+    const segs = u.pathname.split('/').filter(Boolean).slice(0, 3);
+    return [u.host, ...segs].join(' › ');
+  } catch {
+    return url;
+  }
 }
 
 export function SeoPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
@@ -29,13 +42,18 @@ export function SeoPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
   }, []);
   useEffect(() => { void run(); }, [run]);
 
-  const findings: Finding[] = (data?.issues ?? []).map((i: SeoIssue) => ({
-    rule: i.rule,
-    description: i.description,
-    suggestion: i.suggestion,
-    severity: i.severity,
-    detail: i.detail,
-  }));
+  // Fix prompt = the rule issues + any structured-data validation gaps.
+  const findings: Finding[] = [
+    ...(data?.issues ?? []).map((i: SeoIssue) => ({ rule: i.rule, description: i.description, suggestion: i.suggestion, severity: i.severity, detail: i.detail })),
+    ...(data?.schema?.findings ?? []).map((f) => ({
+      rule: `Structured data — ${f.type}`,
+      description: `The ${f.type} JSON-LD is missing recommended field(s): ${f.missing.join(', ')}.`,
+      suggestion: `Add ${f.missing.join(', ')} so this block can produce a rich result.`,
+      severity: 'low' as const,
+    })),
+  ];
+
+  const preview = data?.preview;
 
   return (
     <div className="ci-panel" data-testid="ci-panel-seo">
@@ -43,19 +61,27 @@ export function SeoPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
         <button type="button" className="btn btn-sm btn-primary" onClick={() => run(true)} disabled={busy}>
           {busy ? 'Auditing…' : 'Re-audit'}
         </button>
-        <CopyHandoffButtons
-          topic="SEO"
-          findings={findings}
-          context={{ ...techCtx, url: data?.url, title: data?.h1Text }}
-          onHandoff={onHandoff}
-          testid="ci-seo"
-        />
+        <CopyHandoffButtons topic="SEO" findings={findings} context={{ ...techCtx, url: data?.url, title: data?.h1Text }} onHandoff={onHandoff} testid="ci-seo" />
         {data && <span className="ci-panel-meta" title={data.url}>Score: {data.score}/100</span>}
       </div>
       {error && <div className="console-notice" role="alert" style={errNoticeStyle}>{error}</div>}
       {data && (
         <div className="ci-seo" data-testid="ci-seo">
-          <div className="ci-seo-score" data-score-class={seoScoreClass(data.score)}>
+          {/* Google-style rich-result preview */}
+          {preview && (
+            <div className="ci-serp" data-testid="ci-seo-serp">
+              <div className="ci-serp-hd">Search preview</div>
+              <div className="ci-serp-card">
+                <div className="ci-serp-url">{breadcrumb(preview.canonical || data.url)}</div>
+                <div className="ci-serp-title">{preview.title || '(no title — Google will use the page heading)'}</div>
+                <div className="ci-serp-desc">
+                  {preview.description || 'No meta description — Google will synthesize a snippet from the page content.'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="ci-seo-score">
             <div className={'ci-seo-score-ring ci-seo-score-' + seoScoreClass(data.score)}>{data.score}</div>
             <div className="ci-seo-score-facts">
               <div className="ci-seo-fact"><span>Title</span> {data.facts.titleLength} chars</div>
@@ -66,6 +92,28 @@ export function SeoPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
               <div className="ci-seo-fact"><span>Canonical</span> {data.facts.canonical ? '✓' : '—'}</div>
             </div>
           </div>
+
+          {/* Structured-data validation */}
+          {data.schema && (data.schema.types.length > 0 || data.schema.findings.length > 0) && (
+            <div className="ci-seo-schema" data-testid="ci-seo-schema">
+              <div className="ci-storage-hd">Structured data</div>
+              {data.schema.types.length > 0 && (
+                <div className="ci-a11y-wcag" style={{ marginBottom: 6 }}>
+                  {data.schema.types.map((t) => <span key={t} className="ci-a11y-tag">{t}</span>)}
+                </div>
+              )}
+              {data.schema.findings.length === 0 ? (
+                <div className="ci-card-fix">✓ Recognized types have their recommended fields.</div>
+              ) : (
+                data.schema.findings.map((f, i) => (
+                  <div key={i} className="ci-card-fix" data-testid="ci-seo-schema-issue">
+                    <strong>{f.type}</strong> — missing <code>{f.missing.join(', ')}</code>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
           {data.issues.length === 0 ? (
             <div className="empty-state">
               <span className="ic" style={{ width: 28, height: 28 }}>{Ic.console}</span>
