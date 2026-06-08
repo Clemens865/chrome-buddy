@@ -39,6 +39,7 @@ const AppBuilderView = lazy(() =>
   import('../views/apps/AppBuilderView').then((m) => ({ default: m.AppBuilderView })),
 );
 import { SVG_GENERATOR_APP } from '../apps/builtins/svgGenerator';
+import { TEXT_TO_SPEECH_APP } from '../apps/builtins/textToSpeech';
 import { SkillsView, FlowsView, HistoryView } from '../views/StubViews';
 import { LibraryView } from '../views/LibraryView';
 import { SettingsView } from '../views/SettingsView';
@@ -122,6 +123,7 @@ export function PanelApp({ surface, onClose }: { surface: Surface; onClose?: () 
     else if (openApp === 'viz') content = lazyApp(<VizApp onBack={() => setOpenApp(null)} />);
     else if (openApp === 'tabs') content = lazyApp(<TabManagerApp onBack={() => setOpenApp(null)} />);
     else if (openApp === 'svggen') content = lazyApp(<SandboxAppView app={SVG_GENERATOR_APP} onBack={() => setOpenApp(null)} />);
+    else if (openApp === 'tts') content = lazyApp(<SandboxAppView app={TEXT_TO_SPEECH_APP} onBack={() => setOpenApp(null)} />);
     else if (openApp === 'builder') content = lazyApp(<AppBuilderView onBack={() => setOpenApp(null)} onSaved={() => setOpenApp(null)} />);
     else content = <AppsView onOpenApp={setOpenApp} onPreset={runPreset} />;
   } else if (view === 'skills') content = <SkillsView onRunSkill={runSkill} />;

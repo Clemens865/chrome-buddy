@@ -9,18 +9,26 @@
       "tier": 3,
       "version": "1.2.0",
       "author": "Chrome Buddy",
-      "permissions": ["image", "download"],
+      "permissions": [
+        "image",
+        "download"
+      ],
       "dataPath": "apps/brandsnap-ai.json"
     },
     {
       "id": "text-to-speech",
       "name": "Text to Speech",
-      "description": "Paste text, upload a document, or grab the current page in one click, then hear it read aloud in a natural Google voice. 30 voices with previews, tone presets, and download as WAV.",
+      "description": "Paste text, upload a document, or grab the current page in one click — then optionally clean it up or summarize it in a style (Summary, Key points, TL;DR, Narration…) before hearing it in a natural Google voice. 30 voices with previews, tone presets, and WAV download.",
       "kind": "app",
       "tier": 3,
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "Chrome Buddy",
-      "permissions": ["tts", "page", "download"],
+      "permissions": [
+        "tts",
+        "page",
+        "gemini",
+        "download"
+      ],
       "dataPath": "apps/text-to-speech.json"
     },
     {
@@ -31,7 +39,10 @@
       "tier": 3,
       "version": "1.1.0",
       "author": "Chrome Buddy",
-      "permissions": ["image", "download"],
+      "permissions": [
+        "image",
+        "download"
+      ],
       "dataPath": "apps/portrait-maker.json"
     },
     {

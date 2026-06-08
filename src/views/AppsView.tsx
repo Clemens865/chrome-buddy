@@ -19,7 +19,7 @@ import { toAppBundle, parseAppBundle, type AppImportReview } from '../apps/appBu
 import type { AppConfig } from '../apps/types';
 import { CatalogView } from './CatalogView';
 
-export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'webhooks' | 'scrape' | 'viz' | 'tabs' | 'svggen' | 'builder';
+export type AppId = 'console' | 'image' | 'transcriber' | 'livescribe' | 'tts' | 'webhooks' | 'scrape' | 'viz' | 'tabs' | 'svggen' | 'builder';
 
 /** Chat presets launched from an app card instead of opening an app view.
  *  (Kept as a hook for future preset cards — Summarizer used to live here but
@@ -42,6 +42,7 @@ export const APPS: AppMeta[] = [
   { id: 'image', icon: Ic.image, name: 'Image Generator', desc: 'Generate images from a prompt.', color: '#A78BFA' },
   { id: 'transcriber', icon: Ic.mic, name: 'Audio Transcriber', desc: 'Turn an audio file into text.', color: '#0EA5E9' },
   { id: 'livescribe', icon: Ic.mic, name: 'Voice Transcriber', desc: 'Record → transcript → summarize, clean up, meeting notes.', color: '#06B6D4' },
+  { id: 'tts', icon: Ic.speaker, name: 'Text to Speech', desc: 'Read text, a doc, or a page aloud — clean up or summarize first.', color: '#EC4899' },
   { id: 'webhooks', icon: Ic.hook, name: 'Webhook Flows', desc: 'One-tap: snapshot a page → POST to a saved webhook.', color: '#F59E0B' },
   { id: 'scrape', icon: Ic.scrape, name: 'Scrape to Table', desc: 'Extract structured data to CSV.', color: '#F43F5E' },
   { id: 'viz', icon: Ic.chart, name: 'Data Visualizer', desc: 'Turn CSV, JSON or a page table into charts.', color: '#14B8A6' },
@@ -65,7 +66,7 @@ export function AppsView({
   onPreset: (preset: AppPreset) => void;
   recents?: string[];
 }) {
-  const openable = new Set<AppId>(['console', 'image', 'transcriber', 'livescribe', 'webhooks', 'scrape', 'viz', 'tabs', 'svggen']);
+  const openable = new Set<AppId>(['console', 'image', 'transcriber', 'livescribe', 'tts', 'webhooks', 'scrape', 'viz', 'tabs', 'svggen']);
   const open = (id: string) => {
     if (PRESETS[id]) {
       onPreset(PRESETS[id]); // chat-coverable (e.g. Summarizer) → seed a chat prompt
