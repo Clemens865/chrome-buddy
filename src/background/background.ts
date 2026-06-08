@@ -40,6 +40,7 @@ import { executeFileWrite } from './fileWrite';
 import {
   executeWebVitals,
   executeReadNetwork,
+  executeProbeNetwork,
   executeScanSecurity,
   executeAnalyzeErrors,
   executeReadStorage,
@@ -348,6 +349,7 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
   analyze_errors: (a) => executeAnalyzeErrors(a),
   web_vitals: () => executeWebVitals(),
   read_network: (a) => executeReadNetwork(a),
+  probe_network: () => executeProbeNetwork(),
   scan_security: () => executeScanSecurity(),
   read_storage: (a) => executeReadStorage(a),
   scan_sensitive_data: () => executeScanSensitive(),
@@ -399,6 +401,7 @@ const VOICE_TOOL_NAMES: ReadonlySet<string> = new Set([
   'analyze_aeo',
   'analyze_errors',
   'read_network',
+  'probe_network',
   'read_storage',
   'scan_sensitive_data',
   'fetch_url',

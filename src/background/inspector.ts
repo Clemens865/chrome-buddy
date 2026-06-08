@@ -125,6 +125,54 @@ export async function executeReadNetwork(args: Record<string, unknown>): Promise
   return ok({ count: net.length, requests: net });
 }
 
+// ---- probe_network (Performance Resource Timing snapshot) ------------------
+//
+// Structured network records straight from the page's Performance timeline — no
+// debugger needed. Powers the waterfall + HAR export + copy-as-cURL. Method +
+// headers aren't exposed by the timing API (method defaults to GET).
+
+async function probeNetworkTimings(tabId: number) {
+  const res = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    func: () => {
+      const out: Array<Record<string, unknown>> = [];
+      try {
+        for (const e of performance.getEntriesByType('resource')) {
+          const r = e as PerformanceResourceTiming & { responseStatus?: number };
+          let host = '';
+          try { host = new URL(r.name).host; } catch { /* keep empty */ }
+          out.push({
+            url: r.name,
+            host,
+            type: r.initiatorType || 'other',
+            method: 'GET',
+            status: typeof r.responseStatus === 'number' ? r.responseStatus : 0,
+            protocol: r.nextHopProtocol || '',
+            startMs: Math.round(r.startTime),
+            durationMs: Math.round(r.duration),
+            sizeBytes: Math.round(r.transferSize || 0),
+          });
+        }
+      } catch { /* Performance API unavailable */ }
+      return { url: location.href, requests: out.slice(0, 300) };
+    },
+  });
+  return res?.[0]?.result as { url: string; requests: unknown[] } | undefined;
+}
+
+export async function executeProbeNetwork(): Promise<ToolResult> {
+  const tabId = await resolveActiveTabId();
+  if (typeof tabId !== 'number') return err('undriveable', 'No active web tab to inspect.');
+  try {
+    const probe = await probeNetworkTimings(tabId);
+    if (!probe) return err('runtime-error', 'Could not read network timings on the active page.');
+    return ok({ url: probe.url, count: probe.requests.length, requests: probe.requests });
+  } catch (e) {
+    return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
 // ---- scan_security --------------------------------------------------------
 
 /** Page-side probe: HTTPS, mixed-content elements, meta CSP. */
