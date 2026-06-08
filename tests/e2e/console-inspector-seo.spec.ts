@@ -79,7 +79,8 @@ test('A11y panel now exposes Copy-fix-prompt + Send to Buddy', async ({ context,
   await expect(copy).toHaveText(/Copied/);
   const md = await panel.evaluate(() => navigator.clipboard.readText());
   expect(md).toContain('# Accessibility fix request');
-  expect(md).toContain('Images must have alt text');
+  // axe-core powers the audit now → its rule wording ("alternative text").
+  expect(md).toMatch(/alternative text/i);
 });
 
 test('Security panel now exposes Copy-fix-prompt with structured findings', async ({ context, extensionId }) => {

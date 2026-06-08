@@ -11,6 +11,7 @@ import { matchErrors } from '../console/errorPatterns';
 import { scanSensitive } from '../console/sensitivePatterns';
 import { detectTech } from '../console/techStack';
 import { analyzeA11y } from '../console/a11y';
+import { mapAxeViolations } from '../console/axeMap';
 import { analyzeSeo } from '../console/seo';
 import { analyzeAeo, parseBlockedAiCrawlers } from '../console/aeo';
 import type { SecurityHeaders } from '../console/securityHeaders';
@@ -466,6 +467,49 @@ export async function executeAnalyzeA11y(): Promise<ToolResult> {
     if (!sig) return err('runtime-error', 'Could not inspect the active page.');
     const report = analyzeA11y(sig);
     return ok(report);
+  } catch (e) {
+    return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
+// ---- analyze_a11y_axe (bundled axe-core, ~90 WCAG rules) -------------------
+//
+// axe-core ships in the extension (public/vendor/axe.min.js). We inject it into
+// the page's isolated content-script world, then run axe.run() there — no remote
+// code, no eval. The two injections share the isolated world so `window.axe`
+// from the first is visible to the second.
+
+export async function executeAnalyzeA11yAxe(): Promise<ToolResult> {
+  const tabId = await resolveActiveTabId();
+  if (typeof tabId !== 'number') return err('undriveable', 'No active web tab to inspect.');
+  try {
+    // 1. Load the bundled axe-core into the page's isolated world.
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['vendor/axe.min.js'] });
+    // 2. Run it and return the raw results (+ the page URL).
+    const res = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: async () => {
+        const axe = (globalThis as unknown as { axe?: { run: (ctx: unknown, opts: unknown) => Promise<unknown> } }).axe;
+        if (!axe) return { error: 'axe-core failed to load on this page.' };
+        try {
+          const r = (await axe.run(document, { resultTypes: ['violations'], reporter: 'v2' })) as {
+            violations: unknown[];
+            testEngine?: { name?: string; version?: string };
+          };
+          return { url: location.href, violations: r.violations, testEngine: r.testEngine };
+        } catch (e) {
+          return { error: e instanceof Error ? e.message : 'axe.run failed.' };
+        }
+      },
+    });
+    const out = res?.[0]?.result as
+      | { url?: string; violations?: unknown[]; testEngine?: { version?: string }; error?: string }
+      | undefined;
+    if (!out || out.error || !Array.isArray(out.violations)) {
+      return err('runtime-error', out?.error ?? 'axe did not return results (the page may block injection).');
+    }
+    const report = mapAxeViolations({ violations: out.violations as never, testEngine: out.testEngine });
+    return ok({ url: out.url, ...report });
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
   }

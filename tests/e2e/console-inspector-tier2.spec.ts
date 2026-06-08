@@ -104,7 +104,9 @@ test('A11y tab audits the page for accessibility issues', async ({ context, exte
 
   const a11y = panel.getByTestId('ci-a11y');
   await expect(a11y).toBeVisible({ timeout: 8_000 });
-  await expect(a11y.getByText('Form controls must have labels')).toBeVisible({ timeout: 8_000 });
-  await expect(a11y.getByText('Images must have alt text')).toBeVisible();
+  // The audit is now powered by bundled axe-core (with a heuristic fallback).
+  await expect(panel.getByTestId('ci-a11y-engine')).toContainText('axe-core', { timeout: 12_000 });
+  // The injected alt-less image trips axe's image-alt rule.
+  await expect(a11y.getByText(/alternative text/i).first()).toBeVisible({ timeout: 12_000 });
   await panel.screenshot({ path: path.join(SHOTS, '86-ci-a11y.png') });
 });

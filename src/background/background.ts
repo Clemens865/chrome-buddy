@@ -46,6 +46,7 @@ import {
   executeScanSensitive,
   executeDetectTechStack,
   executeAnalyzeA11y,
+  executeAnalyzeA11yAxe,
   executeAnalyzeSeo,
   executeAnalyzeAeo,
 } from './inspector';
@@ -352,6 +353,7 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
   scan_sensitive_data: () => executeScanSensitive(),
   detect_tech_stack: () => executeDetectTechStack(),
   analyze_a11y: () => executeAnalyzeA11y(),
+  analyze_a11y_axe: () => executeAnalyzeA11yAxe(),
   analyze_seo: () => executeAnalyzeSeo(),
   analyze_aeo: () => executeAnalyzeAeo(),
   // Library RAG (local IDB index, Gemini embeddings).
@@ -392,6 +394,7 @@ const VOICE_TOOL_NAMES: ReadonlySet<string> = new Set([
   'scan_security',
   'detect_tech_stack',
   'analyze_a11y',
+  'analyze_a11y_axe',
   'analyze_seo',
   'analyze_aeo',
   'analyze_errors',

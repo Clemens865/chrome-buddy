@@ -41,6 +41,12 @@ export interface A11yIssue {
   suggestion: string;
   /** How many elements triggered this rule. */
   count: number;
+  /** Optional docs link (axe helpUrl) for the rule. */
+  docUrl?: string;
+  /** Optional WCAG success-criterion tags (e.g. ['wcag2a', 'wcag111']). */
+  wcag?: string[];
+  /** Optional per-element detail (axe nodes): CSS selector + offending HTML. */
+  nodes?: ReadonlyArray<{ target: string; html: string; summary?: string }>;
 }
 
 export interface A11yReport {
