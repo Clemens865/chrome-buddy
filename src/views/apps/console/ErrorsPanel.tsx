@@ -6,13 +6,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { Ic } from '../../../ui/icons';
 import type { ErrorMatch } from '../../../console/errorPatterns';
 import type { TechMatch } from '../../../console/techStack';
+import type { LogEntry } from '../../../console/capture';
 import {
   buildFixPrompt,
   buildSingleFixPrompt,
   buildBuddyChatPrompt,
   type FixPromptContext,
 } from '../../../console/fixPrompt';
+import { analyzeErrorsAI, type ErrorAnalysis } from '../../../console/errorAnalysis';
+import { useResolvedModelId } from '../../../llm/modelPref';
 import { runTool, copyToClipboard, errNoticeStyle, noticeStyle, type OnHandoff } from './shared';
+import { ErrorAnalysisCard } from './ErrorAnalysisCard';
 
 interface AnalyzeData {
   scanned: number;
@@ -33,6 +37,12 @@ export function ErrorsPanel({
   const [error, setError] = useState<string | undefined>();
   const [copied, setCopied] = useState<Record<string, boolean>>({});
   const [techContext, setTechContext] = useState<FixPromptContext | undefined>();
+  // AI deep-analysis (on demand, model-backed) — distinct from the offline
+  // pattern matches above. Holds the structured artifact + its own busy/error.
+  const [analysis, setAnalysis] = useState<ErrorAnalysis | undefined>();
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState<string | undefined>();
+  const modelId = useResolvedModelId();
 
   const run = useCallback(async (force = false) => {
     setBusy(true);
@@ -85,6 +95,28 @@ export function ErrorsPanel({
     onHandoff({ prompt, mode: 'agent' });
   };
 
+  // On-demand model-backed analysis: pull the raw console snapshot (for stack
+  // traces / source files the pattern matcher discards) and pass it + the
+  // matches + tech context to the model, which returns the structured artifact.
+  const runAiAnalysis = async () => {
+    if (!data) return;
+    setAiBusy(true);
+    setAiError(undefined);
+    try {
+      const r = await runTool<{ entries: LogEntry[] }>('read_console', { level: 'all', limit: 200 });
+      const logs = r.ok ? r.data.entries : undefined;
+      const result = await analyzeErrorsAI(
+        { matches: data.matches, logs, context: techContext },
+        modelId,
+      );
+      setAnalysis(result);
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : 'Analysis failed. Try again.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   const hasMatches = !!data && data.matches.length > 0;
 
   return (
@@ -95,6 +127,16 @@ export function ErrorsPanel({
         </button>
         {hasMatches && (
           <>
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={runAiAnalysis}
+              disabled={aiBusy}
+              data-testid="ci-errors-ai-analyze"
+              title="Ask the model for a deep read: root cause, fix plan, code + a ready-to-paste AI prompt."
+            >
+              {aiBusy ? 'Analyzing…' : '✨ AI Analysis'}
+            </button>
             <button
               type="button"
               className="btn btn-sm"
@@ -124,7 +166,9 @@ export function ErrorsPanel({
         )}
       </div>
       {error && <div className="console-notice" role="alert" style={errNoticeStyle}>{error}</div>}
+      {aiError && <div className="console-notice" role="alert" style={errNoticeStyle}>{aiError}</div>}
       {data?.hint && <div className="console-notice" role="status" style={noticeStyle}>{data.hint}</div>}
+      {analysis && <ErrorAnalysisCard analysis={analysis} onDismiss={() => setAnalysis(undefined)} />}
       {hasMatches ? (
         <div className="ci-cards">
           {data!.matches.map((m, i) => (
