@@ -16,22 +16,6 @@
       "dataPath": "apps/brandsnap-ai.json"
     },
     {
-      "id": "text-to-speech",
-      "name": "Text to Speech",
-      "description": "Paste text, upload a document, or grab the current page in one click — then optionally clean it up or summarize it in a style (Summary, Key points, TL;DR, Narration…) before hearing it in a natural Google voice. 30 voices with previews, tone presets, and WAV download.",
-      "kind": "app",
-      "tier": 3,
-      "version": "1.1.0",
-      "author": "Chrome Buddy",
-      "permissions": [
-        "tts",
-        "page",
-        "gemini",
-        "download"
-      ],
-      "dataPath": "apps/text-to-speech.json"
-    },
-    {
       "id": "portrait-maker",
       "name": "Portrait Maker",
       "description": "Upload a photo and turn it into a professional photographic portrait — pick from 30 portrait-photography styles (studio headshot, Rembrandt lighting, editorial, cinematic, golden hour and more), keeping the person's likeness, then download.",

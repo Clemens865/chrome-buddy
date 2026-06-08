@@ -190,18 +190,15 @@ const bundle = {
   ],
 };
 
-writeFileSync(process.argv[2], JSON.stringify(bundle, null, 2) + '\n');
+// Text to Speech is a BUILT-IN only — it is NOT published to the public catalog
+// (removed once it shipped in-extension). So emit just the built-in .ts (trusted
+// → reviewed:true) that ships in the default Apps grid.
+// Usage: node scripts/build-tts.mjs src/apps/builtins/textToSpeech.ts
+const builtin = { ...bundle.apps[0], reviewed: true };
+const ts =
+  '// Built-in Tier-3 app: Text to Speech. GENERATED from scripts/build-tts.mjs —\n' +
+  '// edit there and rerun. (Built-in only; not published to the catalog.)\n' +
+  "import type { AppConfig } from '../types';\n\n" +
+  'export const TEXT_TO_SPEECH_APP: AppConfig = ' + JSON.stringify(builtin, null, 2) + ';\n';
+writeFileSync(process.argv[2], ts);
 console.log('wrote', process.argv[2]);
-
-// Also emit the built-in (trusted → reviewed:true) so it ships in the default
-// Apps grid. Single source of truth: this script; don't hand-edit the .ts.
-if (process.argv[3]) {
-  const builtin = { ...bundle.apps[0], reviewed: true };
-  const ts =
-    '// Built-in Tier-3 app: Text to Speech. GENERATED from scripts/build-tts.mjs —\n' +
-    '// edit there and rerun (it also writes docs/catalog-seed/apps/text-to-speech.json).\n' +
-    "import type { AppConfig } from '../types';\n\n" +
-    'export const TEXT_TO_SPEECH_APP: AppConfig = ' + JSON.stringify(builtin, null, 2) + ';\n';
-  writeFileSync(process.argv[3], ts);
-  console.log('wrote', process.argv[3]);
-}

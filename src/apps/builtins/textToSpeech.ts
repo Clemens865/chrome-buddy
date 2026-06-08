@@ -1,5 +1,5 @@
 // Built-in Tier-3 app: Text to Speech. GENERATED from scripts/build-tts.mjs —
-// edit there and rerun (it also writes docs/catalog-seed/apps/text-to-speech.json).
+// edit there and rerun. (Built-in only; not published to the catalog.)
 import type { AppConfig } from '../types';
 
 export const TEXT_TO_SPEECH_APP: AppConfig = {
