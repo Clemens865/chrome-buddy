@@ -8,6 +8,7 @@ import path from 'node:path';
 const SHOTS = path.join(process.cwd(), 'screenshots');
 
 test('Vitals tab measures Core Web Vitals for the active page', async ({ context, extensionId }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const site = await context.newPage();
   await site.goto('https://example.com/', { waitUntil: 'load' });
 
@@ -20,13 +21,20 @@ test('Vitals tab measures Core Web Vitals for the active page', async ({ context
   await site.bringToFront();
   await panel.getByTestId('ci-mode-vitals').click();
 
-  // The vitals grid must render, with the LCP / CLS / FCP / TTFB cards present.
+  // The vitals grid renders with LCP / INP / CLS / FCP / TTFB cards (INP replaces
+  // the deprecated FID).
   const vitals = panel.getByTestId('ci-vitals');
   await expect(vitals).toBeVisible({ timeout: 8_000 });
-  for (const k of ['LCP', 'CLS', 'FCP', 'TTFB']) {
+  for (const k of ['LCP', 'INP', 'CLS', 'FCP', 'TTFB']) {
     await expect(vitals.getByText(k, { exact: true })).toBeVisible();
   }
   await panel.screenshot({ path: path.join(SHOTS, '80-ci-vitals.png') });
+
+  // Copy summary → clipboard receives a Web Vitals report.
+  await panel.getByTestId('ci-vitals-copy').click();
+  const summary = await panel.evaluate(() => navigator.clipboard.readText());
+  expect(summary).toContain('Web Vitals');
+  expect(summary).toMatch(/LCP:/);
 });
 
 test('Security tab scans HTTPS / CSP / mixed-content / cookies', async ({ context, extensionId }) => {

@@ -21,49 +21,90 @@ import { resolveActiveTabId } from './pageTools';
 
 // ---- web_vitals -----------------------------------------------------------
 
-/** Page-side probe: read the Web Vitals captured so far on this load. */
+/** Page-side probe: read the Web Vitals captured so far on this load, plus INP
+ *  (longest interaction) + attribution (which element caused LCP / the top CLS). */
 async function probeWebVitals(tabId: number) {
   const res = await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',
-    func: () => {
-      // PerformanceObserver entries that fired before we attach are still in
-      // the buffer (browsers expose them via getEntriesByType for the matching
-      // types: 'paint', 'navigation', 'largest-contentful-paint', 'layout-shift',
-      // 'first-input').
+    func: async () => {
+      // A short, readable selector for an attribution element.
+      const cssPath = (el: Element | null | undefined): string | undefined => {
+        if (!el || !el.tagName) return undefined;
+        let s = el.tagName.toLowerCase();
+        if ((el as HTMLElement).id) return s + '#' + (el as HTMLElement).id;
+        const cls = el.classList ? Array.from(el.classList).slice(0, 2) : [];
+        if (cls.length) s += '.' + cls.join('.');
+        return s;
+      };
+
       const paints = performance.getEntriesByType('paint') as PerformanceEntry[];
       const fcp = paints.find((e) => e.name === 'first-contentful-paint')?.startTime;
-      const lcpEntries = (performance.getEntriesByType('largest-contentful-paint') as PerformanceEntry[]) ?? [];
-      const lcp = lcpEntries.length ? lcpEntries[lcpEntries.length - 1].startTime : undefined;
-      const nav = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined);
+      const lcpEntries = (performance.getEntriesByType('largest-contentful-paint') as Array<PerformanceEntry & { element?: Element; url?: string }>) ?? [];
+      const lcpEntry = lcpEntries.length ? lcpEntries[lcpEntries.length - 1] : undefined;
+      const lcp = lcpEntry?.startTime;
+      const lcpElement = cssPath(lcpEntry?.element);
+      const lcpUrl = lcpEntry?.url || undefined;
+      const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
       const ttfb = nav ? nav.responseStart - nav.startTime : undefined;
-      const lsEntries = (performance.getEntriesByType('layout-shift') as PerformanceEntry[]) ?? [];
+
+      const lsEntries = (performance.getEntriesByType('layout-shift') as Array<PerformanceEntry & { hadRecentInput?: boolean; value?: number; sources?: Array<{ node?: Element }> }>) ?? [];
       let cls = 0;
-      for (const e of lsEntries) {
-        const ls = e as PerformanceEntry & { hadRecentInput?: boolean; value?: number };
-        if (!ls.hadRecentInput && typeof ls.value === 'number') cls += ls.value;
+      let worstShift: (typeof lsEntries)[number] | undefined;
+      for (const ls of lsEntries) {
+        if (ls.hadRecentInput || typeof ls.value !== 'number') continue;
+        cls += ls.value;
+        if (!worstShift || (ls.value ?? 0) > (worstShift.value ?? 0)) worstShift = ls;
       }
-      const fiEntries = (performance.getEntriesByType('first-input') as PerformanceEntry[]) ?? [];
-      const fi = fiEntries[0] as (PerformanceEntry & { processingStart?: number }) | undefined;
+      const clsSource = cssPath(worstShift?.sources?.find((s) => s.node)?.node);
+
+      const fiEntries = (performance.getEntriesByType('first-input') as Array<PerformanceEntry & { processingStart?: number }>) ?? [];
+      const fi = fiEntries[0];
       const fid = fi && typeof fi.processingStart === 'number' ? fi.processingStart - fi.startTime : undefined;
+
+      // INP proxy: the longest interaction observed so far (buffered event
+      // timings). Real INP is a high percentile, but max-duration is a useful
+      // single-snapshot signal; undefined when the user hasn't interacted yet.
+      const inp = await new Promise<number | undefined>((resolve) => {
+        let max = 0;
+        try {
+          const po = new PerformanceObserver((list) => {
+            for (const e of list.getEntries()) {
+              const d = (e as PerformanceEntry & { duration?: number }).duration;
+              if (typeof d === 'number') max = Math.max(max, d);
+            }
+          });
+          po.observe({ type: 'event', buffered: true, durationThreshold: 16 } as PerformanceObserverInit);
+          setTimeout(() => { po.disconnect(); resolve(max || undefined); }, 80);
+        } catch {
+          resolve(undefined);
+        }
+      });
+
       return {
         url: location.href,
         title: document.title,
         lcp,
+        inp,
         fid,
         cls: Number(cls.toFixed(4)),
         fcp,
         ttfb,
+        attribution: { lcpElement, lcpUrl, clsSource },
       };
     },
   });
   return res?.[0]?.result as
-    | { url: string; title: string; lcp?: number; fid?: number; cls: number; fcp?: number; ttfb?: number }
+    | {
+        url: string; title: string; lcp?: number; inp?: number; fid?: number; cls: number; fcp?: number; ttfb?: number;
+        attribution: { lcpElement?: string; lcpUrl?: string; clsSource?: string };
+      }
     | undefined;
 }
 
 const VITAL_THRESHOLDS: Record<string, [number, number]> = {
   lcp: [2500, 4000],
+  inp: [200, 500],
   fid: [100, 300],
   cls: [0.1, 0.25],
   fcp: [1800, 3000],
@@ -84,16 +125,25 @@ export async function executeWebVitals(): Promise<ToolResult> {
   try {
     const v = await probeWebVitals(tabId);
     if (!v) return err('runtime-error', 'Could not read PerformanceTiming on the active page.');
+    const vital = (key: string, value: number | undefined, unit: string) => ({
+      value,
+      unit,
+      verdict: verdict(key, value),
+      target: VITAL_THRESHOLDS[key]?.[0],
+    });
     return ok({
       url: v.url,
       title: v.title,
       vitals: {
-        lcp: { value: v.lcp, unit: 'ms', verdict: verdict('lcp', v.lcp) },
-        fid: { value: v.fid, unit: 'ms', verdict: verdict('fid', v.fid) },
-        cls: { value: v.cls, unit: '', verdict: verdict('cls', v.cls) },
-        fcp: { value: v.fcp, unit: 'ms', verdict: verdict('fcp', v.fcp) },
-        ttfb: { value: v.ttfb, unit: 'ms', verdict: verdict('ttfb', v.ttfb) },
+        lcp: vital('lcp', v.lcp, 'ms'),
+        inp: vital('inp', v.inp, 'ms'),
+        cls: vital('cls', v.cls, ''),
+        fcp: vital('fcp', v.fcp, 'ms'),
+        ttfb: vital('ttfb', v.ttfb, 'ms'),
+        // FID retained (deprecated) so the Health aggregator keeps working.
+        fid: vital('fid', v.fid, 'ms'),
       },
+      attribution: v.attribution,
     });
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
