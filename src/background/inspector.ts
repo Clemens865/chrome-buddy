@@ -13,6 +13,7 @@ import { detectTech } from '../console/techStack';
 import { analyzeA11y } from '../console/a11y';
 import { analyzeSeo } from '../console/seo';
 import { analyzeAeo, parseBlockedAiCrawlers } from '../console/aeo';
+import type { SecurityHeaders } from '../console/securityHeaders';
 import { summarizeStorage } from '../console/storageSummary';
 import { consoleController } from '../console';
 import { resolveActiveTabId } from './pageTools';
@@ -144,10 +145,57 @@ async function probeSecurityPage(tabId: number) {
         }
       }
       const cspMeta = document.querySelector('meta[http-equiv="Content-Security-Policy" i]')?.getAttribute('content') || null;
-      return { url: location.href, isHttps, mixed: mixed.slice(0, 50), cspMeta };
+      // Resource origins actually loaded (for CSP generation), grouped by the
+      // CSP directive each initiator type maps to.
+      const buckets = { script: new Set<string>(), style: new Set<string>(), img: new Set<string>(), connect: new Set<string>(), font: new Set<string>() };
+      try {
+        for (const e of performance.getEntriesByType('resource')) {
+          const r = e as PerformanceResourceTiming;
+          let origin = '';
+          try { origin = new URL(r.name).origin; } catch { continue; }
+          if (!origin || origin === 'null') continue;
+          switch (r.initiatorType) {
+            case 'script': buckets.script.add(origin); break;
+            case 'link': case 'css': buckets.style.add(origin); break;
+            case 'img': case 'image': case 'imageset': buckets.img.add(origin); break;
+            case 'fetch': case 'xmlhttprequest': case 'beacon': buckets.connect.add(origin); break;
+            case 'font': buckets.font.add(origin); break;
+          }
+        }
+      } catch { /* performance API unavailable; origins stay empty */ }
+      const resourceOrigins = {
+        script: [...buckets.script], style: [...buckets.style], img: [...buckets.img],
+        connect: [...buckets.connect], font: [...buckets.font],
+      };
+      return { url: location.href, origin: location.origin, isHttps, mixed: mixed.slice(0, 50), cspMeta, resourceOrigins };
     },
   });
-  return res?.[0]?.result as { url: string; isHttps: boolean; mixed: string[]; cspMeta: string | null } | undefined;
+  return res?.[0]?.result as
+    | { url: string; origin: string; isHttps: boolean; mixed: string[]; cspMeta: string | null; resourceOrigins: import('../console/securityHeaders').ResourceOrigins }
+    | undefined;
+}
+
+/** Read the security-relevant response headers by fetching the page from the
+ *  SW (host_permissions cover all origins). Resilient: returns unreadable when
+ *  the fetch fails so the analyzer skips header-only rules. */
+async function fetchSecurityHeaders(url: string): Promise<{ readable: boolean; headers?: SecurityHeaders }> {
+  try {
+    const resp = await fetch(url, { method: 'GET', redirect: 'follow', credentials: 'omit' });
+    const h = resp.headers;
+    return {
+      readable: true,
+      headers: {
+        csp: h.get('content-security-policy') ?? undefined,
+        hsts: h.get('strict-transport-security') ?? undefined,
+        xFrameOptions: h.get('x-frame-options') ?? undefined,
+        xContentTypeOptions: h.get('x-content-type-options') ?? undefined,
+        referrerPolicy: h.get('referrer-policy') ?? undefined,
+        permissionsPolicy: h.get('permissions-policy') ?? undefined,
+      },
+    };
+  } catch {
+    return { readable: false };
+  }
 }
 
 export async function executeScanSecurity(): Promise<ToolResult> {
@@ -168,10 +216,21 @@ export async function executeScanSecurity(): Promise<ToolResult> {
         return { name: c.name, domain: c.domain, secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite, issues };
       })
       .filter((c) => c.issues.length > 0);
+    // Real response headers (the meta CSP only tells half the story).
+    const hdr = await fetchSecurityHeaders(page.url);
+    const effectiveCsp = hdr.headers?.csp || page.cspMeta || undefined;
     return ok({
       url: page.url,
       tls: { https: page.isHttps },
-      csp: { metaPolicy: page.cspMeta, present: !!page.cspMeta },
+      csp: {
+        metaPolicy: page.cspMeta,
+        present: !!effectiveCsp,
+        source: hdr.headers?.csp ? 'header' : page.cspMeta ? 'meta' : null,
+        policy: effectiveCsp ?? null,
+      },
+      headers: hdr.headers ?? {},
+      headersReadable: hdr.readable,
+      resourceOrigins: page.resourceOrigins,
       mixedContent: page.mixed,
       cookies: { total: cookies.length, flagged },
     });

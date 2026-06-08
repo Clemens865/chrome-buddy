@@ -5,13 +5,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Finding } from '../../../console/fixPrompt';
 import {
+  analyzeSecurityHeaders,
+  generateCsp,
+  type SecurityHeaders,
+  type ResourceOrigins,
+} from '../../../console/securityHeaders';
+import {
   runTool,
   shortHost,
   hostOnly,
   errNoticeStyle,
+  noticeStyle,
   CopyHandoffButtons,
   type OnHandoff,
 } from './shared';
+import { SecurityCspCard } from './SecurityCspCard';
 
 interface CookieIssue {
   name: string;
@@ -24,15 +32,26 @@ interface CookieIssue {
 interface SecurityData {
   url: string;
   tls: { https: boolean };
-  csp: { metaPolicy: string | null; present: boolean };
+  csp: { metaPolicy: string | null; present: boolean; source: 'header' | 'meta' | null; policy: string | null };
+  headers: SecurityHeaders;
+  headersReadable: boolean;
+  resourceOrigins: ResourceOrigins;
   mixedContent: string[];
   cookies: { total: number; flagged: CookieIssue[] };
+}
+
+function hostOf(url: string): string {
+  try { return new URL(url).host; } catch { return url; }
+}
+function originOf(url: string): string | undefined {
+  try { return new URL(url).origin; } catch { return undefined; }
 }
 
 export function SecurityPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
   const [data, setData] = useState<SecurityData | undefined>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [csp, setCsp] = useState<string | undefined>();
 
   const run = useCallback(async (force = false) => {
     setBusy(true);
@@ -45,6 +64,7 @@ export function SecurityPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
   useEffect(() => { void run(); }, [run]);
 
   const findings: Finding[] = data ? securityFindings(data) : [];
+  const hasFrameAncestors = !!data?.csp.policy && /frame-ancestors/i.test(data.csp.policy);
 
   return (
     <div className="ci-panel" data-testid="ci-panel-security">
@@ -52,6 +72,17 @@ export function SecurityPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
         <button type="button" className="btn btn-sm btn-primary" onClick={() => run(true)} disabled={busy}>
           {busy ? 'Scanning…' : 'Re-scan'}
         </button>
+        {data && (
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => setCsp(generateCsp(data.resourceOrigins, originOf(data.url)))}
+            data-testid="ci-sec-gen-csp"
+            title="Generate a Content-Security-Policy from the origins this page actually loads."
+          >
+            Generate CSP
+          </button>
+        )}
         <CopyHandoffButtons
           topic="Security"
           findings={findings}
@@ -62,6 +93,7 @@ export function SecurityPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
         {data && <span className="ci-panel-meta" title={data.url}>{hostOnly(data.url)}</span>}
       </div>
       {error && <div className="console-notice" role="alert" style={errNoticeStyle}>{error}</div>}
+      {csp && data && <SecurityCspCard policy={csp} host={hostOf(data.url)} onDismiss={() => setCsp(undefined)} />}
       {data && (
         <div className="ci-sec" data-testid="ci-sec">
           <SecRow
@@ -73,9 +105,48 @@ export function SecurityPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
           <SecRow
             label="Content-Security-Policy"
             ok={data.csp.present}
-            okText="A CSP meta tag is set."
-            badText="No CSP meta tag — page-level policy may still be set via headers."
-          />
+            okText={`Set via ${data.csp.source === 'header' ? 'response header' : 'meta tag'}.`}
+            badText="No CSP via header or meta — use “Generate CSP”."
+          >
+            {data.csp.present && data.csp.policy && (
+              <div className="ci-sec-policy" title={data.csp.policy}>{data.csp.policy}</div>
+            )}
+          </SecRow>
+          {!data.headersReadable && (
+            <div className="console-notice" role="status" style={noticeStyle}>
+              Couldn’t read response headers (the page may block extension fetches) — showing meta + page signals only.
+            </div>
+          )}
+          {data.headersReadable && (
+            <>
+              {data.tls.https && (
+                <SecRow
+                  label="Strict-Transport-Security"
+                  ok={!!data.headers.hsts}
+                  okText="HSTS is enforced."
+                  badText="No HSTS — first request can be downgraded to HTTP."
+                />
+              )}
+              <SecRow
+                label="Clickjacking (frame-ancestors / XFO)"
+                ok={hasFrameAncestors || !!data.headers.xFrameOptions}
+                okText="Framing is restricted."
+                badText="Page can be framed by any site (clickjacking risk)."
+              />
+              <SecRow
+                label="X-Content-Type-Options"
+                ok={/nosniff/i.test(data.headers.xContentTypeOptions ?? '')}
+                okText="nosniff is set."
+                badText="No nosniff — responses may be MIME-sniffed."
+              />
+              <SecRow
+                label="Referrer-Policy"
+                ok={!!data.headers.referrerPolicy}
+                okText={data.headers.referrerPolicy ?? 'Set.'}
+                badText="No Referrer-Policy — full URLs may leak cross-origin."
+              />
+            </>
+          )}
           <SecRow
             label="Mixed content"
             ok={data.mixedContent.length === 0}
@@ -125,14 +196,15 @@ function securityFindings(d: SecurityData): Finding[] {
       suggestion: 'Redirect HTTP → HTTPS at the edge / server and serve all resources over HTTPS.',
     });
   }
-  if (!d.csp.present) {
-    out.push({
-      rule: 'Content-Security-Policy',
-      severity: 'medium',
-      description: 'No CSP meta tag found (the policy may still be set via response headers).',
-      suggestion: 'Set a Content-Security-Policy header that constrains scripts, frames, and connect-src to known origins.',
-    });
-  }
+  // Response-header findings (CSP, HSTS, clickjacking, nosniff, referrer).
+  out.push(
+    ...analyzeSecurityHeaders({
+      headers: d.headers,
+      metaCsp: d.csp.metaPolicy,
+      isHttps: d.tls.https,
+      headersReadable: d.headersReadable,
+    }),
+  );
   if (d.mixedContent.length > 0) {
     out.push({
       rule: 'Mixed content',
