@@ -147,8 +147,7 @@ test('Errors panel renders the AI Error Analysis artifact and copies the AI prom
   await panel.getByRole('button', { name: 'Scan errors', exact: true }).click();
   await expect(panel.getByText('Null Reference')).toBeVisible({ timeout: 8_000 });
 
-  // Click ✨ AI Analysis → the structured artifact renders.
-  await panel.getByTestId('ci-errors-ai-analyze').click();
+  // The artifact renders AUTOMATICALLY once the error-set is present — no click.
   const card = panel.getByTestId('ci-errors-ai-analysis');
   await expect(card).toBeVisible({ timeout: 8_000 });
   await expect(card.getByText('A value is undefined when the code reads .user.')).toBeVisible();

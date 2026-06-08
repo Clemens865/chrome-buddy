@@ -2,7 +2,7 @@
 // shapes (errorPatterns.ts). Each match is a severity-pilled card with a
 // per-card "Copy" button + a top-bar "Copy fix prompt" + "Send to Buddy".
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ic } from '../../../ui/icons';
 import type { ErrorMatch } from '../../../console/errorPatterns';
 import type { TechMatch } from '../../../console/techStack';
@@ -42,6 +42,11 @@ export function ErrorsPanel({
   const [analysis, setAnalysis] = useState<ErrorAnalysis | undefined>();
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | undefined>();
+  // Auto-analysis bookkeeping: the error-set we last analyzed, and whether the
+  // user (or a failure) turned auto-run off.
+  const [analyzedSig, setAnalyzedSig] = useState<string | undefined>();
+  const [autoOff, setAutoOff] = useState(false);
+  const autoTimer = useRef<number | undefined>(undefined);
   const modelId = useResolvedModelId();
 
   const run = useCallback(async (force = false) => {
@@ -95,27 +100,43 @@ export function ErrorsPanel({
     onHandoff({ prompt, mode: 'agent' });
   };
 
-  // On-demand model-backed analysis: pull the raw console snapshot (for stack
-  // traces / source files the pattern matcher discards) and pass it + the
-  // matches + tech context to the model, which returns the structured artifact.
-  const runAiAnalysis = async () => {
-    if (!data) return;
+  // A signature of the matched-error set — changes only when the errors (or
+  // their counts) change, so auto-analysis re-runs on real changes, not polls.
+  const matchSig = (matches: ErrorMatch[]) => matches.map((m) => `${m.category}:${m.count}`).join('|');
+
+  // Model-backed analysis: pull the raw console snapshot (for stack traces /
+  // source files the pattern matcher discards) and pass it + the matches + tech
+  // context to the model, which returns the structured artifact.
+  const runAiAnalysis = useCallback(async () => {
+    if (!data || data.matches.length === 0) return;
+    const sig = matchSig(data.matches);
     setAiBusy(true);
     setAiError(undefined);
     try {
       const r = await runTool<{ entries: LogEntry[] }>('read_console', { level: 'all', limit: 200 });
       const logs = r.ok ? r.data.entries : undefined;
-      const result = await analyzeErrorsAI(
-        { matches: data.matches, logs, context: techContext },
-        modelId,
-      );
+      const result = await analyzeErrorsAI({ matches: data.matches, logs, context: techContext }, modelId);
       setAnalysis(result);
+      setAnalyzedSig(sig);
     } catch (e) {
       setAiError(e instanceof Error ? e.message : 'Analysis failed. Try again.');
+      // Stop auto-retrying (e.g. no API key) — the manual button re-enables it.
+      setAutoOff(true);
     } finally {
       setAiBusy(false);
     }
-  };
+  }, [data, techContext, modelId]);
+
+  // Auto-run the artifact the moment a (new) error-set is present — so the
+  // analysis appears right away, not behind a click. Debounced so a burst of
+  // errors yields one analysis; suppressed after Hide or a failure.
+  useEffect(() => {
+    if (autoOff || aiBusy || !data || data.matches.length === 0) return;
+    if (matchSig(data.matches) === analyzedSig) return;
+    window.clearTimeout(autoTimer.current);
+    autoTimer.current = window.setTimeout(() => { void runAiAnalysis(); }, 900);
+    return () => window.clearTimeout(autoTimer.current);
+  }, [data, analyzedSig, autoOff, aiBusy, runAiAnalysis]);
 
   const hasMatches = !!data && data.matches.length > 0;
 
@@ -130,12 +151,12 @@ export function ErrorsPanel({
             <button
               type="button"
               className="btn btn-sm btn-primary"
-              onClick={runAiAnalysis}
+              onClick={() => { setAutoOff(false); void runAiAnalysis(); }}
               disabled={aiBusy}
               data-testid="ci-errors-ai-analyze"
               title="Ask the model for a deep read: root cause, fix plan, code + a ready-to-paste AI prompt."
             >
-              {aiBusy ? 'Analyzing…' : '✨ AI Analysis'}
+              {aiBusy ? 'Analyzing…' : analysis ? '✨ Re-analyze' : '✨ AI Analysis'}
             </button>
             <button
               type="button"
@@ -168,7 +189,13 @@ export function ErrorsPanel({
       {error && <div className="console-notice" role="alert" style={errNoticeStyle}>{error}</div>}
       {aiError && <div className="console-notice" role="alert" style={errNoticeStyle}>{aiError}</div>}
       {data?.hint && <div className="console-notice" role="status" style={noticeStyle}>{data.hint}</div>}
-      {analysis && <ErrorAnalysisCard analysis={analysis} onDismiss={() => setAnalysis(undefined)} />}
+      {aiBusy && !analysis && (
+        <div className="console-notice" role="status" style={noticeStyle}>
+          <span className="ic" style={{ width: 14, height: 14, flex: '0 0 auto' }}>{Ic.sparkle}</span>
+          Analyzing errors…
+        </div>
+      )}
+      {analysis && <ErrorAnalysisCard analysis={analysis} onDismiss={() => { setAnalysis(undefined); setAutoOff(true); }} />}
       {hasMatches ? (
         <div className="ci-cards">
           {data!.matches.map((m, i) => (
