@@ -1186,6 +1186,7 @@ button.ctx-chip.is-on { color: var(--accent); background: var(--accent-soft); }
 .ci-vital-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
 .ci-vital-target { font-size: 10px; color: var(--panel-muted-soft); font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; }
 .ci-vital-attrib { font-size: 10px; color: var(--panel-muted); margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; }
+.ci-card-muted { opacity: 0.55; }
 .ci-verdict-good       { border-color: rgba(16,185,129,.45); }
 .ci-verdict-good .ci-vital-verdict       { color: #047857; }
 .theme-graphite .ci-verdict-good .ci-vital-verdict { color: #6EE7B7; }
