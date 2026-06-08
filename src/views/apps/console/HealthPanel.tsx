@@ -16,7 +16,16 @@ import {
   type MasterFinding,
 } from '../../../console/fixPrompt';
 import { composeHealth, type HealthReport, type HealthCategory } from '../../../console/healthScore';
-import { runTool, copyToClipboard, errNoticeStyle, type OnHandoff } from './shared';
+import { buildHealthReportHtml } from '../../../console/healthReport';
+import {
+  runTool,
+  copyToClipboard,
+  errNoticeStyle,
+  downloadText,
+  recordScoreDelta,
+  formatDelta,
+  type OnHandoff,
+} from './shared';
 
 export function HealthPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
   const [health, setHealth] = useState<HealthReport | undefined>();
@@ -24,6 +33,7 @@ export function HealthPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [copied, setCopied] = useState(false);
+  const [delta, setDelta] = useState<number | undefined>();
 
   const run = useCallback(async (force = false) => {
     setBusy(true);
@@ -67,6 +77,8 @@ export function HealthPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
         title,
         techStack: tech.ok ? tech.data.matches.map((m) => m.name) : undefined,
       });
+      // Verify loop: score delta vs the last audit of this page (this session).
+      setDelta(recordScoreDelta('health', url ?? 'unknown', h.score));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -94,6 +106,12 @@ export function HealthPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
     if (await copyToClipboard(md)) flash();
   };
 
+  const downloadReport = () => {
+    if (!health) return;
+    const html = buildHealthReportHtml(health, { ...context, generatedAt: new Date().toLocaleString() });
+    downloadText('site-health-report.html', html, 'text/html;charset=utf-8');
+  };
+
   const sendToBuddy = () => {
     if (!health || !onHandoff) return;
     const lines: string[] = [];
@@ -117,6 +135,17 @@ export function HealthPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
         <button type="button" className="btn btn-sm btn-primary" onClick={() => run(true)} disabled={busy}>
           {busy ? 'Auditing…' : 'Re-audit all'}
         </button>
+        {health && (
+          <button
+            type="button"
+            className="btn btn-sm"
+            data-testid="ci-health-report"
+            title="Download a shareable, self-contained HTML report of this audit."
+            onClick={downloadReport}
+          >
+            Download report
+          </button>
+        )}
         {health && health.totalFindings > 0 && (
           <>
             <button
@@ -159,6 +188,9 @@ export function HealthPanel({ onHandoff }: { onHandoff?: OnHandoff } = {}) {
                     ? 'Needs improvement — focus on `high` and `critical` first.'
                     : 'Poor — multiple categories are below acceptable.'}
               </div>
+              {typeof delta === 'number' && (
+                <div className="ci-health-delta" data-testid="ci-health-delta">{formatDelta(delta)} since last audit</div>
+              )}
             </div>
           </div>
           <div className="ci-health-categories">
