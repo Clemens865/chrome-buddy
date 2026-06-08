@@ -47,6 +47,7 @@ import {
   executeDetectTechStack,
   executeAnalyzeA11y,
   executeAnalyzeSeo,
+  executeAnalyzeAeo,
 } from './inspector';
 import {
   executeSearchLibrary,
@@ -352,6 +353,7 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
   detect_tech_stack: () => executeDetectTechStack(),
   analyze_a11y: () => executeAnalyzeA11y(),
   analyze_seo: () => executeAnalyzeSeo(),
+  analyze_aeo: () => executeAnalyzeAeo(),
   // Library RAG (local IDB index, Gemini embeddings).
   search_library: (a, k) => executeSearchLibrary(a, k),
   // Marketplace discovery (public catalog fetch + filter).
@@ -391,6 +393,7 @@ const VOICE_TOOL_NAMES: ReadonlySet<string> = new Set([
   'detect_tech_stack',
   'analyze_a11y',
   'analyze_seo',
+  'analyze_aeo',
   'analyze_errors',
   'read_network',
   'read_storage',

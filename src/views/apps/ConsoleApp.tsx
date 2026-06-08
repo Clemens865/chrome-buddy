@@ -19,6 +19,7 @@ import {
   TechStackPanel,
   A11yPanel,
   SeoPanel,
+  AeoPanel,
   HealthPanel,
   type OnHandoff,
 } from './consolePanels';
@@ -35,7 +36,8 @@ type Mode =
   | 'sensitive'
   | 'tech'
   | 'a11y'
-  | 'seo';
+  | 'seo'
+  | 'aeo';
 const TABS: Filter[] = ['all', 'error', 'warn', 'log', 'net'];
 const MODES: { id: Mode; label: string }[] = [
   { id: 'health', label: 'Health' },
@@ -49,6 +51,7 @@ const MODES: { id: Mode; label: string }[] = [
   { id: 'tech', label: 'Stack' },
   { id: 'a11y', label: 'A11y' },
   { id: 'seo', label: 'SEO' },
+  { id: 'aeo', label: 'AEO' },
 ];
 
 export function ConsoleApp({
@@ -165,6 +168,7 @@ export function ConsoleApp({
       {mode === 'tech' && <TechStackPanel />}
       {mode === 'a11y' && <A11yPanel onHandoff={onHandoff} />}
       {mode === 'seo' && <SeoPanel onHandoff={onHandoff} />}
+      {mode === 'aeo' && <AeoPanel onHandoff={onHandoff} />}
       {mode === 'health' && <HealthPanel onHandoff={onHandoff} />}
 
       {mode === 'console' && (

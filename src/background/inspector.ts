@@ -12,6 +12,7 @@ import { scanSensitive } from '../console/sensitivePatterns';
 import { detectTech } from '../console/techStack';
 import { analyzeA11y } from '../console/a11y';
 import { analyzeSeo } from '../console/seo';
+import { analyzeAeo, parseBlockedAiCrawlers } from '../console/aeo';
 import { summarizeStorage } from '../console/storageSummary';
 import { consoleController } from '../console';
 import { resolveActiveTabId } from './pageTools';
@@ -489,6 +490,162 @@ export async function executeAnalyzeSeo(): Promise<ToolResult> {
     if (!probe) return err('runtime-error', 'Could not inspect the active page.');
     const report = analyzeSeo(probe);
     return ok({ url: probe.url, h1Text: probe.h1Text, ...report });
+  } catch (e) {
+    return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
+// ---- analyze_aeo (Answer Engine Optimization) -----------------------------
+
+async function probeAeo(tabId: number) {
+  const res = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    func: () => {
+      const metaContent = (sel: string): string | undefined =>
+        document.querySelector(sel)?.getAttribute('content') ?? undefined;
+      const title = document.title || undefined;
+      const metaDescription = metaContent('meta[name="description" i]');
+      const htmlLang = document.documentElement.getAttribute('lang') || undefined;
+
+      const headingEls = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+      const headings = headingEls
+        .map((h) => (h.textContent || '').trim())
+        .filter(Boolean)
+        .slice(0, 20);
+      const h1Count = document.querySelectorAll('h1').length;
+      const headingCount = headingEls.length;
+      const questionHeadings = headings.filter((t) => t.endsWith('?')).length;
+
+      const paragraphs = Array.from(document.querySelectorAll('p'))
+        .map((p) => (p.textContent || '').trim())
+        .filter(Boolean);
+      const paragraphCount = paragraphs.length;
+      const totalParaChars = paragraphs.reduce((n, p) => n + p.length, 0);
+      const avgParagraphChars = paragraphCount ? Math.round(totalParaChars / paragraphCount) : 0;
+      const bodyText = (document.body?.innerText || '').trim();
+      const wordCount = bodyText ? bodyText.split(/\s+/).length : 0;
+      const listOrTableCount = document.querySelectorAll('ul,ol,table').length;
+
+      // Structured data: collect @type across blocks (incl. arrays + @graph).
+      const schemaTypes: string[] = [];
+      let structuredDataBlocks = 0;
+      let structuredDataValid = true;
+      const collectTypes = (node: unknown): void => {
+        if (!node || typeof node !== 'object') return;
+        const obj = node as Record<string, unknown>;
+        const t = obj['@type'];
+        if (typeof t === 'string') schemaTypes.push(t);
+        else if (Array.isArray(t)) t.forEach((x) => typeof x === 'string' && schemaTypes.push(x));
+        const graph = obj['@graph'];
+        if (Array.isArray(graph)) graph.forEach(collectTypes);
+      };
+      Array.from(document.querySelectorAll('script[type="application/ld+json" i]')).forEach((s) => {
+        structuredDataBlocks += 1;
+        try {
+          const parsed = JSON.parse((s as HTMLScriptElement).textContent ?? '');
+          if (Array.isArray(parsed)) parsed.forEach(collectTypes);
+          else collectTypes(parsed);
+        } catch {
+          structuredDataValid = false;
+        }
+      });
+      if (structuredDataBlocks === 0) structuredDataValid = true;
+
+      // Attribution signals.
+      const hasAuthor =
+        !!metaContent('meta[name="author" i]') ||
+        !!metaContent('meta[property="article:author" i]') ||
+        !!document.querySelector('[rel="author"], [itemprop="author"], .author, [class*="byline" i]') ||
+        /"author"\s*:/i.test(
+          Array.from(document.querySelectorAll('script[type="application/ld+json" i]'))
+            .map((s) => (s as HTMLScriptElement).textContent || '')
+            .join(' '),
+        );
+      const hasDate =
+        !!metaContent('meta[property="article:published_time" i]') ||
+        !!document.querySelector('time[datetime]') ||
+        /"datePublished"\s*:/i.test(
+          Array.from(document.querySelectorAll('script[type="application/ld+json" i]'))
+            .map((s) => (s as HTMLScriptElement).textContent || '')
+            .join(' '),
+        );
+
+      return {
+        url: location.href,
+        origin: location.origin,
+        title,
+        metaDescription,
+        htmlLang,
+        headings,
+        h1Count,
+        headingCount,
+        questionHeadings,
+        wordCount,
+        paragraphCount,
+        avgParagraphChars,
+        listOrTableCount,
+        schemaTypes,
+        structuredDataBlocks,
+        structuredDataValid,
+        hasAuthor,
+        hasDate,
+      };
+    },
+  });
+  return res?.[0]?.result;
+}
+
+/** Fetch a same-origin file; resolve true/false for existence, text when ok. */
+async function fetchOrigin(origin: string, path: string): Promise<{ ok: boolean; text: string }> {
+  try {
+    const r = await fetch(`${origin}${path}`, { method: 'GET', redirect: 'follow' });
+    if (!r.ok) return { ok: false, text: '' };
+    return { ok: true, text: await r.text() };
+  } catch {
+    return { ok: false, text: '' };
+  }
+}
+
+export async function executeAnalyzeAeo(): Promise<ToolResult> {
+  const tabId = await resolveActiveTabId();
+  if (typeof tabId !== 'number') return err('undriveable', 'No active web tab to inspect.');
+  try {
+    const probe = await probeAeo(tabId);
+    if (!probe) return err('runtime-error', 'Could not inspect the active page.');
+    // Origin-level signals: /llms.txt presence + AI-crawler rules in robots.txt.
+    const [llms, robots] = await Promise.all([
+      fetchOrigin(probe.origin, '/llms.txt'),
+      fetchOrigin(probe.origin, '/robots.txt'),
+    ]);
+    const signal = {
+      url: probe.url,
+      title: probe.title,
+      metaDescription: probe.metaDescription,
+      htmlLang: probe.htmlLang,
+      h1Count: probe.h1Count,
+      headingCount: probe.headingCount,
+      questionHeadings: probe.questionHeadings,
+      wordCount: probe.wordCount,
+      paragraphCount: probe.paragraphCount,
+      avgParagraphChars: probe.avgParagraphChars,
+      listOrTableCount: probe.listOrTableCount,
+      schemaTypes: probe.schemaTypes,
+      structuredDataBlocks: probe.structuredDataBlocks,
+      structuredDataValid: probe.structuredDataValid,
+      hasAuthor: probe.hasAuthor,
+      hasDate: probe.hasDate,
+      hasLlmsTxt: llms.ok,
+      blockedAiCrawlers: robots.ok ? parseBlockedAiCrawlers(robots.text) : undefined,
+    };
+    const report = analyzeAeo(signal);
+    return ok({
+      url: probe.url,
+      title: probe.title,
+      metaDescription: probe.metaDescription,
+      headings: probe.headings,
+      ...report,
+    });
   } catch (e) {
     return err('runtime-error', e instanceof Error ? e.message : String(e));
   }

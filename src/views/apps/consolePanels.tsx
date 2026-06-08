@@ -13,6 +13,7 @@ export { SensitivePanel } from './console/SensitivePanel';
 export { TechStackPanel } from './console/TechStackPanel';
 export { A11yPanel } from './console/A11yPanel';
 export { SeoPanel } from './console/SeoPanel';
+export { AeoPanel } from './console/AeoPanel';
 export { HealthPanel } from './console/HealthPanel';
 export {
   runTool,
