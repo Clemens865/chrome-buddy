@@ -12,6 +12,7 @@ import { generateViaBackground } from '../../llm/instance';
 import { useResolvedModelId } from '../../llm/modelPref';
 import { appDataKey, applyStorageOp, type StorageArgs } from '../../apps/appStorage';
 import { buildDownloadBlob, safeDownloadName } from '../../apps/download';
+import { traceToSvg } from '../../apps/trace';
 import { appBaseCss, readThemeTokens } from '../../apps/appTheme';
 
 type BridgeOutcome = { ok: boolean; result?: unknown; error?: string };
@@ -30,6 +31,7 @@ const CAP_LABELS: Record<string, string> = {
   gemini: 'AI text',
   image: 'AI images',
   tts: 'AI text-to-speech',
+  trace: 'vector tracing',
   download: 'file downloads',
   storage: 'saved data',
   page: 'reads this page',
@@ -92,6 +94,14 @@ export function SandboxAppFrame({
           })) as { type?: string; ok?: boolean; dataUrl?: string; error?: string } | undefined;
           if (r?.type === 'IMAGE_GENERATE' && r.ok && r.dataUrl) return { ok: true, result: r.dataUrl };
           return { ok: false, error: r?.error ?? 'Image generation failed.' };
+        }
+        if (op === 'trace') {
+          // Vector-trace a raster (e.g. bridge.image output) into a clean SVG.
+          const a = (args ?? {}) as { image?: string } | string;
+          const dataUrl = typeof a === 'string' ? a : String(a.image ?? '');
+          if (!dataUrl) return { ok: false, error: 'trace requires an image data URL.' };
+          const svg = await traceToSvg(dataUrl);
+          return { ok: true, result: svg };
         }
         if (op === 'tts') {
           // Text-to-speech via the native Gemini TTS model. Returns a

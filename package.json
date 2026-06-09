@@ -82,6 +82,7 @@
   "dependencies": {
     "axe-core": "^4.12.0",
     "idb": "^8.0.3",
+    "imagetracerjs": "^1.2.6",
     "pdfjs-dist": "^6.0.227",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

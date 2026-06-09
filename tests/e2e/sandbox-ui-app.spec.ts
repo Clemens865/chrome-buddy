@@ -9,51 +9,60 @@ import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 
 const SHOTS = path.join(process.cwd(), 'screenshots');
-const FAKE_SVG = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/></svg>';
 // 1x1 transparent PNG.
 const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
-test('SVG generator renders its own UI in the sandbox and runs via the bridge', async ({ context, extensionId }) => {
+test('SVG generator runs the image→trace pipeline and renders a traced SVG', async ({ context, extensionId }) => {
   const panel = await context.newPage();
   await panel.setViewportSize({ width: 440, height: 980 });
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
 
-  // Stub the SW LLM_GENERATE so bridge.gemini() returns a known SVG.
-  await panel.evaluate((svg) => {
+  // A real black-circle-on-white PNG so the host-side tracer (bridge.trace runs
+  // the actual ImageTracer) has a shape to vectorize. bridge.image is stubbed.
+  const png = await panel.evaluate(() => {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const x = c.getContext('2d')!;
+    x.fillStyle = '#fff'; x.fillRect(0, 0, 64, 64);
+    x.fillStyle = '#000'; x.beginPath(); x.arc(32, 32, 22, 0, Math.PI * 2); x.fill();
+    return c.toDataURL('image/png');
+  });
+
+  await panel.evaluate((dataUrl) => {
     const real = chrome.runtime.sendMessage.bind(chrome.runtime);
     // @ts-expect-error stub onto typed handle
     chrome.runtime.sendMessage = async (msg: { type?: string }, ...rest: unknown[]) => {
-      if (msg && msg.type === 'LLM_GENERATE') {
-        return { type: 'LLM_GENERATE', ok: true, result: { text: `here you go: ${svg}`, toolCalls: [], finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, model: 'mock', cost: { totalCost: 0 } } };
+      if (msg && msg.type === 'IMAGE_GENERATE') {
+        return { type: 'IMAGE_GENERATE', ok: true, dataUrl };
       }
       return real(msg as Parameters<typeof real>[0], ...(rest as []));
     };
-  }, FAKE_SVG);
+  }, png);
 
   await panel.getByRole('button', { name: 'Apps', exact: true }).click();
   await panel.getByText('SVG Icon Generator', { exact: true }).first().click();
 
-  // Host chrome is present (sandboxed badge) and the app frame mounted.
   await expect(panel.getByText(/Sandboxed app/)).toBeVisible({ timeout: 5_000 });
   const frame = panel.frameLocator('iframe.sandbox-app-frame');
-  await expect(frame.locator('#desc')).toBeVisible({ timeout: 5_000 });
+  await expect(frame.locator('#name')).toBeVisible({ timeout: 5_000 });
+  // The full grouped style set is available (far more than the old 4).
+  await expect(frame.locator('#style option')).toHaveCount(66);
 
-  // Drive the app's OWN UI inside the sandbox iframe.
-  await frame.locator('#desc').fill('a rocket launching');
-  await frame.locator('#count').selectOption('1');
+  // Drive the app's UI: name → generate → image(stub) → trace(real) → SVG card.
+  await frame.locator('#name').fill('rocket');
   await frame.locator('#go').click();
+  await expect(frame.locator('.gallery .card svg')).toHaveCount(1, { timeout: 15_000 });
+  // The traced SVG carries a real path (proof the vector tracer ran).
+  await expect(frame.locator('.gallery .card svg path').first()).toBeAttached();
 
-  // The app rendered the bridge-returned SVG into its gallery.
-  await expect(frame.locator('.gallery .card svg')).toHaveCount(1, { timeout: 10_000 });
-  await expect(frame.locator('.gallery .card .dl')).toBeVisible();
+  await panel.screenshot({ path: path.join(SHOTS, '296-sandbox-svg-app.png') });
 
-  // Download is wired through the host bridge (anchor click → download event).
+  // Download the traced SVG via the host bridge.
   const [dl] = await Promise.all([
     panel.waitForEvent('download'),
-    frame.locator('.gallery .card .dl').click(),
+    frame.locator('.gallery .card .card-acts button', { hasText: 'SVG' }).click(),
   ]);
-  expect(dl.suggestedFilename()).toMatch(/icon-1\.svg/);
-  await panel.screenshot({ path: path.join(SHOTS, '296-sandbox-svg-app.png') });
+  expect(dl.suggestedFilename()).toMatch(/rocket\.svg/);
 });
 
 test('a capability the app did not declare is denied by the bridge broker', async ({ context, extensionId }) => {

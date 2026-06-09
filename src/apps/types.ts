@@ -46,4 +46,4 @@ export const APP_SCHEMA_VERSION = 2;
 // "consequential" (no external side effects beyond the user's own LLM quota or a
 // user-initiated download) — consequential tools require the args-visible HITL
 // gate and are intentionally NOT exposed to generated/imported apps yet.
-export const KNOWN_APP_CAPS = ['gemini', 'image', 'tts', 'download', 'storage', 'page'] as const;
+export const KNOWN_APP_CAPS = ['gemini', 'image', 'tts', 'trace', 'download', 'storage', 'page'] as const;
