@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { AppHeader, appById } from '../AppsView';
 import { Ic } from '../../ui/icons';
 import {
-  analyzeLogs,
   consoleController,
   countByLevel,
-  type AnalysisResult,
   type LogEntry,
   type LogLevel,
 } from '../../console';
+import { matchErrors } from '../../console/errorPatterns';
+import { analyzeErrorsAI, type ErrorAnalysis } from '../../console/errorAnalysis';
+import { useResolvedModelId } from '../../llm/modelPref';
+import { ErrorAnalysisCard } from './console/ErrorAnalysisCard';
 import {
   ErrorsPanel,
   NetworkPanel,
@@ -56,6 +58,11 @@ const MODES: { id: Mode; label: string }[] = [
   { id: 'aeo', label: 'AEO' },
 ];
 
+/** A signature of the captured error/warning set — changes only when the errors
+ *  (or counts) change, so auto-analysis re-runs on real changes, not polls. */
+const errSig = (errs: ReadonlyArray<LogEntry>): string =>
+  errs.map((e) => `${e.level}:${e.text.slice(0, 60)}:${e.count}`).join('|');
+
 export function ConsoleApp({
   onBack,
   onHandoff,
@@ -71,10 +78,16 @@ export function ConsoleApp({
   const [capturing, setCapturing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | undefined>();
-  const [analysis, setAnalysis] = useState<AnalysisResult | undefined>();
+  const [artifact, setArtifact] = useState<ErrorAnalysis | undefined>();
   const [analyzing, setAnalyzing] = useState(false);
+  const [aiError, setAiError] = useState<string | undefined>();
+  const [analyzedSig, setAnalyzedSig] = useState<string | undefined>();
+  const [autoOff, setAutoOff] = useState(false);
+  const autoTimer = useRef<number | undefined>(undefined);
+  const scheduledSig = useRef<string | undefined>(undefined);
   const [search, setSearch] = useState('');
   const [showChat, setShowChat] = useState(false);
+  const modelId = useResolvedModelId();
 
   // While capturing, poll the controller snapshot so the live list updates.
   useEffect(() => {
@@ -117,20 +130,50 @@ export function ConsoleApp({
   const clear = useCallback(() => {
     controllerRef.current?.clear();
     setLogs([]);
-    setAnalysis(undefined);
+    setArtifact(undefined);
+    setAnalyzedSig(undefined);
+    setAutoOff(false);
+    scheduledSig.current = undefined;
   }, []);
 
+  // Build the SAME rich artifact the Errors tab shows, from the live stream:
+  // pattern-match the logs for a head-start + pass the raw error/warning lines
+  // to the model. Works even on errors no pattern recognizes (the model reads
+  // the raw lines), e.g. a 403 from a third-party embed.
   const analyze = useCallback(async () => {
+    const snap = logs;
+    const errs = snap.filter((l) => l.level === 'error' || l.level === 'warn');
+    if (errs.length === 0) return;
+    const sig = errSig(errs);
     setAnalyzing(true);
-    setError(undefined);
+    setAiError(undefined);
     try {
-      setAnalysis(await analyzeLogs(controllerRef.current?.snapshot() ?? []));
+      const matches = matchErrors(snap.map((l) => l.text));
+      const result = await analyzeErrorsAI({ matches, logs: snap }, modelId);
+      setArtifact(result);
+      setAnalyzedSig(sig);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Analysis failed.');
+      setAiError(e instanceof Error ? e.message : 'Analysis failed. Try again.');
+      setAutoOff(true); // stop auto-retrying (e.g. no API key); the button re-enables
     } finally {
       setAnalyzing(false);
     }
-  }, []);
+  }, [logs, modelId]);
+
+  // Auto-generate the artifact the moment a (new) error-set is captured, so it
+  // appears right away rather than behind a click. The timer is armed ONCE per
+  // distinct error-set (via scheduledSig) so the 600ms snapshot poll can't keep
+  // resetting the debounce — it just won't re-arm for an unchanged error-set.
+  useEffect(() => {
+    if (autoOff || analyzing || !capturing) return;
+    const errs = logs.filter((l) => l.level === 'error' || l.level === 'warn');
+    if (errs.length === 0) return;
+    const sig = errSig(errs);
+    if (sig === analyzedSig || sig === scheduledSig.current) return;
+    scheduledSig.current = sig;
+    window.clearTimeout(autoTimer.current);
+    autoTimer.current = window.setTimeout(() => { scheduledSig.current = undefined; void analyze(); }, 700);
+  }, [logs, analyzedSig, autoOff, analyzing, capturing, analyze]);
 
   const counts = useMemo(() => countByLevel(logs), [logs]);
   const shown = useMemo(() => {
@@ -271,29 +314,34 @@ export function ConsoleApp({
         )}
       </div>
 
-      {(hasLogs || analysis) && (
+      {(hasLogs || artifact) && (
         <div className="console-ai">
-          <div className="console-ai-hd">
-            <span className="ic" style={{ width: 14, height: 14 }}>{Ic.sparkle}</span>
-            Buddy analysis
-          </div>
-          {analysis ? (
-            <div className="console-ai-body">{analysis.explanation}</div>
-          ) : (
-            <div className="console-ai-body">
-              {counts.error > 0
-                ? `${counts.error} error(s) captured. Ask Buddy to explain the most frequent one.`
-                : 'No errors yet — capture some activity, then let Buddy review it.'}
+          {/* The full AI Error Analysis artifact — auto-generated from the live
+              stream (same card as the Errors tab), not a one-line summary. */}
+          {analyzing && !artifact && (
+            <div className="console-ai-hd">
+              <span className="ic" style={{ width: 14, height: 14 }}>{Ic.sparkle}</span>
+              Analyzing errors…
             </div>
           )}
+          {artifact && <ErrorAnalysisCard analysis={artifact} onDismiss={() => { setArtifact(undefined); setAutoOff(true); }} />}
+          {!artifact && !analyzing && (
+            <div className="console-ai-body" data-testid="ci-console-ai-hint">
+              {counts.error > 0
+                ? `${counts.error} error(s) captured — generating the analysis…`
+                : 'No errors yet — capture some activity and Buddy will analyze it here.'}
+            </div>
+          )}
+          {aiError && <div className="ci-cchat-err">{aiError}</div>}
           <div className="console-ai-actions">
             <button
               type="button"
               className="btn btn-sm btn-primary"
-              onClick={analyze}
-              disabled={analyzing || !hasLogs}
+              onClick={() => { setAutoOff(false); void analyze(); }}
+              disabled={analyzing || counts.error + counts.warn === 0}
+              data-testid="ci-console-analyze"
             >
-              {analyzing ? 'Analyzing…' : 'Analyze with Buddy'}
+              {analyzing ? 'Analyzing…' : artifact ? '✨ Re-analyze' : '✨ Analyze errors'}
             </button>
             <button
               type="button"

@@ -19,9 +19,14 @@ test('Console Monitor: capture → search, export, chat-with-console', async ({ 
   await panel.evaluate(() => {
     const real = chrome.runtime.sendMessage.bind(chrome.runtime);
     // @ts-expect-error stub
-    chrome.runtime.sendMessage = async (msg: { type?: string }, ...rest: unknown[]) => {
+    chrome.runtime.sendMessage = async (msg: { type?: string; messages?: unknown }, ...rest: unknown[]) => {
       if (msg?.type === 'LLM_GENERATE') {
-        return { type: 'LLM_GENERATE', ok: true, result: { text: 'The error is a null dereference in app.js — guard the value before use.', toolCalls: [], finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, model: 'mock', cost: { totalCost: 0 } } };
+        // The artifact asks for JSON; the chat asks for prose — branch on the prompt.
+        const isAnalysis = JSON.stringify(msg.messages ?? '').includes('Respond with EXACTLY this JSON');
+        const text = isAnalysis
+          ? JSON.stringify({ summary: 'A null dereference from ZX_MONITOR_MARKER in app.js.', rootCause: 'A value is undefined when read.', suggestedFixes: ['Guard with optional chaining (?.)'], suggestedCode: '', filesToCheck: ['app.js'], searchTerms: ['cannot read properties of undefined'], aiPrompt: 'Fix the null dereference in app.js.' })
+          : 'The error is a null dereference in app.js — guard the value before use.';
+        return { type: 'LLM_GENERATE', ok: true, result: { text, toolCalls: [], finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, model: 'mock', cost: { totalCost: 0 } } };
       }
       return real(msg as Parameters<typeof real>[0], ...(rest as []));
     };
@@ -46,6 +51,13 @@ test('Console Monitor: capture → search, export, chat-with-console', async ({ 
   // The captured error streams into the list.
   const list = panel.locator('.console-list');
   await expect(list.getByText(/ZX_MONITOR_MARKER/).first()).toBeVisible({ timeout: 8_000 });
+
+  // The full AI Error Analysis artifact AUTO-generates from the live stream
+  // (the same rich card as the Errors tab) — no click needed.
+  const card = panel.getByTestId('ci-errors-ai-analysis');
+  await expect(card).toBeVisible({ timeout: 10_000 });
+  await expect(card.getByText(/null dereference from ZX_MONITOR_MARKER/)).toBeVisible();
+  await expect(card.getByText('Root Cause')).toBeVisible();
 
   // Search narrows the stream; a non-match hides it.
   await panel.getByTestId('ci-console-search').fill('ZX_MONITOR_MARKER');
