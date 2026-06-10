@@ -266,6 +266,23 @@ export interface McpTestMessage {
   oneShotKey?: string;
 }
 
+/** MCP OAuth — begin the authorize flow: SW runs discovery + dynamic client
+ *  registration, parks the PKCE verifier/state, and returns an authorize URL
+ *  the PANEL opens via chrome.identity.launchWebAuthFlow (the SW can't). */
+export interface McpOAuthBeginMessage {
+  type: 'MCP_OAUTH_BEGIN';
+  serverId: string;
+}
+
+/** MCP OAuth — complete the flow: the panel hands back the redirect URL from
+ *  launchWebAuthFlow; the SW exchanges the code for tokens, stores them in the
+ *  vault, persists the non-secret config, and populates the tool list. */
+export interface McpOAuthCompleteMessage {
+  type: 'MCP_OAUTH_COMPLETE';
+  serverId: string;
+  redirectUrl: string;
+}
+
 /** Discriminated union of every message the background SW understands. */
 export type BuddyMessage =
   | KeySetMessage
@@ -298,7 +315,9 @@ export type BuddyMessage =
   | LibraryCollectionSaveMessage
   | LibraryCollectionDeleteMessage
   | LibraryCapturePageMessage
-  | McpTestMessage;
+  | McpTestMessage
+  | McpOAuthBeginMessage
+  | McpOAuthCompleteMessage;
 
 // ---- Responses --------------------------------------------------------------
 
@@ -546,6 +565,14 @@ export type McpTestResponse =
     }
   | { type: 'MCP_TEST'; ok: false; error: string };
 
+export type McpOAuthBeginResponse =
+  | { type: 'MCP_OAUTH_BEGIN'; ok: true; authorizeUrl: string; redirectUri: string }
+  | { type: 'MCP_OAUTH_BEGIN'; ok: false; error: string };
+
+export type McpOAuthCompleteResponse =
+  | { type: 'MCP_OAUTH_COMPLETE'; ok: true; serverName: string; toolCount: number }
+  | { type: 'MCP_OAUTH_COMPLETE'; ok: false; error: string };
+
 export type BuddyResponse =
   | KeySetResponse
   | KeyStatusResponse
@@ -578,6 +605,8 @@ export type BuddyResponse =
   | LibraryCollectionDeleteResponse
   | LibraryCapturePageResponse
   | McpTestResponse
+  | McpOAuthBeginResponse
+  | McpOAuthCompleteResponse
   | ErrorResponse;
 
 /** Type guard: is this an inbound message the SW should handle? */
@@ -615,6 +644,8 @@ export function isBuddyMessage(value: unknown): value is BuddyMessage {
     t === 'LIBRARY_COLLECTION_SAVE' ||
     t === 'LIBRARY_COLLECTION_DELETE' ||
     t === 'LIBRARY_CAPTURE_PAGE' ||
-    t === 'MCP_TEST'
+    t === 'MCP_TEST' ||
+    t === 'MCP_OAUTH_BEGIN' ||
+    t === 'MCP_OAUTH_COMPLETE'
   );
 }

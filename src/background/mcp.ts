@@ -4,10 +4,42 @@
 // only the SW reads it before attaching the Authorization header.
 
 import { McpClient } from '../mcp/client';
-import { getKey } from '../mcp/keys';
-import { getServer, listServers, recordTestResult } from '../mcp/store';
+import {
+  getKey,
+  getOAuthAccess,
+  getOAuthRefresh,
+  storeOAuthTokens,
+  setOAuthPending,
+  getOAuthPending,
+  clearOAuthPending,
+} from '../mcp/keys';
+import {
+  getServer,
+  listServers,
+  recordTestResult,
+  setOAuthRecord,
+  type McpServer,
+} from '../mcp/store';
 import { collectMcpBindings, parseNamespacedToolName, type McpToolBinding } from '../mcp/merger';
-import type { TransportAuth } from '../mcp/transport';
+import {
+  discoverOAuthConfig,
+  registerClient,
+  generatePkce,
+  randomState,
+  buildAuthorizeUrl,
+  parseRedirect,
+  exchangeCode,
+  refreshAccessToken,
+  isExpired,
+} from '../mcp/oauth';
+import { makeRequest, MCP_PROTOCOL_VERSION, MCP_CLIENT_INFO } from '../mcp/protocol';
+import { McpHttpError, type TransportAuth } from '../mcp/transport';
+import type {
+  McpOAuthBeginMessage,
+  McpOAuthBeginResponse,
+  McpOAuthCompleteMessage,
+  McpOAuthCompleteResponse,
+} from '../key/messages';
 import { ok, err, type ToolResult } from '../types';
 
 export interface McpTestRequestMessage {
@@ -43,16 +75,15 @@ export async function executeMcpTest(msg: McpTestRequestMessage): Promise<McpTes
   const srv = await getServer(msg.serverId);
   if (!srv) return { type: 'MCP_TEST', ok: false, error: `Server ${msg.serverId} not found.` };
 
-  // Resolve auth: explicit one-shot key overrides the stored one.
-  let auth: TransportAuth = { kind: 'none' };
-  if (srv.authKind === 'bearer') {
-    const token = msg.oneShotKey ?? (await getKey(srv.id));
-    if (!token) {
-      const err = 'Bearer auth selected but no key is set. Paste a key in Settings.';
-      await recordTestResult(srv.id, 'error', err);
-      return { type: 'MCP_TEST', ok: false, error: err };
-    }
-    auth = { kind: 'bearer', token };
+  // Resolve auth: explicit one-shot key overrides the stored one; 'oauth'
+  // resolves (and refreshes if needed) the access token from the vault.
+  let auth: TransportAuth;
+  try {
+    auth = await resolveAuth(srv, msg.oneShotKey);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    await recordTestResult(srv.id, 'error', message);
+    return { type: 'MCP_TEST', ok: false, error: message };
   }
 
   const client = new McpClient({ endpoint: srv.url, auth });
@@ -110,13 +141,7 @@ async function getOrOpenSession(serverId: string): Promise<McpClient> {
   const srv = await getServer(serverId);
   if (!srv) throw new Error(`MCP server ${serverId} no longer exists.`);
 
-  let auth: TransportAuth = { kind: 'none' };
-  if (srv.authKind === 'bearer') {
-    const token = await getKey(srv.id);
-    if (!token) throw new Error(`No key set for MCP server "${srv.name}".`);
-    auth = { kind: 'bearer', token };
-  }
-
+  const auth = await resolveAuth(srv);
   const client = new McpClient({ endpoint: srv.url, auth });
   await client.connect();
   sessionPool.set(serverId, client);
@@ -162,7 +187,8 @@ export async function executeMcpToolCall(
     );
   }
 
-  try {
+  // Shape one successful call into the standard ToolResult.
+  const callOnce = async (): Promise<ToolResult> => {
     const client = await getOrOpenSession(serverId);
     const result = await client.callTool(toolName, args);
     // The MCP spec distinguishes "the call succeeded but the tool reported a
@@ -180,20 +206,221 @@ export async function executeMcpToolCall(
       },
       { provenance: [`mcp://${match.serverName}/${toolName}`] },
     );
+  };
+
+  try {
+    return await callOnce();
   } catch (e) {
-    // Drop the pooled client on any error — if the WebSocket dropped or the
-    // session id is no longer recognised by the server, leaving it in the
-    // pool means every subsequent call to this server fails the same way
-    // until the SW restarts. Best-effort close, then evict.
-    const pooled = sessionPool.get(serverId);
-    if (pooled) {
-      sessionPool.delete(serverId);
-      void pooled.close().catch(() => {
-        /* pool eviction is best-effort */
-      });
+    // Drop the pooled client on any error — if the session id is no longer
+    // recognised by the server, leaving it pooled means every subsequent call
+    // fails the same way until the SW restarts. Best-effort close, then evict.
+    evictSession(serverId);
+
+    // OAuth refresh-on-401: a token we thought valid was rejected (clock skew,
+    // server-side revocation, or an opaque no-expiry token). Refresh once from
+    // the stored refresh token and retry the call exactly once.
+    if (e instanceof McpHttpError && e.status === 401) {
+      const srv = await getServer(serverId);
+      if (srv?.authKind === 'oauth') {
+        try {
+          await refreshOAuthNow(srv);
+          return await callOnce();
+        } catch (e2) {
+          evictSession(serverId);
+          return err('runtime-error', e2 instanceof Error ? e2.message : String(e2));
+        }
+      }
     }
-    const message = e instanceof Error ? e.message : String(e);
-    return err('runtime-error', message);
+    return err('runtime-error', e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Best-effort close + remove a pooled session. */
+function evictSession(serverId: string): void {
+  const pooled = sessionPool.get(serverId);
+  if (pooled) {
+    sessionPool.delete(serverId);
+    void pooled.close().catch(() => {
+      /* pool eviction is best-effort */
+    });
+  }
+}
+
+// --- Auth resolution (bearer + oauth) -----------------------------------
+
+/** Build the TransportAuth for a server. Bearer reads the vault (or a one-shot
+ *  key during pre-save testing); OAuth resolves a valid access token, silently
+ *  refreshing via the stored refresh token when the access token has expired.
+ *  Throws a user-facing Error when credentials are missing. */
+async function resolveAuth(srv: McpServer, oneShotKey?: string): Promise<TransportAuth> {
+  if (srv.authKind === 'bearer') {
+    const token = oneShotKey ?? (await getKey(srv.id));
+    if (!token) throw new Error('Bearer auth selected but no key is set. Paste a key in Settings.');
+    return { kind: 'bearer', token };
+  }
+  if (srv.authKind === 'oauth') {
+    return { kind: 'bearer', token: await resolveOAuthBearer(srv) };
+  }
+  return { kind: 'none' };
+}
+
+/** Return a valid OAuth access token for the server, proactively refreshing if
+ *  the current one is missing or (near-)expired. Throws "needs reconnect" when
+ *  no usable refresh token remains. */
+async function resolveOAuthBearer(srv: McpServer): Promise<string> {
+  if (!srv.oauth) {
+    throw new Error(`"${srv.name}" isn't connected — use Connect with OAuth in Settings.`);
+  }
+  const access = await getOAuthAccess(srv.id);
+  if (access && !isExpired(access)) return access.accessToken;
+  return refreshOAuthNow(srv);
+}
+
+/** Force a token refresh from the stored refresh token, persist the result, and
+ *  return the new access token. Used both for proactive expiry refresh and for
+ *  the reactive refresh-on-401 retry. Throws "needs reconnect" when no refresh
+ *  token remains (e.g. the refresh token itself expired or was revoked). */
+async function refreshOAuthNow(srv: McpServer): Promise<string> {
+  if (!srv.oauth) {
+    throw new Error(`"${srv.name}" isn't connected — use Connect with OAuth in Settings.`);
+  }
+  const refresh = await getOAuthRefresh(srv.id);
+  if (!refresh) {
+    throw new Error(`"${srv.name}" needs reconnect — no valid OAuth token. Reconnect in Settings.`);
+  }
+  const next = await refreshAccessToken(srv.oauth.tokenEndpoint, {
+    refreshToken: refresh,
+    clientId: srv.oauth.clientId,
+    resource: srv.oauth.resource,
+    scopes: srv.oauth.scopes,
+  });
+  await storeOAuthTokens(srv.id, next);
+  return next.accessToken;
+}
+
+// --- OAuth authorize flow (BEGIN / COMPLETE) ----------------------------
+
+/** Best-effort probe for the RFC 9728 `WWW-Authenticate` challenge: an
+ *  unauthenticated initialize POST; an OAuth-protected server answers 401 with
+ *  a `resource_metadata` pointer. Returns the header (or null) — discovery falls
+ *  back to the well-known path derivation when it's absent. */
+async function probeWwwAuthenticate(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify(
+        makeRequest('initialize', {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: MCP_CLIENT_INFO,
+        }),
+      ),
+    });
+    return res.headers.get('www-authenticate');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * MCP_OAUTH_BEGIN — run discovery + dynamic client registration, mint a PKCE
+ * pair + state, park them in storage.session, and return the authorize URL the
+ * PANEL opens via chrome.identity.launchWebAuthFlow (the SW has no window).
+ */
+export async function executeMcpOAuthBegin(
+  msg: McpOAuthBeginMessage,
+): Promise<McpOAuthBeginResponse> {
+  try {
+    const srv = await getServer(msg.serverId);
+    if (!srv) return { type: 'MCP_OAUTH_BEGIN', ok: false, error: `Server ${msg.serverId} not found.` };
+
+    const redirectUri = chrome.identity.getRedirectURL();
+    const wwwAuthenticate = await probeWwwAuthenticate(srv.url);
+    const config = await discoverOAuthConfig(srv.url, { wwwAuthenticate });
+
+    // Reuse an existing public client id when we already registered one;
+    // otherwise dynamically register (RFC 7591). A server without a
+    // registration endpoint and without a pre-set clientId can't proceed.
+    let clientId = srv.oauth?.clientId;
+    if (!clientId) {
+      if (!config.registrationEndpoint) {
+        return {
+          type: 'MCP_OAUTH_BEGIN',
+          ok: false,
+          error:
+            'This server needs a pre-registered OAuth client but offers no dynamic registration endpoint.',
+        };
+      }
+      const client = await registerClient(config.registrationEndpoint, {
+        redirectUri,
+        scopes: config.scopes,
+      });
+      clientId = client.clientId;
+    }
+
+    const pkce = await generatePkce();
+    const state = randomState();
+    await setOAuthPending(msg.serverId, { verifier: pkce.verifier, state, clientId, redirectUri, config });
+
+    const authorizeUrl = buildAuthorizeUrl({
+      authorizationEndpoint: config.authorizationEndpoint,
+      clientId,
+      redirectUri,
+      codeChallenge: pkce.challenge,
+      state,
+      resource: config.resource,
+      scopes: config.scopes,
+    });
+    return { type: 'MCP_OAUTH_BEGIN', ok: true, authorizeUrl, redirectUri };
+  } catch (e) {
+    return { type: 'MCP_OAUTH_BEGIN', ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * MCP_OAUTH_COMPLETE — the panel returns the redirect URL from
+ * launchWebAuthFlow. Verify state, exchange the code for tokens, store them in
+ * the vault, persist the non-secret config on the server row, and populate the
+ * tool list via a normal Test round-trip.
+ */
+export async function executeMcpOAuthComplete(
+  msg: McpOAuthCompleteMessage,
+): Promise<McpOAuthCompleteResponse> {
+  try {
+    const pending = await getOAuthPending(msg.serverId);
+    if (!pending) {
+      return { type: 'MCP_OAUTH_COMPLETE', ok: false, error: 'No pending OAuth flow — start Connect again.' };
+    }
+    const { code } = parseRedirect(msg.redirectUrl, pending.state);
+    const tokens = await exchangeCode(pending.config.tokenEndpoint, {
+      code,
+      codeVerifier: pending.verifier,
+      clientId: pending.clientId,
+      redirectUri: pending.redirectUri,
+      resource: pending.config.resource,
+    });
+    await storeOAuthTokens(msg.serverId, tokens);
+    await setOAuthRecord(msg.serverId, {
+      resource: pending.config.resource,
+      issuer: pending.config.issuer,
+      authorizationEndpoint: pending.config.authorizationEndpoint,
+      tokenEndpoint: pending.config.tokenEndpoint,
+      registrationEndpoint: pending.config.registrationEndpoint,
+      clientId: pending.clientId,
+      scopes: pending.config.scopes,
+      connectedAt: Date.now(),
+    });
+    await clearOAuthPending(msg.serverId);
+
+    // Populate the tool catalog now that we can authenticate.
+    const test = await executeMcpTest({ type: 'MCP_TEST', serverId: msg.serverId });
+    if (!test.ok) {
+      return { type: 'MCP_OAUTH_COMPLETE', ok: false, error: `Connected, but tool discovery failed: ${test.error}` };
+    }
+    return { type: 'MCP_OAUTH_COMPLETE', ok: true, serverName: test.serverName, toolCount: test.toolCount };
+  } catch (e) {
+    return { type: 'MCP_OAUTH_COMPLETE', ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 

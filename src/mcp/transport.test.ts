@@ -3,6 +3,7 @@
 // header attachment. No real network.
 import { describe, it, expect } from 'vitest';
 import { McpClient } from './client';
+import { McpHttpError } from './transport';
 import { _resetIdCounter } from './protocol';
 
 function jsonResponse(body: unknown, init: { headers?: Record<string, string>; status?: number } = {}): Response {
@@ -121,6 +122,23 @@ describe('MCP transport — plain JSON path', () => {
       fetchImpl: stubFetch,
     });
     await expect(c.connect()).rejects.toThrow(/HTTP 401/);
+  });
+
+  it('throws a typed McpHttpError carrying the status (so 401 can trigger refresh)', async () => {
+    _resetIdCounter();
+    const stubFetch = (async () =>
+      new Response('Unauthorized', { status: 401, headers: { 'content-type': 'text/plain' } })) as unknown as typeof fetch;
+    const c = new McpClient({
+      endpoint: 'https://stub.example/mcp',
+      auth: { kind: 'bearer', token: 'expired' },
+      fetchImpl: stubFetch,
+    });
+    const err = await c.connect().then(
+      () => null,
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(McpHttpError);
+    expect((err as McpHttpError).status).toBe(401);
   });
 });
 

@@ -14,7 +14,22 @@ import type { McpTool } from './protocol';
 
 const STORE = 'mcpServers';
 
-export type AuthKind = 'none' | 'bearer';
+export type AuthKind = 'none' | 'bearer' | 'oauth';
+
+/** Non-secret OAuth config persisted on the server row after a successful
+ *  connect. The tokens themselves live in the vault (keys.ts), never here.
+ *  clientId is a PUBLIC PKCE client id (RFC 7591), safe to store. */
+export interface OAuthServerRecord {
+  resource: string;
+  issuer: string;
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  registrationEndpoint?: string;
+  clientId: string;
+  scopes?: string[];
+  /** When the user last completed the authorize flow. */
+  connectedAt?: number;
+}
 
 export interface McpServer {
   /** Stable id; the storage.session key uses `mcp_key_${id}` so the key dies
@@ -24,9 +39,12 @@ export interface McpServer {
   name: string;
   /** Streamable HTTP endpoint URL (https only — http allowed for localhost). */
   url: string;
-  /** How we authenticate to this server. Phase 1: none or bearer. Phase 3
-   *  adds 'oauth' with token storage in storage.session by the OAuth flow. */
+  /** How we authenticate to this server: 'none', static 'bearer' key, or full
+   *  'oauth' (OAuth 2.1 + PKCE; tokens in the vault, config in `oauth`). */
   authKind: AuthKind;
+  /** Non-secret OAuth config, set after a successful authorize (authKind ==
+   *  'oauth'). Absent until the user connects. */
+  oauth?: OAuthServerRecord;
   /** Optional user-supplied note. */
   note?: string;
   /** Most recently discovered tool list. Refreshed on a successful Test. */
@@ -53,7 +71,15 @@ export interface McpServer {
 
 export type NewServerInput = Omit<
   McpServer,
-  'id' | 'createdAt' | 'updatedAt' | 'tools' | 'lastTestAt' | 'lastTestStatus' | 'lastTestMessage' | 'trust'
+  | 'id'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'tools'
+  | 'lastTestAt'
+  | 'lastTestStatus'
+  | 'lastTestMessage'
+  | 'trust'
+  | 'oauth'
 > & { id?: string };
 
 function genId(): string {
@@ -69,6 +95,7 @@ export async function saveServer(input: NewServerInput): Promise<McpServer> {
     name: input.name.trim(),
     url: input.url.trim(),
     authKind: input.authKind,
+    oauth: existing?.oauth,
     note: input.note?.trim() || undefined,
     tools: existing?.tools,
     lastTestAt: existing?.lastTestAt,
@@ -100,11 +127,22 @@ export async function getServer(id: string): Promise<McpServer | null> {
 }
 
 export async function deleteServer(id: string): Promise<void> {
-  // Cascade: remove the stored key too. clearKey is idempotent.
-  const { clearKey } = await import('./keys');
+  // Cascade: remove the stored bearer key AND any OAuth tokens. Both idempotent.
+  const { clearKey, clearOAuth } = await import('./keys');
   await clearKey(id);
+  await clearOAuth(id);
   const db = await getDB();
   await db.delete(STORE, id);
+}
+
+/** Persist the non-secret OAuth config after a successful authorize. Tokens go
+ *  to the vault separately (keys.ts); this only records endpoints + clientId so
+ *  the SW can refresh later without re-running discovery. */
+export async function setOAuthRecord(id: string, oauth: OAuthServerRecord): Promise<void> {
+  const db = await getDB();
+  const existing = (await db.get(STORE, id)) as McpServer | undefined;
+  if (!existing) return;
+  await db.put(STORE, { ...existing, authKind: 'oauth', oauth, updatedAt: Date.now() });
 }
 
 /** Flip the server's enabledInAgent flag — exposes (or hides) its tools from

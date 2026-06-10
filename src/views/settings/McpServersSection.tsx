@@ -17,7 +17,11 @@ import {
   type McpServer,
 } from '../../mcp/store';
 import { setKey, clearKey } from '../../mcp/keys';
-import type { McpTestResponse } from '../../key/messages';
+import type {
+  McpTestResponse,
+  McpOAuthBeginResponse,
+  McpOAuthCompleteResponse,
+} from '../../key/messages';
 
 export function McpServersSection() {
   const [items, setItems] = useState<McpServer[]>([]);
@@ -104,6 +108,59 @@ function McpRow({ server, onChanged }: { server: McpServer; onChanged: () => Pro
     await onChanged();
   };
 
+  // OAuth connect/reconnect: SW does discovery + DCR and hands back an authorize
+  // URL; the PANEL drives launchWebAuthFlow (it needs a window the SW lacks),
+  // then returns the redirect URL for the SW to exchange for tokens. Tokens
+  // never pass through this component.
+  const oauthConnect = async () => {
+    setBusy(true);
+    setResultKind('idle');
+    setResultLine('Starting sign-in…');
+    try {
+      const begin = (await chrome.runtime.sendMessage({
+        type: 'MCP_OAUTH_BEGIN',
+        serverId: server.id,
+      })) as McpOAuthBeginResponse | undefined;
+      if (!begin || !begin.ok) {
+        setResultKind('err');
+        setResultLine(begin?.ok === false ? begin.error : 'No response from background.');
+        return;
+      }
+      const redirectUrl = await chrome.identity.launchWebAuthFlow({
+        url: begin.authorizeUrl,
+        interactive: true,
+      });
+      if (!redirectUrl) {
+        setResultKind('err');
+        setResultLine('Sign-in was cancelled.');
+        return;
+      }
+      setResultLine('Completing sign-in…');
+      const done = (await chrome.runtime.sendMessage({
+        type: 'MCP_OAUTH_COMPLETE',
+        serverId: server.id,
+        redirectUrl,
+      })) as McpOAuthCompleteResponse | undefined;
+      if (!done || !done.ok) {
+        setResultKind('err');
+        setResultLine(done?.ok === false ? done.error : 'No response from background.');
+        return;
+      }
+      setResultKind('ok');
+      setResultLine(`Connected · ${done.serverName} · ${done.toolCount} tool${done.toolCount === 1 ? '' : 's'}`);
+    } catch (e) {
+      setResultKind('err');
+      // launchWebAuthFlow rejects with "The user did not approve…" on cancel.
+      setResultLine(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+      await onChanged();
+    }
+  };
+
+  const isOAuth = server.authKind === 'oauth';
+  const isConnected = isOAuth && !!server.oauth?.connectedAt;
+
   const enabled = !!server.enabledInAgent;
   const toolEnabled = (name: string) => server.toolFilter?.[name] !== false;
   const isTrusted = (name: string) => server.trust?.[name] === 'always';
@@ -127,7 +184,14 @@ function McpRow({ server, onChanged }: { server: McpServer; onChanged: () => Pro
           </label>
         </div>
         <div className="mcp-row-meta">
-          {hostOf(server.url)} · {server.authKind === 'bearer' ? 'bearer key' : 'no auth'}
+          {hostOf(server.url)} ·{' '}
+          {server.authKind === 'bearer'
+            ? 'bearer key'
+            : server.authKind === 'oauth'
+              ? isConnected
+                ? 'oauth · connected'
+                : 'oauth · not connected'
+              : 'no auth'}
           {server.tools && server.tools.length > 0 && (
             <>
               {' · '}
@@ -192,6 +256,16 @@ function McpRow({ server, onChanged }: { server: McpServer; onChanged: () => Pro
         )}
       </div>
       <div className="mcp-row-actions">
+        {isOAuth && (
+          <button
+            className="btn-ghost"
+            onClick={oauthConnect}
+            disabled={busy}
+            data-testid={`mcp-row-connect-${server.name}`}
+          >
+            {isConnected ? 'Reconnect' : 'Connect'}
+          </button>
+        )}
         <button
           className="btn-ghost"
           onClick={test}
@@ -283,6 +357,15 @@ function AddForm({ onCancel, onSaved }: { onCancel: () => void; onSaved: () => P
           <label className="mcp-radio">
             <input
               type="radio"
+              checked={authKind === 'oauth'}
+              onChange={() => setAuthKind('oauth')}
+              data-testid="mcp-auth-oauth"
+            />
+            <span>OAuth 2.1 (sign in)</span>
+          </label>
+          <label className="mcp-radio">
+            <input
+              type="radio"
               checked={authKind === 'none'}
               onChange={() => setAuthKind('none')}
               data-testid="mcp-auth-none"
@@ -291,6 +374,14 @@ function AddForm({ onCancel, onSaved }: { onCancel: () => void; onSaved: () => P
           </label>
         </div>
       </div>
+      {authKind === 'oauth' && (
+        <div className="mcp-field-hint" data-testid="mcp-oauth-hint">
+          Save the server, then click <strong>Connect</strong> to sign in. Access
+          token stays in <code>chrome.storage.session</code>; the refresh token is
+          encrypted at rest so you stay connected across restarts without re-entering
+          anything.
+        </div>
+      )}
       {authKind === 'bearer' && (
         <label className="mcp-field">
           <span className="mcp-field-l">Bearer token</span>
