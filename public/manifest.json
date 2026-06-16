@@ -16,7 +16,8 @@
     "downloads",
     "debugger",
     "cookies",
-    "contextMenus"
+    "contextMenus",
+    "identity"
   ],
   "host_permissions": [
     "http://*/*",

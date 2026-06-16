@@ -33,6 +33,19 @@ export type TransportAuth =
   | { kind: 'bearer'; token: string }
   | { kind: 'header'; name: string; value: string };
 
+/** Thrown when the server answers a non-2xx HTTP status (distinct from a
+ *  JSON-RPC error envelope). Carries `status` so callers can react — e.g. a 401
+ *  triggers an OAuth token refresh + retry in the dispatcher. */
+export class McpHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'McpHttpError';
+  }
+}
+
 export interface TransportOptions {
   endpoint: string;
   auth?: TransportAuth;
@@ -91,7 +104,10 @@ export function openSession(opts: TransportOptions): OpenSession {
     if (!res.ok && res.status !== 200) {
       // The body may still be JSON-RPC ({error:...}) or plain text.
       const text = await res.text().catch(() => '');
-      throw new Error(`MCP transport: HTTP ${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 200)}` : ''}`);
+      throw new McpHttpError(
+        res.status,
+        `MCP transport: HTTP ${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 200)}` : ''}`,
+      );
     }
     const ct = (res.headers.get('content-type') ?? '').toLowerCase();
     if (ct.includes('text/event-stream') && res.body) {

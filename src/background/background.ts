@@ -30,7 +30,13 @@ import { retryFetch } from '../llm/retry';
 import { executePageTool, capturePageContext, resolveActiveTabId } from './pageTools';
 import { pcm16ToWav } from '../transcribe/wav';
 import { executeWebhook, executeListWebhooks } from './webhook';
-import { executeMcpTest, executeMcpToolCall, type McpTestRequestMessage } from './mcp';
+import {
+  executeMcpTest,
+  executeMcpToolCall,
+  executeMcpOAuthBegin,
+  executeMcpOAuthComplete,
+  type McpTestRequestMessage,
+} from './mcp';
 import { executeWebSearch } from './search';
 import { executeFetchUrl } from './urlContext';
 import { executeFileSearch } from './fileSearch';
@@ -516,6 +522,17 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
         // Key is read SW-side from chrome.storage.session — never sent through
         // this message channel except as a one-shot for pre-save verification.
         return await executeMcpTest(message as McpTestRequestMessage);
+      }
+
+      case 'MCP_OAUTH_BEGIN': {
+        // Discovery + DCR + PKCE; returns an authorize URL the panel opens via
+        // chrome.identity.launchWebAuthFlow. Tokens never touch this channel.
+        return await executeMcpOAuthBegin(message);
+      }
+
+      case 'MCP_OAUTH_COMPLETE': {
+        // Exchange the redirect's code for tokens, vault them, populate tools.
+        return await executeMcpOAuthComplete(message);
       }
 
       case 'VISION_TURN': {

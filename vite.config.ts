@@ -6,8 +6,15 @@ const root = process.cwd();
 
 // MV3 build: side panel HTML entry + background service worker.
 // Stable, non-hashed output names so manifest.json can reference them.
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  // In production builds, force VITE_*_API_KEY to undefined so they are never
+  // inlined into the bundle even if a developer has a real key in their .env.
+  // Users supply their own key via Settings (chrome.storage.session).
+  define: mode === 'production' ? {
+    'import.meta.env.VITE_GEMINI_API_KEY': 'undefined',
+    'import.meta.env.VITE_ANTHROPIC_API_KEY': 'undefined',
+  } : {},
   build: {
     outDir: 'dist',
     emptyOutDir: true,
@@ -29,4 +36,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
