@@ -33,33 +33,19 @@ import type {
 } from '../key/messages';
 
 /**
- * Resolve a provider's API key: the in-app key (chrome.storage.SESSION — kept in
- * memory only, never written to disk, per NFR-SEC-1) first, then a DEV-ONLY .env
- * fallback (VITE_GEMINI_API_KEY) so contributors/tests can run without
- * re-entering a key. The env value is inlined into the build — never commit a
- * real key or ship a build containing one.
+ * Resolve a provider's API key from chrome.storage.local (persists across SW
+ * restarts and extension reloads, scoped to the Chrome profile, never synced).
  */
 export async function readSessionApiKey(provider: string): Promise<string | undefined> {
-  const store = chrome.storage?.session;
+  const store = chrome.storage?.local;
   if (store) {
     const storageKey = apiKeyStorageKey(provider);
     const res = await store.get(storageKey);
     const value = (res as Record<string, unknown>)[storageKey];
     if (typeof value === 'string' && value.length > 0) return value;
   }
-  // DEV-only .env fallback (inlined by Vite at build time): lets a contributor
-  // keep a key across SW/extension reloads without re-pasting. Per-provider;
-  // end users leave .env empty so the key lives only in chrome.storage.session.
-  const envKey = ENV_API_KEYS[provider];
-  if (typeof envKey === 'string' && envKey.length > 0) return envKey;
   return undefined;
 }
-
-/** Provider id → its dev .env key (VITE_* vars are inlined at build time). */
-const ENV_API_KEYS: Record<string, string | undefined> = {
-  'google-gemini': import.meta.env?.VITE_GEMINI_API_KEY,
-  anthropic: import.meta.env?.VITE_ANTHROPIC_API_KEY,
-};
 
 // Effective registry = bundled floor + user overlay (FR-MR-1/8). Cached in the
 // SW and refreshed on demand / storage change so user-added models resolve.

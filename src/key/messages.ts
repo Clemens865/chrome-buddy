@@ -1,9 +1,10 @@
 // Typed message protocol between UI / content scripts and the background
 // service worker (MV3).
 //
-// KEY CUSTODY (PRD NFR-SEC-1/2): API keys live ONLY in chrome.storage.session
-// inside the service worker, and ALL cloud LLM calls originate in the SW. UI and
-// content callers never hold a key — they exchange these messages with the SW:
+// KEY CUSTODY: API keys are stored in chrome.storage.local inside the service
+// worker (persists across reloads, scoped to Chrome profile, never synced).
+// ALL cloud LLM calls originate in the SW. UI and content callers never hold
+// a key — they exchange these messages with the SW:
 //   - KEY_SET     : hand a key to the SW for in-memory (session) storage.
 //   - KEY_STATUS  : ask whether a key exists (the key itself is never returned).
 //   - KEY_VALIDATE: ask the SW to make a tiny test request with a candidate key.
@@ -20,7 +21,7 @@ import type { Skill } from '../skills/types';
 import type { Workflow } from '../workflows/types';
 import type { AppConfig } from '../apps/types';
 
-/** chrome.storage.session key under which a provider's key is held. */
+/** chrome.storage.local key under which a provider's key is held. */
 export function apiKeyStorageKey(provider: string): string {
   return `apiKey:${provider}`;
 }

@@ -3,9 +3,9 @@
 // Two jobs:
 //   1. Open the side panel on toolbar-action click (unchanged from v0).
 //   2. Own API-key custody and ALL cloud LLM calls (PRD NFR-SEC-1/2):
-//      - Keys live ONLY in chrome.storage.session (in-memory; cleared when the
-//        browser session ends). They are never persisted to disk and never
-//        returned to a caller.
+//      - Keys are stored in chrome.storage.local (persists across SW restarts,
+//        scoped to the Chrome profile, never synced). They are never returned
+//        to a caller — only used inside the SW for LLM requests.
 //      - LLM_GENERATE runs the LlmClient HERE, using the stored key, so the key
 //        never reaches a content script or page context.
 //
@@ -437,9 +437,10 @@ export async function handleBuddyMessage(message: BuddyMessage): Promise<BuddyRe
   try {
     switch (message.type) {
       case 'KEY_SET': {
-        // NFR-SEC-1: keys live ONLY in chrome.storage.session (in-memory, cleared
-        // when the browser session ends) — never storage.local/sync/disk.
-        const store = chrome.storage?.session;
+        // Keys are stored in chrome.storage.local so they survive SW restarts
+        // and extension reloads. Local storage is scoped to the Chrome profile
+        // and never leaves the device or syncs across accounts.
+        const store = chrome.storage?.local;
         const storageKey = apiKeyStorageKey(message.provider);
         if (message.key.length === 0) {
           await store?.remove(storageKey);
